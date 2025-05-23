@@ -7,6 +7,8 @@ import {
   ScrollView,
   TouchableOpacity,
   Alert,
+  Image,
+  ActivityIndicator,
 } from 'react-native';
 import {
   BORDERRADIUS,
@@ -27,6 +29,22 @@ import { collection, addDoc } from "firebase/firestore";
 import { db } from "../../src/firebase/config";
 import type { OrderData } from '../../src/types/interfaces';
 import { auth } from '../../src/firebase/config';
+import RazorpayCheckout from 'react-native-razorpay';
+import NetInfo from '@react-native-community/netinfo';
+
+const razorpayBlue = '#0B72E7';
+
+interface RazorpayError {
+  code: string;
+  description: string;
+  source: string;
+  step: string;
+  reason: string;
+  metadata: {
+    payment_id: string;
+    order_id: string;
+  };
+}
 
 const PaymentScreen = () => {
   const router = useRouter();
@@ -67,6 +85,7 @@ const PaymentScreen = () => {
   const [paymentMode, setPaymentMode] = useState('Credit Card');
   const [showAnimation, setShowAnimation] = useState(false);
   const [orderId, setOrderId] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
   
   const PaymentList = [
     { name: 'PayPal', icon: 'paypal', isIcon: true },
@@ -185,6 +204,96 @@ const PaymentScreen = () => {
     }
   };
 
+  const handleRazorpayPayment = async () => {
+    try {
+      // Check network connectivity first
+      const netInfo = await NetInfo.fetch();
+      if (!netInfo.isConnected) {
+        Alert.alert(
+          'No Internet Connection',
+          'Please check your internet connection and try again.'
+        );
+        return;
+      }
+
+      // Show loading indicator
+      setIsLoading(true);
+
+      const options = {
+        description: 'Order Payment',
+        image: 'https://your-logo-url.png',
+        currency: 'INR',
+        key: 'rzp_test_YourKeyHere', // Replace with your actual key
+        amount: Math.round(amount * 100), // Ensure amount is in paise and is an integer
+        name: 'Your App Name',
+        prefill: {
+          email: auth.currentUser?.email || 'user@example.com',
+          contact: '9876543210',
+          name: displayName,
+        },
+        theme: { color: '#0B72E7' },
+        retry: {
+          enabled: true,
+          max_count: 3
+        },
+        config: {
+          display: {
+            blocks: {
+              banks: {
+                name: "Pay using UPI",
+                instruments: [
+                  {
+                    method: "upi"
+                  }
+                ]
+              }
+            },
+            sequence: ["block.banks"],
+            preferences: {
+              show_default_blocks: true
+            }
+          }
+        }
+      };
+
+      // Add retry logic
+      let retryCount = 0;
+      const maxRetries = 3;
+
+      const attemptPayment = async () => {
+        try {
+          const paymentData = await RazorpayCheckout.open(options);
+          // Handle successful payment
+          console.log('Payment successful:', paymentData);
+          buttonPressHandler();
+        } catch (error) {
+          const razorpayError = error as RazorpayError;
+          console.error('Payment attempt failed:', razorpayError);
+          
+          if (retryCount < maxRetries) {
+            retryCount++;
+            console.log(`Retrying payment (${retryCount}/${maxRetries})...`);
+            setTimeout(attemptPayment, 2000); // Wait 2 seconds before retry
+          } else {
+            throw razorpayError; // Re-throw if all retries failed
+          }
+        }
+      };
+
+      await attemptPayment();
+
+    } catch (error) {
+      const razorpayError = error as RazorpayError;
+      console.error('Payment error:', razorpayError);
+      Alert.alert(
+        'Payment Failed',
+        razorpayError?.description || 'Unable to process payment. Please try again later.'
+      );
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   return (
     <View style={styles.ScreenContainer}>
       <StatusBar backgroundColor={COLORS.primaryBlackHex} />
@@ -279,12 +388,31 @@ const PaymentScreen = () => {
             </TouchableOpacity>
           ))}
         </View>
+
+        {/* Razorpay payment card */}
+        <View style={styles.razorpayCard}>
+          <Text style={styles.razorpayTitle}>Pay with Razorpay</Text>
+          <View style={styles.razorpayAmountRow}>
+            <Text style={styles.razorpayAmountLabel}>Total:</Text>
+            <Text style={styles.razorpayAmountValue}>₹{amount}</Text>
+          </View>
+          <TouchableOpacity style={styles.razorpayButton} onPress={handleRazorpayPayment}>
+            <Image source={require('../../assets/razorpay.svg')} style={styles.razorpayLogo} />
+            <Text style={styles.razorpayButtonText}>Pay with Razorpay</Text>
+          </TouchableOpacity>
+        </View>
       </ScrollView>
 
+      {isLoading && (
+        <View style={styles.loadingOverlay}>
+          <ActivityIndicator size="large" color={razorpayBlue} />
+        </View>
+      )}
+
       <PaymentFooter
-        buttonTitle={`Pay with ${paymentMode}`}
-        price={{ price: amount.toString(), currency: '$' }}
-        buttonPressHandler={buttonPressHandler}
+        buttonTitle={`Pay with Razorpay`}
+        price={{ price: amount.toString(), currency: '₹' }}
+        buttonPressHandler={handleRazorpayPayment}
       />
     </View>
   );
@@ -374,6 +502,71 @@ const styles = StyleSheet.create({
   },
   CreditCardDateContainer: {
     alignItems: 'flex-end',
+  },
+  razorpayCard: {
+    backgroundColor: '#FFF',
+    borderRadius: 20,
+    padding: 24,
+    margin: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.07,
+    shadowRadius: 8,
+    elevation: 2,
+    alignItems: 'center',
+  },
+  razorpayTitle: {
+    fontFamily: FONTFAMILY.poppins_bold,
+    fontSize: 20,
+    color: COLORS.primaryBlackHex,
+    marginBottom: 16,
+  },
+  razorpayAmountRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    width: '100%',
+    marginBottom: 24,
+  },
+  razorpayAmountLabel: {
+    fontFamily: FONTFAMILY.poppins_medium,
+    fontSize: 16,
+    color: COLORS.primaryGreyHex,
+  },
+  razorpayAmountValue: {
+    fontFamily: FONTFAMILY.poppins_bold,
+    fontSize: 18,
+    color: COLORS.primaryOrangeHex,
+  },
+  razorpayButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: razorpayBlue,
+    borderRadius: 12,
+    paddingVertical: 16,
+    paddingHorizontal: 24,
+    justifyContent: 'center',
+  },
+  razorpayLogo: {
+    width: 28,
+    height: 28,
+    marginRight: 12,
+    resizeMode: 'contain',
+  },
+  razorpayButtonText: {
+    color: '#FFF',
+    fontFamily: FONTFAMILY.poppins_bold,
+    fontSize: 18,
+  },
+  loadingOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(255, 255, 255, 0.8)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 1000,
   },
 });
 

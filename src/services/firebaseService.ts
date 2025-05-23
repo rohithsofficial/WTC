@@ -1,19 +1,19 @@
-import { collection, doc, getDocs, addDoc, updateDoc, deleteDoc, query, where, getDoc, setDoc } from 'firebase/firestore';
+import { collection, doc, getDocs, addDoc, updateDoc, deleteDoc, query, where, getDoc, setDoc , onSnapshot } from 'firebase/firestore';
 import { db ,auth } from '../firebase/config';
 import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';// Adjust path as needed
 
-export const signUpUser = async (email: string, password: string, fullName: string) => {
+export const signUpUser = async (email: string, password: string, displayName: string) => {
   try {
     const userCredential = await createUserWithEmailAndPassword(auth, email, password);
     const user = userCredential.user;
 
     await updateProfile(user, {
-      displayName: fullName,
+      displayName: displayName,
     });
 
     await setDoc(doc(db, 'users', user.uid), {
       uid: user.uid,
-      fullName: fullName,
+      displayName: displayName,
       email: user.email,
       createdAt: new Date(),
     });
@@ -24,8 +24,37 @@ export const signUpUser = async (email: string, password: string, fullName: stri
   }
 };
 
+
 // Product Operations
 export const productService = {
+
+  // Live updates for all products
+listenToAllProducts: (callback: (products: any[]) => void, errorCallback?: (error: any) => void) => {
+  try {
+    const productsRef = collection(db, 'products');
+    const unsubscribe = onSnapshot(
+      productsRef,
+      (snapshot) => {
+        const products = snapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        }));
+        callback(products);
+      },
+      (error) => {
+        console.error('Error listening to products:', error);
+        if (errorCallback) errorCallback(error);
+      }
+    );
+
+    return unsubscribe; // Return unsubscribe function to detach listener
+  } catch (error) {
+    console.error('Error setting up snapshot listener:', error);
+    if (errorCallback) errorCallback(error);
+  }
+},
+
+
   // Get all products
   getAllProducts: async () => {
     try {

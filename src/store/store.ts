@@ -17,13 +17,16 @@ interface StoreState {
   CartPrice: number;
   isLoading: boolean;
   error: string | null;
+  favorites: Product[];
   fetchData: () => Promise<void>;
   addToCart: (cartItem: CartItem) => void;
   calculateCartPrice: () => void;
   removeFromCart: (cartItem: CartItem) => void;
   incrementCartItemQuantity: (id: string, size: string) => void;
   decrementCartItemQuantity: (id: string, size: string) => void;
-  
+  addToFavorites: (product: Product) => void;
+  removeFromFavorites: (productId: string) => void;
+  isFavorite: (productId: string) => boolean;
 }
 
 export const useStore = create<StoreState>((set, get) => ({
@@ -34,7 +37,7 @@ export const useStore = create<StoreState>((set, get) => ({
   CartPrice: 0,
   isLoading: false,
   error: null,
-
+  favorites: [],
 
   fetchData: async () => {
     set({ isLoading: true, error: null });
@@ -140,5 +143,22 @@ export const useStore = create<StoreState>((set, get) => ({
           : item
       )
     });
+  },
+
+  addToFavorites: (product: Product) => {
+    const { favorites } = get();
+    if (!favorites.some(item => item.id === product.id)) {
+      set({ favorites: [...favorites, product] });
+    }
+  },
+
+  removeFromFavorites: (productId: string) => {
+    const { favorites } = get();
+    set({ favorites: favorites.filter(item => item.id !== productId) });
+  },
+
+  isFavorite: (productId: string) => {
+    const { favorites } = get();
+    return favorites.some(item => item.id === productId);
   },
 }));

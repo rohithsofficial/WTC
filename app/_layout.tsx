@@ -1,39 +1,32 @@
 // File: app/_layout.tsx
 import 'react-native-gesture-handler';
 import { Stack } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { auth } from '../src/firebase/config';
-import { onAuthStateChanged } from 'firebase/auth';
-import { decode, encode } from 'base-64';
-import { View, ActivityIndicator } from 'react-native';
+import { useRouter, useSegments } from 'expo-router';
 import { CartProvider } from '../src/store/CartContext';
 
-// Add base-64 polyfills
-if (!global.btoa) { global.btoa = encode; }
-if (!global.atob) { global.atob = decode; }
-
 export default function RootLayout() {
-  const [loading, setLoading] = useState<boolean>(true);
-  const [authenticated, setAuthenticated] = useState<boolean>(false);
+  const segments = useSegments();
+  const router = useRouter();
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setAuthenticated(!!user);
-      setLoading(false);
+    const unsubscribe = auth.onAuthStateChanged((user) => {
+      const inAuthGroup = segments[0] === '(auth)';
+      
+      if (!user && !inAuthGroup) {
+        // Redirect to the sign-in page if not signed in
+        router.replace('/(auth)/PhoneAuthScreen');
+      } else if (user && inAuthGroup) {
+        // Redirect to the home page if signed in
+        router.replace('/(app)/HomeScreen');
+      }
     });
 
-    return () => unsubscribe();
-  }, []);
-
-  if (loading) {
-    return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-        <ActivityIndicator size="large" color="#0000ff" />
-      </View>
-    );
-  }
+    return unsubscribe;
+  }, [segments]);
 
   return (
     <SafeAreaProvider>
@@ -41,36 +34,10 @@ export default function RootLayout() {
         <CartProvider>
           <Stack screenOptions={{ headerShown: false }}>
             <Stack.Screen name="index" options={{ headerShown: false }} />
-            <Stack.Screen 
-              name="(auth)" 
-              options={{ 
-                headerShown: false,
-                gestureEnabled: false 
-              }} 
-            />
-            <Stack.Screen 
-              name="(app)" 
-              options={{ 
-                headerShown: false,
-                gestureEnabled: false 
-              }}
-            />
-            <Stack.Screen 
-              name="product-detail"
-              options={{ 
-                headerShown: false,
-                gestureEnabled: false,
-                presentation: 'modal'
-              }}
-            />
-            <Stack.Screen 
-              name="product"
-              options={{ 
-                headerShown: false,
-                gestureEnabled: false,
-                presentation: 'modal'
-              }}
-            />
+            <Stack.Screen name="(auth)" options={{ headerShown: false }} />
+            <Stack.Screen name="(app)" options={{ headerShown: false }} />
+            <Stack.Screen name="product-detail/[id]" options={{ headerShown: false }} />
+            <Stack.Screen name="product/[category]" options={{ headerShown: false }} />
           </Stack>
         </CartProvider>
       </GestureHandlerRootView>

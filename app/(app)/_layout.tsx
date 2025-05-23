@@ -1,19 +1,32 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { View } from 'react-native';
-import { Tabs } from 'expo-router';
+import { Tabs, router } from 'expo-router';
 import { COLORS, FONTFAMILY } from '../../src/theme/theme';
 import { MaterialIcons } from '@expo/vector-icons';
+import { auth } from '../../src/firebase/config';
 
 const AppLayout = () => {
+  useEffect(() => {
+    const unsubscribe = auth.onAuthStateChanged((user) => {
+      if (!user) {
+        router.replace('/(auth)/login');
+      }
+    });
+
+    return () => unsubscribe();
+  }, []);
+
   return (
     <Tabs
       screenOptions={{
         headerShown: false,
         tabBarStyle: {
-          backgroundColor: COLORS.primaryBlackHex,
+          backgroundColor: COLORS.primaryWhiteHex,
           borderTopWidth: 1,
-          borderTopColor: COLORS.primaryGreyHex,
+          borderTopColor: '#E5E5E5',
           height: 60,
+          elevation: 0,
+          shadowOpacity: 0,
         },
         tabBarLabelStyle: {
           fontFamily: FONTFAMILY.poppins_medium,
@@ -21,7 +34,7 @@ const AppLayout = () => {
           marginBottom: 8,
         },
         tabBarActiveTintColor: COLORS.primaryOrangeHex,
-        tabBarInactiveTintColor: COLORS.primaryLightGreyHex,
+        tabBarInactiveTintColor: COLORS.primaryGreyHex,
       }}
     >
       {/* Main Tab Bar Items */}
@@ -62,7 +75,7 @@ const AppLayout = () => {
         }}
       />
       <Tabs.Screen
-        name="profile"
+        name="profileScreen"
         options={{
           title: 'Profile',
           tabBarIcon: ({ color }) => (
@@ -109,13 +122,43 @@ const AppLayout = () => {
         }}
       />
       <Tabs.Screen
-        name="product-detail"
+        name="product-detail/[id]"
         options={{
           href: null,
         }}
       />
       <Tabs.Screen
-        name="product"
+        name="product/[category]"
+        options={{
+          href: null,
+        }}
+      />
+      <Tabs.Screen
+        name="AddressScreen"
+        options={{
+          href: null,
+        }}
+      />
+      <Tabs.Screen
+        name="SupportScreen"
+        options={{
+          href: null,
+        }}
+      />
+      <Tabs.Screen
+        name="NotificationSettings"
+        options={{
+          href: null,
+        }}
+      />
+      <Tabs.Screen
+        name="EditProfileScreen"
+        options={{
+          href: null,
+        }}
+      />
+       <Tabs.Screen
+        name="Profile"
         options={{
           href: null,
         }}

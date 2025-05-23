@@ -14,6 +14,8 @@ import {
   Linking,
   ImageBackground,
   Animated,
+  SafeAreaView,
+  Platform,
 } from "react-native";
 import { useStore } from "../../src/store/store";
 import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
@@ -388,8 +390,8 @@ const HomeScreen = () => {
     banners.length > 0 ? banners[currentTopBannerIndex] : null;
 
   return (
-    <View style={styles.screenContainer}>
-      <StatusBar backgroundColor={COLORS.primaryWhiteHex} />
+    <SafeAreaView style={styles.screenContainer}>
+      <StatusBar backgroundColor={COLORS.primaryWhiteHex} barStyle="dark-content" />
 
       {/* Top Bar */}
       <View style={styles.topBar}>
@@ -437,7 +439,17 @@ const HomeScreen = () => {
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.iconButton}
-            onPress={() => router.push("/profile")}
+            onPress={() => router.push("/FavoritesScreen")}
+          >
+            <MaterialIcons
+              name="favorite-border"
+              size={24}
+              color={COLORS.primaryBlackHex}
+            />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.iconButton}
+            onPress={() => router.push("/ProfileScreen")}
           >
             <MaterialIcons
               name="person"
@@ -831,7 +843,7 @@ const HomeScreen = () => {
           </View>
         </View>
       </ScrollView>
-    </View>
+    </SafeAreaView>
   );
 };
 
@@ -839,6 +851,7 @@ const styles = StyleSheet.create({
   screenContainer: {
     flex: 1,
     backgroundColor: COLORS.primaryWhiteHex,
+    paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0,
   },
   topBar: {
     flexDirection: "row",

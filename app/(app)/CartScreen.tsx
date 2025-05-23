@@ -1,14 +1,20 @@
-import React  , {useState} from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, TextInput } from 'react-native';
-import { Stack, router } from 'expo-router';
+import React, { useState } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, TextInput, Modal, Image, StatusBar, Platform } from 'react-native';
+import { Stack, router, useRouter } from 'expo-router';
 import { useCart } from '../../src/store/CartContext';
 import CartItem from '../../src/components/CartItem';
 import { FontAwesome } from '@expo/vector-icons';
-import { addOrder} from '../../src/firebase/addData';
+import { addOrder } from '../../src/firebase/addData';
 import { auth } from '../../src/firebase/config';
+import { OrderData } from '../../src/types/interfaces';
+import { COLORS, FONTFAMILY, FONTSIZE, SPACING, BORDERRADIUS } from '../../src/theme/theme';
+import RazorpayCheckout from 'react-native-razorpay';
+
+const RAZORPAY_BACKEND_URL = 'https://your-actual-backend-url.com'; // Replace with your actual backend URL
 
 export default function CartScreen() {
   const { state, dispatch } = useCart();
+  const router = useRouter();
 
   const handleIncrementQuantity = (id: string, size: string) => {
     dispatch({ type: 'INCREMENT_QUANTITY', payload: { id, size } });
@@ -22,61 +28,221 @@ export default function CartScreen() {
     dispatch({ type: 'REMOVE_FROM_CART', payload: { id, size } });
   };
 
+  const [showSuccess, setShowSuccess] = useState(false);
+  const [successMessage, setSuccessMessage] = useState('');
+  const [isProcessingPayment, setIsProcessingPayment] = useState(false);
+
   const handleClearCart = () => {
     dispatch({ type: 'CLEAR_CART' });
+    setSuccessMessage('Cart cleared!');
+    setShowSuccess(true);
+    setTimeout(() => setShowSuccess(false), 2000);
   };
 
-
-
-  const [orderType, setOrderType] = useState<'table' | 'takeaway'>('takeaway'); // default is takeaway
+  const [orderType, setOrderType] = useState<'dinein' | 'takeaway'>('takeaway');
   const [tableNumber, setTableNumber] = useState('');
+  const [showSignInModal, setShowSignInModal] = useState(false);
 
+  const createRazorpayOrder = async (orderData: OrderData) => {
+    try {
+      const response = await fetch(`${RAZORPAY_BACKEND_URL}/api/create-razorpay-order`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${await auth.currentUser?.getIdToken()}`,
+        },
+        body: JSON.stringify({
+          amount: Math.round(orderData.total * 100), // Amount in paise
+          currency: 'INR',
+          receipt: `receipt_${Date.now()}`,
+          orderDetails: orderData,
+        }),
+      });
 
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to create Razorpay order');
+      }
 
-  // In CartScreen, inside handleCheckout (instead of calling addOrder directly)
-const handleCheckout = () => {
-  if (!auth.currentUser) {
-    Alert.alert(
-      'Sign In Required',
-      'Please sign in to complete your purchase.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Sign In', onPress: () => router.push('/(auth)/login') },
-      ]
-    );
-    return;
-  }
+      const data = await response.json();
+      return data;
+    } catch (error) {
+      console.error('Error creating Razorpay order:', error);
+      throw error;
+    }
+  };
 
-  try {
-    router.push({
-      pathname: '/(app)/PaymentScreen',
-      params: {
-        items: JSON.stringify(state.items),
-        total: state.total.toString(),
+  const verifyPaymentAndSaveOrder = async (paymentData, OrderData) => {
+    try {
+      const response = await fetch('YOUR_BACKEND_URL/api/verify-payment', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${await auth.currentUser?.getIdToken()}`,
+        },
+        body: JSON.stringify({
+          razorpay_payment_id: paymentData.razorpay_payment_id,
+          razorpay_order_id: paymentData.razorpay_order_id,
+          razorpay_signature: paymentData.razorpay_signature,
+          orderDetails: OrderData,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Payment verification failed');
+      }
+
+      const result = await response.json();
+      return result;
+    } catch (error) {
+      console.error('Error verifying payment:', error);
+      throw error;
+    }
+  };
+
+  const handleCheckout = async () => {
+    if (!auth.currentUser) {
+      setShowSignInModal(true);
+      return;
+    }
+
+    if (orderType === 'dinein' && !tableNumber.trim()) {
+      Alert.alert('Table Number Required', 'Please enter a table number for dine-in orders.');
+      return;
+    }
+
+    setIsProcessingPayment(true);
+
+    try {
+      // Prepare order data
+      const orderData: OrderData = {
         userId: auth.currentUser.uid,
+        userEmail: auth.currentUser.email,
         displayName: auth.currentUser.displayName,
+        items: state.items,
+        total: state.total,
         orderType,
-        tableNumber,
-      },
-    });
-  } catch (error) {
-    Alert.alert("Checkout Failed", "Something went wrong. Please try again.");
-    console.error("Checkout Error:", error);
-  }
-};
+        tableNumber: orderType === 'dinein' ? tableNumber : null,
+        timestamp: new Date().toISOString(),
+        status: 'pending',
+      };
+
+      // Create Razorpay order in backend
+      const razorpayOrderData = await createRazorpayOrder(orderData);
+
+      // Razorpay payment options
+      const options = {
+        description: 'Coffee Shop Order',
+        image: 'https://your-app-logo-url.com/logo.png',
+        currency: 'INR',
+        key: 'rzp_test_0sgSRmKxTCC2Kd', // Your Razorpay key
+        amount: Math.round(orderData.total * 100),
+        order_id: razorpayOrderData.orderId,
+        name: 'Coffee Shop',
+        prefill: {
+          email: auth.currentUser.email || '',
+          contact: auth.currentUser.phoneNumber || '',
+          name: auth.currentUser.displayName || '',
+        },
+        theme: {
+          color: COLORS.primaryOrangeHex,
+        },
+      };
+
+      // Open Razorpay checkout
+      const paymentData = await RazorpayCheckout.open(options);
+      
+      // Payment successful
+      try {
+        // Verify payment and save order to database
+        const verificationResult = await verifyPaymentAndSaveOrder(paymentData, orderData);
+        
+        if (verificationResult.success) {
+          // Clear cart and show success
+          dispatch({ type: 'CLEAR_CART' });
+          setSuccessMessage('Payment successful! Order placed.');
+          setShowSuccess(true);
+          
+          // Navigate to order confirmation
+          setTimeout(() => {
+            setShowSuccess(false);
+            router.push({
+              pathname: '/(app)/OrderConfirmation',
+              params: {
+                orderId: verificationResult.orderId,
+                paymentId: paymentData.razorpay_payment_id,
+              },
+            });
+          }, 2000);
+        } else {
+          throw new Error('Payment verification failed');
+        }
+      } catch (verificationError) {
+        console.error('Payment verification error:', verificationError);
+        Alert.alert(
+          'Payment Verification Failed',
+          'Your payment was processed but we couldn\'t verify it. Please contact support with payment ID: ' + paymentData.razorpay_payment_id
+        );
+      }
+    } catch (error) {
+      console.error('Checkout error:', error);
+      let errorMessage = 'Failed to process payment. Please try again.';
+      
+      if (error instanceof Error) {
+        if (error.message.includes('Network request failed')) {
+          errorMessage = 'Network error. Please check your internet connection and try again.';
+        } else if (error.message.includes('PAYMENT_CANCELLED')) {
+          errorMessage = 'Payment was cancelled.';
+        }
+      }
+      
+      setSuccessMessage(errorMessage);
+      setShowSuccess(true);
+      setTimeout(() => setShowSuccess(false), 2000);
+    } finally {
+      setIsProcessingPayment(false);
+    }
+  };
 
   return (
     <>
       <Stack.Screen
         options={{
           title: 'Cart',
-          headerStyle: {
-            backgroundColor: '#fff',
-          },
-          headerShadowVisible: false,
+          headerShown: false,
         }}
       />
-      <View style={styles.container}>
+      {showSuccess && (
+        <View style={styles.successToast}>
+          <Text style={styles.successToastText}>{successMessage}</Text>
+        </View>
+      )}
+      <View style={styles.screenContainer}>
+        <StatusBar backgroundColor={COLORS.primaryWhiteHex} barStyle="dark-content" />
+        {/* Styled Header */}
+        <View style={styles.mainHeader}>
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => router.back()}
+          >
+            <FontAwesome name="arrow-left" size={24} color={COLORS.primaryBlackHex} />
+          </TouchableOpacity>
+          <View style={styles.headerTextContainer}>
+            <Text style={styles.headerTitle}>Cart</Text>
+            <Text style={styles.headerSubtitle}>Review your order</Text>
+          </View>
+          <TouchableOpacity
+            style={styles.appIconButton}
+            onPress={() => router.push('/(app)/HomeScreen')}
+          >
+            <Image
+              source={require('../../assets/icon.png')}
+              style={styles.appIcon}
+            />
+          </TouchableOpacity>
+        </View>
+        {/* Cart Content */}
+        <View style={{ flex: 1 }}>
         {state.items.length === 0 ? (
           <View style={styles.emptyCart}>
             <FontAwesome name="shopping-cart" size={64} color="#ccc" />
@@ -90,20 +256,21 @@ const handleCheckout = () => {
           </View>
         ) : (
           <>
-            <ScrollView style={styles.itemsContainer}>
+              <ScrollView style={styles.itemsContainer} contentContainerStyle={{ paddingBottom: 220 }}>
               {state.items.map((item, index) => (
                 <View key={`${item.id}-${item.size}-${index}`} style={styles.cartItemContainer}>
                   <CartItem
                     key={`cartItem-${item.id}-${item.size}-${index}`}
                     id={item.id}
                     name={item.name}
-                    imagelink_square={item.imagelink_square}
+                    imagelink_square={{ uri: item.imagelink_square }}
                     special_ingredient={item.special_ingredient}
                     roasted={item.roasted}
                     prices={[{ size: item.size, price: item.price, quantity: item.quantity }]}
-                    type="coffee"
+                      type={item.type || 'coffee'}
                     incrementCartItemQuantityHandler={() => handleIncrementQuantity(item.id, item.size)}
                     decrementCartItemQuantityHandler={() => handleDecrementQuantity(item.id, item.size)}
+                      onImagePress={() => router.push({ pathname: '/(app)/product-detail/[id]', params: { id: item.id } })}
                   />
                   <TouchableOpacity
                     style={styles.removeButton}
@@ -114,23 +281,26 @@ const handleCheckout = () => {
                 </View>
               ))}
             </ScrollView>
-            <View style={styles.orderTypeContainer}>
-  <Text style={styles.orderTypeLabel}>Select Order Type:</Text>
-  <View style={styles.orderTypeButtons}>
+              <View style={styles.footerAbsolute}>
+                <View style={styles.totalContainer}>
+                  <Text style={styles.totalLabel}>Total:</Text>
+                  <Text style={styles.totalAmount}>₹{state.total.toFixed(2)}</Text>
+                </View>
+                <View style={styles.orderTypeFooterRow}>
     <TouchableOpacity
       style={[
         styles.orderTypeButton,
-        orderType === 'table' && styles.selectedOrderTypeButton,
+                      orderType === 'dinein' && styles.selectedOrderTypeButton,
       ]}
-      onPress={() => setOrderType('table')}
+                    onPress={() => setOrderType('dinein')}
     >
       <Text
         style={[
           styles.orderTypeButtonText,
-          orderType === 'table' && styles.selectedOrderTypeButtonText,
+                        orderType === 'dinein' && styles.selectedOrderTypeButtonText,
         ]}
       >
-        Table
+                      Dine In
       </Text>
     </TouchableOpacity>
     <TouchableOpacity
@@ -149,25 +319,17 @@ const handleCheckout = () => {
         Takeaway
       </Text>
     </TouchableOpacity>
-  </View>
-  {orderType === 'table' && (
-    <View style={styles.tableNumberContainer}>
-      <Text style={styles.tableNumberLabel}>Table Number:</Text>
+                  {orderType === 'dinein' && (
+                    <View style={styles.tableNumberInputFooterContainer}>
       <TextInput
-        style={styles.tableNumberInput}
+                        style={styles.tableNumberInputFooter}
         value={tableNumber}
         onChangeText={setTableNumber}
         keyboardType="numeric"
-        placeholder="Enter table number"
+                        placeholder="Table Number"
       />
     </View>
   )}
-</View>
-
-            <View style={styles.footer}>
-              <View style={styles.totalContainer}>
-                <Text style={styles.totalLabel}>Total:</Text>
-                <Text style={styles.totalAmount}>${state.total.toFixed(2)}</Text>
               </View>
               <View style={styles.actionButtons}>
                 <TouchableOpacity
@@ -177,11 +339,16 @@ const handleCheckout = () => {
                   <Text style={styles.buttonText}>Clear Cart</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                  style={[styles.button, styles.checkoutButton]}
+                    style={[
+                      styles.button, 
+                      styles.checkoutButton,
+                      isProcessingPayment && styles.disabledButton
+                    ]}
                   onPress={handleCheckout}
+                    disabled={isProcessingPayment}
                 >
                   <Text style={[styles.buttonText, styles.checkoutButtonText]}>
-                    Checkout
+                      {isProcessingPayment ? 'Processing...' : 'Pay Now'}
                   </Text>
                 </TouchableOpacity>
               </View>
@@ -189,155 +356,331 @@ const handleCheckout = () => {
           </>
         )}
       </View>
+      {/* Sign In Modal */}
+      <Modal
+        visible={showSignInModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowSignInModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContainer}>
+            <Text style={styles.modalTitle}>Sign In Required</Text>
+            <Text style={styles.modalMessage}>Please sign in to complete your purchase.</Text>
+            <View style={styles.modalButtonRow}>
+              <TouchableOpacity
+                style={styles.modalCancelButton}
+                onPress={() => setShowSignInModal(false)}
+              >
+                <Text style={styles.modalCancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.modalSignInButton}
+                onPress={() => {
+                  setShowSignInModal(false);
+                  router.push('/(auth)/login');
+                }}
+              >
+                <Text style={styles.modalSignInButtonText}>Sign In</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+      </View>
     </>
   );
 }
 
 const styles = StyleSheet.create({
+  screenContainer: {
+    flex: 1,
+    backgroundColor: '#FFF8E7',
+    paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0,
+  },
+  mainHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    paddingTop: 12,
+    paddingBottom: 8,
+    backgroundColor: '#FFF8E7',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E0E7FF',
+  },
+  backButton: {
+    marginRight: 16,
+  },
+  headerTextContainer: {
+    flex: 1,
+    marginLeft: 16,
+  },
+  headerTitle: {
+    fontFamily: FONTFAMILY.poppins_bold,
+    fontSize: 28,
+    color: COLORS.primaryBlackHex,
+  },
+  headerSubtitle: {
+    fontFamily: FONTFAMILY.poppins_regular,
+    fontSize: 16,
+    color: COLORS.primaryGreyHex,
+  },
+  appIconButton: {
+    padding: 8,
+    backgroundColor: COLORS.primaryWhiteHex,
+    borderRadius: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  appIcon: {
+    width: 32,
+    height: 32,
+    resizeMode: 'contain',
+  },
   container: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: COLORS.primaryWhiteHex,
   },
   emptyCart: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    backgroundColor: COLORS.primaryWhiteHex,
   },
   emptyText: {
-    fontSize: 18,
-    color: '#666',
-    marginTop: 16,
+    fontSize: FONTSIZE.size_18,
+    color: COLORS.primaryGreyHex,
+    marginTop: SPACING.space_16,
+    fontFamily: FONTFAMILY.poppins_medium,
   },
   itemsContainer: {
     flex: 1,
-    padding: 16,
+    padding: SPACING.space_16,
   },
   cartItemContainer: {
-    marginBottom: 16,
+    marginBottom: SPACING.space_16,
     position: 'relative',
   },
   removeButton: {
     position: 'absolute',
-    top: 16,
-    right: 16,
-    padding: 8,
+    top: SPACING.space_16,
+    right: SPACING.space_16,
+    padding: SPACING.space_8,
     zIndex: 1,
   },
-  footer: {
-    padding: 16,
+  footerAbsolute: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    padding: SPACING.space_16,
     borderTopWidth: 1,
-    borderTopColor: '#eee',
-    backgroundColor: '#fff',
+    borderTopColor: '#E5E5E5',
+    backgroundColor: COLORS.primaryWhiteHex,
+    borderTopLeftRadius: BORDERRADIUS.radius_20,
+    borderTopRightRadius: BORDERRADIUS.radius_20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 4,
   },
   totalContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: SPACING.space_16,
   },
   totalLabel: {
-    fontSize: 18,
+    fontSize: FONTSIZE.size_18,
     fontWeight: 'bold',
-    color: '#333',
+    color: COLORS.primaryBlackHex,
+    fontFamily: FONTFAMILY.poppins_semibold,
   },
   totalAmount: {
-    fontSize: 24,
+    fontSize: FONTSIZE.size_24,
     fontWeight: 'bold',
-    color: '#2ecc71',
+    color: COLORS.primaryOrangeHex,
+    fontFamily: FONTFAMILY.poppins_bold,
+  },
+  orderTypeFooterRow: {
+    flexDirection: 'row',
+    gap: SPACING.space_12,
+    alignItems: 'center',
+    marginBottom: SPACING.space_16,
+  },
+  orderTypeButton: {
+    flex: 1,
+    padding: SPACING.space_12,
+    borderWidth: 1,
+    borderColor: COLORS.primaryOrangeHex,
+    borderRadius: BORDERRADIUS.radius_10,
+    alignItems: 'center',
+    backgroundColor: COLORS.primaryWhiteHex,
+  },
+  selectedOrderTypeButton: {
+    backgroundColor: COLORS.primaryOrangeHex,
+    borderColor: COLORS.primaryOrangeHex,
+  },
+  orderTypeButtonText: {
+    color: COLORS.primaryOrangeHex,
+    fontWeight: 'bold',
+    fontFamily: FONTFAMILY.poppins_medium,
+  },
+  selectedOrderTypeButtonText: {
+    color: COLORS.primaryWhiteHex,
+  },
+  tableNumberInputFooterContainer: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: COLORS.primaryOrangeHex,
+    borderRadius: BORDERRADIUS.radius_10,
+    paddingVertical: SPACING.space_10,
+    paddingHorizontal: SPACING.space_12,
+  },
+  tableNumberInputFooter: {
+    flex: 1,
+    backgroundColor: COLORS.primaryWhiteHex,
+    color: COLORS.primaryBlackHex,
+    fontFamily: FONTFAMILY.poppins_medium,
   },
   actionButtons: {
     flexDirection: 'row',
-    gap: 12,
+    gap: SPACING.space_12,
   },
   button: {
     flex: 1,
-    padding: 16,
-    borderRadius: 8,
+    padding: SPACING.space_16,
+    borderRadius: BORDERRADIUS.radius_20,
     alignItems: 'center',
   },
   clearButton: {
-    backgroundColor: '#f8f9fa',
+    backgroundColor: COLORS.primaryWhiteHex,
     borderWidth: 1,
-    borderColor: '#dee2e6',
+    borderColor: COLORS.primaryOrangeHex,
   },
   checkoutButton: {
-    backgroundColor: '#2ecc71',
+    backgroundColor: COLORS.primaryOrangeHex,
+  },
+  disabledButton: {
+    backgroundColor: '#ccc',
+    opacity: 0.7,
   },
   buttonText: {
-    fontSize: 16,
+    fontSize: FONTSIZE.size_16,
     fontWeight: 'bold',
-    color: '#666',
+    color: COLORS.primaryOrangeHex,
+    fontFamily: FONTFAMILY.poppins_semibold,
   },
   checkoutButtonText: {
-    color: '#fff',
+    color: COLORS.primaryWhiteHex,
   },
   continueShoppingButton: {
-    marginTop: 20,
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 8,
-    backgroundColor: '#2ecc71',
+    marginTop: SPACING.space_20,
+    paddingHorizontal: SPACING.space_24,
+    paddingVertical: SPACING.space_12,
+    borderRadius: BORDERRADIUS.radius_20,
+    backgroundColor: COLORS.primaryOrangeHex,
   },
   continueShoppingText: {
+    color: COLORS.primaryWhiteHex,
+    fontSize: FONTSIZE.size_16,
+    fontWeight: 'bold',
+    fontFamily: FONTFAMILY.poppins_semibold,
+  },
+  successToast: {
+    position: 'absolute',
+    top: 40,
+    left: 20,
+    right: 20,
+    backgroundColor: '#4BB543',
+    paddingVertical: 14,
+    paddingHorizontal: 24,
+    borderRadius: 16,
+    zIndex: 100,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  successToastText: {
     color: '#fff',
     fontSize: 16,
     fontWeight: 'bold',
+    letterSpacing: 0.5,
   },
-  orderTypeContainer: {
-  paddingHorizontal: 16,
-  paddingBottom: 8,
-},
-orderTypeLabel: {
-  fontSize: 16,
-  fontWeight: 'bold',
-  color: '#333',
-  marginBottom: 8,
-},
-orderTypeButtons: {
-  flexDirection: 'row',
-  gap: 12,
-},
-orderTypeButton: {
-  flex: 1,
-  padding: 12,
-  borderWidth: 1,
-  borderColor: '#ccc',
-  borderRadius: 8,
-  alignItems: 'center',
-  backgroundColor: '#fff',
-},
-selectedOrderTypeButton: {
-  backgroundColor: '#2ecc71',
-  borderColor: '#27ae60',
-},
-orderTypeButtonText: {
-  color: '#333',
-  fontWeight: 'bold',
-},
-selectedOrderTypeButtonText: {
-  color: '#fff',
-},
-tableNumberContainer: {
-  marginTop: 16,
-  marginBottom: 12,
-},
-
-tableNumberLabel: {
-  fontSize: 16,
-  fontWeight: '600',
-  color: '#333',
-  marginBottom: 6,
-},
-
-tableNumberInput: {
-  borderWidth: 1,
-  borderColor: '#ccc',
-  borderRadius: 8,
-  paddingVertical: 10,
-  paddingHorizontal: 12,
-  fontSize: 16,
-  backgroundColor: '#fff',
-  color: '#000',
-},
-
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.3)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 200,
+  },
+  modalContainer: {
+    width: '80%',
+    backgroundColor: COLORS.primaryWhiteHex,
+    borderRadius: BORDERRADIUS.radius_20,
+    padding: SPACING.space_24,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 16,
+    elevation: 8,
+  },
+  modalTitle: {
+    fontSize: FONTSIZE.size_20,
+    fontWeight: 'bold',
+    color: COLORS.primaryBlackHex,
+    marginBottom: SPACING.space_12,
+    fontFamily: FONTFAMILY.poppins_semibold,
+    textAlign: 'center',
+  },
+  modalMessage: {
+    fontSize: FONTSIZE.size_16,
+    color: COLORS.primaryGreyHex,
+    marginBottom: SPACING.space_20,
+    fontFamily: FONTFAMILY.poppins_medium,
+    textAlign: 'center',
+  },
+  modalButtonRow: {
+    flexDirection: 'row',
+    gap: SPACING.space_12,
+    width: '100%',
+    justifyContent: 'space-between',
+  },
+  modalCancelButton: {
+    flex: 1,
+    backgroundColor: COLORS.primaryWhiteHex,
+    borderWidth: 1,
+    borderColor: COLORS.primaryOrangeHex,
+    borderRadius: BORDERRADIUS.radius_20,
+    paddingVertical: SPACING.space_12,
+    alignItems: 'center',
+  },
+  modalCancelButtonText: {
+    color: COLORS.primaryOrangeHex,
+    fontSize: FONTSIZE.size_16,
+    fontWeight: 'bold',
+    fontFamily: FONTFAMILY.poppins_semibold,
+  },
+  modalSignInButton: {
+    flex: 1,
+    backgroundColor: COLORS.primaryOrangeHex,
+    borderRadius: BORDERRADIUS.radius_20,
+    paddingVertical: SPACING.space_12,
+    alignItems: 'center',
+    marginLeft: SPACING.space_12,
+  },
+  modalSignInButtonText: {
+    color: COLORS.primaryWhiteHex,
+    fontSize: FONTSIZE.size_16,
+    fontWeight: 'bold',
+    fontFamily: FONTFAMILY.poppins_semibold,
+  },
 }); 

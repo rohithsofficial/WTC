@@ -8,6 +8,7 @@ import {
   ScrollView,
   ActivityIndicator,
   RefreshControl,
+  Platform,
 } from 'react-native';
 import {
   BORDERRADIUS,
@@ -18,10 +19,11 @@ import {
 } from '../../src/theme/theme';
 import GradientBGIcon from '../../src/components/GradientBGIcon';
 import { useRouter } from 'expo-router';
-import { collection, query, where, orderBy, getDocs } from 'firebase/firestore';
+import { collection, query, where, orderBy, getDocs , onSnapshot } from 'firebase/firestore';
 import { db, auth } from '../../src/firebase/config';
 import CustomIcon from '../../src/components/CustomIcon';
 import { MaterialIcons } from '@expo/vector-icons';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 interface Order {
   id: string;
@@ -49,13 +51,11 @@ const OrderScreen = () => {
       const userId = auth.currentUser?.uid;
       
       if (!userId) {
-        console.log('No user ID found');
         setError('Please login to view orders');
         setLoading(false);
         return;
       }
 
-      console.log('Fetching orders for user:', userId);
       const ordersRef = collection(db, 'orders');
       const q = query(
         ordersRef,
@@ -64,24 +64,17 @@ const OrderScreen = () => {
       );
 
       const querySnapshot = await getDocs(q);
-      console.log('Found orders:', querySnapshot.size);
-      
-      const ordersList = querySnapshot.docs.map(doc => {
-        const data = doc.data();
-        console.log('Order data:', data);
-        return {
-          id: doc.id,
-          ...data,
-          createdAt: data.createdAt || new Date(),
-          total: data.total || 0,
-          items: data.items || [],
-          status: data.status || 'processing',
-          orderType: data.orderType || 'takeaway',
-          paymentMode: data.paymentMode || 'cash'
-        } as Order;
-      });
+      const ordersList = querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+        createdAt: doc.data().createdAt || new Date(),
+        total: doc.data().total || 0,
+        items: doc.data().items || [],
+        status: doc.data().status || 'processing',
+        orderType: doc.data().orderType || 'takeaway',
+        paymentMode: doc.data().paymentMode || 'cash'
+      } as Order));
 
-      console.log('Processed orders:', ordersList);
       setOrders(ordersList);
     } catch (error) {
       console.error('Error fetching orders:', error);
@@ -174,8 +167,8 @@ const OrderScreen = () => {
   );
 
   return (
-    <View style={styles.screenContainer}>
-      <StatusBar backgroundColor={COLORS.primaryBlackHex} />
+    <SafeAreaView style={styles.screenContainer} edges={['top']}>
+      <StatusBar backgroundColor={COLORS.primaryWhiteHex} barStyle="dark-content" />
       
       <ScrollView
         showsVerticalScrollIndicator={false}
@@ -190,11 +183,14 @@ const OrderScreen = () => {
       >
         {/* Header */}
         <View style={styles.headerContainer}>
-          <TouchableOpacity onPress={() => router.push('/HomeScreen')}>
-            <GradientBGIcon
-              name="home"
-              color={COLORS.primaryLightGreyHex}
-              size={FONTSIZE.size_16}
+          <TouchableOpacity 
+            style={styles.backButton}
+            onPress={() => router.back()}
+          >
+            <MaterialIcons 
+              name="arrow-back" 
+              size={24} 
+              color={COLORS.primaryBlackHex} 
             />
           </TouchableOpacity>
           <Text style={styles.headerText}>Order History</Text>
@@ -213,19 +209,28 @@ const OrderScreen = () => {
               color={COLORS.primaryRedHex}
             />
             <Text style={styles.errorText}>{error}</Text>
-            <TouchableOpacity
-              style={styles.retryButton}
-              onPress={fetchOrders}
-            >
-              <Text style={styles.retryButtonText}>Retry</Text>
-            </TouchableOpacity>
+            {error === 'Please login to view orders' ? (
+              <TouchableOpacity
+                style={styles.loginButton}
+                onPress={() => router.push('/login')}
+              >
+                <Text style={styles.loginButtonText}>Login</Text>
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                style={styles.retryButton}
+                onPress={fetchOrders}
+              >
+                <Text style={styles.retryButtonText}>Retry</Text>
+              </TouchableOpacity>
+            )}
           </View>
         ) : orders.length === 0 ? (
           <View style={styles.emptyContainer}>
             <CustomIcon
               name="receipt"
               size={80}
-              color={COLORS.primaryLightGreyHex}
+              color={COLORS.primaryGreyHex}
             />
             <Text style={styles.emptyText}>No orders yet</Text>
             <TouchableOpacity
@@ -241,14 +246,14 @@ const OrderScreen = () => {
           </View>
         )}
       </ScrollView>
-    </View>
+    </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
   screenContainer: {
     flex: 1,
-    backgroundColor: COLORS.primaryBlackHex,
+    backgroundColor: COLORS.primaryWhiteHex,
   },
   scrollViewContent: {
     padding: SPACING.space_16,
@@ -258,14 +263,23 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: SPACING.space_20,
+    paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0,
+    paddingHorizontal: SPACING.space_24,
+    paddingVertical: SPACING.space_16,
+    backgroundColor: COLORS.primaryWhiteHex,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E5E5',
+  },
+  backButton: {
+    padding: SPACING.space_8,
   },
   headerText: {
     fontFamily: FONTFAMILY.poppins_semibold,
     fontSize: FONTSIZE.size_20,
-    color: COLORS.primaryWhiteHex,
+    color: COLORS.primaryBlackHex,
   },
   emptyView: {
-    width: FONTSIZE.size_16, // Match icon size for symmetry
+    width: 40,
   },
   loadingContainer: {
     flex: 1,
@@ -274,10 +288,18 @@ const styles = StyleSheet.create({
     marginTop: SPACING.space_36,
   },
   orderCard: {
-    backgroundColor: COLORS.primaryDarkGreyHex,
+    backgroundColor: COLORS.primaryWhiteHex,
     borderRadius: BORDERRADIUS.radius_20,
     padding: SPACING.space_16,
     marginBottom: SPACING.space_16,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 3.84,
+    elevation: 5,
   },
   orderHeader: {
     flexDirection: 'row',
@@ -287,12 +309,12 @@ const styles = StyleSheet.create({
   orderId: {
     fontFamily: FONTFAMILY.poppins_medium,
     fontSize: FONTSIZE.size_14,
-    color: COLORS.primaryWhiteHex,
+    color: COLORS.primaryBlackHex,
   },
   orderDate: {
     fontFamily: FONTFAMILY.poppins_regular,
     fontSize: FONTSIZE.size_12,
-    color: COLORS.primaryLightGreyHex,
+    color: COLORS.primaryGreyHex,
     marginTop: 2,
   },
   statusBadge: {
@@ -310,6 +332,7 @@ const styles = StyleSheet.create({
     height: 1,
     backgroundColor: COLORS.primaryGreyHex,
     marginVertical: SPACING.space_12,
+    opacity: 0.2,
   },
   orderDetails: {
     marginTop: SPACING.space_8,
@@ -322,12 +345,12 @@ const styles = StyleSheet.create({
   detailLabel: {
     fontFamily: FONTFAMILY.poppins_regular,
     fontSize: FONTSIZE.size_14,
-    color: COLORS.primaryLightGreyHex,
+    color: COLORS.primaryGreyHex,
   },
   detailValue: {
     fontFamily: FONTFAMILY.poppins_medium,
     fontSize: FONTSIZE.size_14,
-    color: COLORS.primaryWhiteHex,
+    color: COLORS.primaryBlackHex,
   },
   totalAmount: {
     fontFamily: FONTFAMILY.poppins_bold,
@@ -342,7 +365,7 @@ const styles = StyleSheet.create({
   emptyText: {
     fontFamily: FONTFAMILY.poppins_medium,
     fontSize: FONTSIZE.size_16,
-    color: COLORS.primaryLightGreyHex,
+    color: COLORS.primaryGreyHex,
     marginTop: SPACING.space_20,
   },
   shopButton: {
@@ -382,10 +405,21 @@ const styles = StyleSheet.create({
     fontSize: FONTSIZE.size_14,
     color: COLORS.primaryWhiteHex,
   },
+  loginButton: {
+    backgroundColor: COLORS.primaryOrangeHex,
+    paddingHorizontal: SPACING.space_24,
+    paddingVertical: SPACING.space_12,
+    borderRadius: BORDERRADIUS.radius_20,
+    marginTop: SPACING.space_20,
+  },
+  loginButtonText: {
+    fontFamily: FONTFAMILY.poppins_semibold,
+    fontSize: FONTSIZE.size_14,
+    color: COLORS.primaryWhiteHex,
+  },
   ordersContainer: {
     paddingBottom: SPACING.space_24,
   },
 });
-
 
 export default OrderScreen;

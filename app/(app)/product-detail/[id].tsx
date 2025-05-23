@@ -11,6 +11,7 @@ import {
   Pressable,
   Share,
   Dimensions,
+  Animated,
 } from 'react-native';
 import * as Animatable from 'react-native-animatable';
 import { useLocalSearchParams, Stack, router } from 'expo-router';
@@ -33,6 +34,7 @@ export default function ProductDetails() {
   // const { favorites, addFavorite, removeFavorite, isFavorite } = useFavorites();
   const [isFavorite, setIsFavorite] = useState(false); // Replace with useFavorites logic
   const { dispatch } = useCart();
+  const [showSuccess, setShowSuccess] = useState(false);
 
   useEffect(() => {
     const fetchProduct = async () => {
@@ -64,10 +66,13 @@ export default function ProductDetails() {
       quantity: quantity,
     };
     dispatch({ type: 'ADD_TO_CART', payload: cartItem });
-    Alert.alert('Success', 'Item added to cart!', [
-      { text: 'Continue Shopping', style: 'cancel', onPress: () => router.back() },
-      { text: 'View Cart', onPress: () => router.push('/CartScreen') },
-    ]);
+    setShowSuccess(true);
+    setTimeout(() => setShowSuccess(false), 2000);
+    // Optionally, you can keep the Alert for navigation options
+    // Alert.alert('Success', 'Item added to cart!', [
+    //   { text: 'Continue Shopping', style: 'cancel', onPress: () => router.back() },
+    //   { text: 'View Cart', onPress: () => router.push('/CartScreen') },
+    // ]);
   };
 
   const incrementQuantity = () => setQuantity(prev => prev + 1);
@@ -119,6 +124,12 @@ export default function ProductDetails() {
 
   return (
     <SafeAreaView style={styles.screen} edges={["top"]}>
+      {/* Success Toast */}
+      {showSuccess && (
+        <View style={styles.successToast}>
+          <Text style={styles.successToastText}>Added to cart!</Text>
+        </View>
+      )}
       <Stack.Screen
         options={{
           title: '',
@@ -444,15 +455,15 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: '#fff',
+    backgroundColor: 'transparent',
     padding: 16,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 8,
+    borderTopLeftRadius: 0,
+    borderTopRightRadius: 0,
+    shadowColor: 'transparent',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0,
+    shadowRadius: 0,
+    elevation: 0,
     alignItems: 'center',
   },
   addToCartButton: {
@@ -483,5 +494,28 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.08,
     shadowRadius: 4,
+  },
+  successToast: {
+    position: 'absolute',
+    top: 40,
+    left: 20,
+    right: 20,
+    backgroundColor: '#4BB543',
+    paddingVertical: 14,
+    paddingHorizontal: 24,
+    borderRadius: 16,
+    zIndex: 100,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  successToastText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 'bold',
+    letterSpacing: 0.5,
   },
 });

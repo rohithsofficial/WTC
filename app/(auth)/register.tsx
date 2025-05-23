@@ -8,7 +8,7 @@ import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 
 export default function Register() {
-  const [fullName, setFullName] = useState<string>('');
+  const [displayName, setdisplayName] = useState<string>('');
   const [email, setEmail] = useState<string>('');
   const [password, setPassword] = useState<string>('');
   const [confirmPassword, setConfirmPassword] = useState<string>('');
@@ -26,7 +26,7 @@ export default function Register() {
       return;
     }
 
-    if (!fullName || !email || !password) {
+    if (!displayName || !email || !password) {
       alert('Please fill in all fields');
       return;
     }
@@ -36,13 +36,13 @@ export default function Register() {
       const userCredential = await createUserWithEmailAndPassword(auth, email.trim(), password);
 
        await updateProfile(userCredential.user, {
-      displayName: fullName,
+      displayName: displayName,
     });
       const uid = userCredential.user.uid;
       const data = {
         id: uid,
         email: email.trim(),
-        fullName,
+        displayName,
         createdAt: new Date().toISOString(),
       }; 
       
@@ -78,8 +78,8 @@ export default function Register() {
               style={styles.input}
               placeholder="Full Name"
               placeholderTextColor="#aaaaaa"
-              onChangeText={setFullName}
-              value={fullName}
+              onChangeText={setdisplayName}
+              value={displayName}
               underlineColorAndroid="transparent"
               autoCapitalize="words"
               textContentType="name"
@@ -156,9 +156,9 @@ export default function Register() {
           </View>
 
           <TouchableOpacity
-            style={[styles.button, (!email || !password || !fullName || !confirmPassword) && styles.buttonDisabled]}
+            style={[styles.button, (!email || !password || !displayName || !confirmPassword) && styles.buttonDisabled]}
             onPress={onRegisterPress}
-            disabled={!email || !password || !fullName || !confirmPassword || isLoading}
+            disabled={!email || !password || !displayName || !confirmPassword || isLoading}
           >
             {isLoading ? (
               <ActivityIndicator color="white" />

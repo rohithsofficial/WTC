@@ -72,69 +72,69 @@ export const fetchProductsByCategory = async (categoryId: string): Promise<Produ
   }
 };
 
-// Fetch coffee products (type = 'coffee')
-export const fetchCoffeeProducts = async (): Promise<ProductInterface[]> => {
-  try {
-    const productsCollection = collection(db, 'products');
-    const q = query(productsCollection, where('type', '==', 'Coffee'));
-    const productSnapshot = await getDocs(q);
-    const productList = productSnapshot.docs.map(doc => {
-      const data = doc.data();
-      return {
-        id: doc.id,
-        name: data.name,
-        prices: data.prices,
-        imagelink_square: data.imagelink_square,
-        special_ingredient: data.special_ingredient,
-        type: data.type,
-        description: data.description,
-        average_rating: data.average_rating,
-        ratings_count: data.ratings_count,
-        roasted: data.roasted,
-        ingredients: data.ingredients,
-        categoryId: data.categoryId,
-        createdAt: data.createdAt,
-        updatedAt: data.updatedAt
-      } as ProductInterface;
-    });
-    return productList;
-  } catch (error) {
-    console.error('Error fetching coffee products:', error);
-    return [];
-  }
-};
+// // Fetch coffee products (type = 'coffee')
+// export const fetchCoffeeProducts = async (): Promise<ProductInterface[]> => {
+//   try {
+//     const productsCollection = collection(db, 'products');
+//     const q = query(productsCollection, where('type', '==', 'Coffee'));
+//     const productSnapshot = await getDocs(q);
+//     const productList = productSnapshot.docs.map(doc => {
+//       const data = doc.data();
+//       return {
+//         id: doc.id,
+//         name: data.name,
+//         prices: data.prices,
+//         imagelink_square: data.imagelink_square,
+//         special_ingredient: data.special_ingredient,
+//         type: data.type,
+//         description: data.description,
+//         average_rating: data.average_rating,
+//         ratings_count: data.ratings_count,
+//         roasted: data.roasted,
+//         ingredients: data.ingredients,
+//         categoryId: data.categoryId,
+//         createdAt: data.createdAt,
+//         updatedAt: data.updatedAt
+//       } as ProductInterface;
+//     });
+//     return productList;
+//   } catch (error) {
+//     console.error('Error fetching coffee products:', error);
+//     return [];
+//   }
+// };
 
-// Fetch tea products (type = 'tea')
-export const fetchteaProducts = async (): Promise<ProductInterface[]> => {
-  try {
-    const productsCollection = collection(db, 'products');
-    const q = query(productsCollection, where('type', '==', 'Tea'));
-    const productSnapshot = await getDocs(q);
-    const productList = productSnapshot.docs.map(doc => {
-      const data = doc.data();
-      return {
-        id: doc.id,
-        name: data.name,
-        prices: data.prices,
-        imagelink_square: data.imagelink_square,
-        special_ingredient: data.special_ingredient,
-        type: data.type,
-        description: data.description,
-        average_rating: data.average_rating,
-        ratings_count: data.ratings_count,
-        roasted: data.roasted,
-        ingredients: data.ingredients,
-        categoryId: data.categoryId,
-        createdAt: data.createdAt,
-        updatedAt: data.updatedAt
-      } as ProductInterface;
-    });
-    return productList;
-  } catch (error) {
-    console.error('Error fetching tea products:', error);
-    return [];
-  }
-};
+// // Fetch tea products (type = 'tea')
+// export const fetchteaProducts = async (): Promise<ProductInterface[]> => {
+//   try {
+//     const productsCollection = collection(db, 'products');
+//     const q = query(productsCollection, where('type', '==', 'Tea'));
+//     const productSnapshot = await getDocs(q);
+//     const productList = productSnapshot.docs.map(doc => {
+//       const data = doc.data();
+//       return {
+//         id: doc.id,
+//         name: data.name,
+//         prices: data.prices,
+//         imagelink_square: data.imagelink_square,
+//         special_ingredient: data.special_ingredient,
+//         type: data.type,
+//         description: data.description,
+//         average_rating: data.average_rating,
+//         ratings_count: data.ratings_count,
+//         roasted: data.roasted,
+//         ingredients: data.ingredients,
+//         categoryId: data.categoryId,
+//         createdAt: data.createdAt,
+//         updatedAt: data.updatedAt
+//       } as ProductInterface;
+//     });
+//     return productList;
+//   } catch (error) {
+//     console.error('Error fetching tea products:', error);
+//     return [];
+//   }
+// };
 
 // Fetch products by type (Coffee, Tea, etc.)
 export const fetchProductsByType = async (type: string): Promise<ProductInterface[]> => {

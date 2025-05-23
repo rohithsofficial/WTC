@@ -19,7 +19,7 @@ import { COLORS, FONTFAMILY, FONTSIZE, SPACING, BORDERRADIUS } from '../../src/t
 import { auth } from '../../src/firebase/config';
 import { signInWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth';
 
-const Login = () => {
+const LoginScreen = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -469,4 +469,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default Login; 
+export default LoginScreen; 

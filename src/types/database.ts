@@ -46,7 +46,7 @@ export type OrderStatus = 'pending' | 'processing' | 'completed' | 'cancelled';
 export interface User {
   id: string;
   email: string;
-  fullName: string;
+  displayName: string;
   favorites: string[];
   createdAt: string;
   updatedAt: string;

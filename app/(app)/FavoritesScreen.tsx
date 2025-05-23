@@ -1,98 +1,195 @@
 import React from 'react';
 import {
-  StyleSheet,
-  Text,
   View,
-  StatusBar,
-  ScrollView,
+  Text,
+  StyleSheet,
+  FlatList,
   TouchableOpacity,
+  Image,
+  StatusBar,
+  Platform,
+  SafeAreaView,
 } from 'react-native';
-import {useStore} from '../../src/store/store';
-import {useBottomTabBarHeight} from '@react-navigation/bottom-tabs';
-import {COLORS, SPACING} from '../../src/theme/theme';
-import HeaderBar from '../../src/components/HeaderBar';
-import EmptyListAnimation from '../../src/components/EmptyListAnimation';
-import FavoritesItemCard from '../../src/components/FavoritesItemCard';
+import { useRouter } from 'expo-router';
+import { COLORS, FONTFAMILY, FONTSIZE, SPACING, BORDERRADIUS } from '../../src/theme/theme';
+import { MaterialIcons } from '@expo/vector-icons';
+import { useStore } from '../../src/store/store';
 
-const FavoritesScreen = ({navigation}: any) => {
-  const FavoritesList = useStore((state: any) => state.FavoritesList);
-  const tabBarHeight = useBottomTabBarHeight();
-  const addToFavoriteList = useStore((state: any) => state.addToFavoriteList);
-  const deleteFromFavoriteList = useStore(
-    (state: any) => state.deleteFromFavoriteList,
+const FavoritesScreen = () => {
+  const router = useRouter();
+  const { favorites, removeFromFavorites } = useStore();
+
+  const renderFavoriteItem = ({ item }) => (
+    <TouchableOpacity
+      style={styles.favoriteCard}
+      onPress={() => router.push({
+        pathname: '/(app)/product-detail/[id]',
+        params: { id: item.id }
+      })}
+    >
+      <Image
+        source={{ uri: item.imagelink_square }}
+        style={styles.favoriteImage}
+        resizeMode="cover"
+      />
+      <View style={styles.favoriteInfo}>
+        <Text style={styles.favoriteName} numberOfLines={1}>{item.name}</Text>
+        <Text style={styles.favoritePrice}>₹{item.prices[0].toFixed(2)}</Text>
+        <TouchableOpacity
+          style={styles.removeButton}
+          onPress={() => removeFromFavorites(item.id)}
+        >
+          <MaterialIcons name="favorite" size={24} color={COLORS.primaryOrangeHex} />
+        </TouchableOpacity>
+      </View>
+    </TouchableOpacity>
   );
-  const ToggleFavourite = (favourite: boolean, type: string, id: string) => {
-    favourite ? deleteFromFavoriteList(type, id) : addToFavoriteList(type, id);
-  };
+
   return (
-    <View style={styles.ScreenContainer}>
-      <StatusBar backgroundColor={COLORS.primaryBlackHex} />
+    <SafeAreaView style={styles.screenContainer}>
+      <StatusBar backgroundColor={COLORS.primaryWhiteHex} barStyle="dark-content" />
+      
+      {/* Header */}
+      <View style={styles.headerContainer}>
+        <TouchableOpacity
+          style={styles.backButton}
+          onPress={() => router.back()}
+        >
+          <MaterialIcons name="arrow-back" size={24} color={COLORS.primaryBlackHex} />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Favorites</Text>
+        <View style={styles.placeholder} />
+      </View>
 
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.ScrollViewFlex}>
-        <View
-          style={[styles.ScrollViewInnerView, {marginBottom: tabBarHeight}]}>
-          <View style={styles.ItemContainer}>
-            <HeaderBar title="Favourites" />
-
-            {FavoritesList.length == 0 ? (
-              <EmptyListAnimation title={'No Favourites'} />
-            ) : (
-              <View style={styles.ListItemContainer}>
-                {FavoritesList.map((data: any) => (
-                  <TouchableOpacity
-                    onPress={() => {
-                      navigation.push('Details', {
-                        index: data.index,
-                        id: data.id,
-                        type: data.type,
-                      });
-                    }}
-                    key={data.id}>
-                    <FavoritesItemCard
-                      id={data.id}
-                      imagelink_portrait={data.imagelink_portrait}
-                      name={data.name}
-                      special_ingredient={data.special_ingredient}
-                      type={data.type}
-                      ingredients={data.ingredients}
-                      average_rating={data.average_rating}
-                      ratings_count={data.ratings_count}
-                      roasted={data.roasted}
-                      description={data.description}
-                      favourite={data.favourite}
-                      ToggleFavouriteItem={ToggleFavourite}
-                    />
-                  </TouchableOpacity>
-                ))}
-              </View>
-            )}
-          </View>
+      {/* Content */}
+      {favorites.length === 0 ? (
+        <View style={styles.emptyContainer}>
+          <MaterialIcons name="favorite-border" size={64} color={COLORS.primaryGreyHex} />
+          <Text style={styles.emptyText}>No favorites yet</Text>
+          <Text style={styles.emptySubtext}>
+            Add items to your favorites to see them here
+          </Text>
+          <TouchableOpacity
+            style={styles.browseButton}
+            onPress={() => router.push('/MenuScreen')}
+          >
+            <Text style={styles.browseButtonText}>Browse Menu</Text>
+          </TouchableOpacity>
         </View>
-      </ScrollView>
-    </View>
+      ) : (
+        <FlatList
+          data={favorites}
+          renderItem={renderFavoriteItem}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={styles.favoritesList}
+          showsVerticalScrollIndicator={false}
+        />
+      )}
+    </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
-  ScreenContainer: {
+  screenContainer: {
     flex: 1,
-    backgroundColor: COLORS.primaryBlackHex,
+    backgroundColor: COLORS.primaryWhiteHex,
+    paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0,
   },
-  ScrollViewFlex: {
-    flexGrow: 1,
+  headerContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: SPACING.space_24,
+    paddingVertical: SPACING.space_16,
+    backgroundColor: COLORS.primaryWhiteHex,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E5E5',
   },
-  ScrollViewInnerView: {
+  backButton: {
+    padding: SPACING.space_8,
+  },
+  headerTitle: {
+    fontFamily: FONTFAMILY.poppins_semibold,
+    fontSize: FONTSIZE.size_20,
+    color: COLORS.primaryBlackHex,
+  },
+  placeholder: {
+    width: 40,
+  },
+  favoritesList: {
+    padding: SPACING.space_16,
+  },
+  favoriteCard: {
+    flexDirection: 'row',
+    backgroundColor: COLORS.primaryWhiteHex,
+    borderRadius: BORDERRADIUS.radius_20,
+    marginBottom: SPACING.space_16,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  favoriteImage: {
+    width: 100,
+    height: 100,
+    borderTopLeftRadius: BORDERRADIUS.radius_20,
+    borderBottomLeftRadius: BORDERRADIUS.radius_20,
+  },
+  favoriteInfo: {
     flex: 1,
+    padding: SPACING.space_16,
     justifyContent: 'space-between',
   },
-  ItemContainer: {
-    flex: 1,
+  favoriteName: {
+    fontFamily: FONTFAMILY.poppins_semibold,
+    fontSize: FONTSIZE.size_16,
+    color: COLORS.primaryBlackHex,
+    marginBottom: SPACING.space_4,
   },
-  ListItemContainer: {
-    paddingHorizontal: SPACING.space_20,
-    gap: SPACING.space_20,
+  favoritePrice: {
+    fontFamily: FONTFAMILY.poppins_semibold,
+    fontSize: FONTSIZE.size_16,
+    color: COLORS.primaryOrangeHex,
+  },
+  removeButton: {
+    position: 'absolute',
+    right: SPACING.space_16,
+    top: SPACING.space_16,
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: SPACING.space_24,
+  },
+  emptyText: {
+    fontFamily: FONTFAMILY.poppins_semibold,
+    fontSize: FONTSIZE.size_20,
+    color: COLORS.primaryBlackHex,
+    marginTop: SPACING.space_16,
+  },
+  emptySubtext: {
+    fontFamily: FONTFAMILY.poppins_regular,
+    fontSize: FONTSIZE.size_14,
+    color: COLORS.primaryGreyHex,
+    textAlign: 'center',
+    marginTop: SPACING.space_8,
+    marginBottom: SPACING.space_24,
+  },
+  browseButton: {
+    backgroundColor: COLORS.primaryOrangeHex,
+    paddingHorizontal: SPACING.space_24,
+    paddingVertical: SPACING.space_12,
+    borderRadius: BORDERRADIUS.radius_20,
+  },
+  browseButtonText: {
+    fontFamily: FONTFAMILY.poppins_semibold,
+    fontSize: FONTSIZE.size_16,
+    color: COLORS.primaryWhiteHex,
   },
 });
 
