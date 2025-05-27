@@ -6,31 +6,72 @@ import {
   TouchableOpacity,
   Image,
   TextInput,
-  Alert,
   ActivityIndicator,
   ScrollView,
+  Switch,
 } from 'react-native';
 import { Stack, router } from 'expo-router';
 import { auth, db } from '../../src/firebase/config';
 import { FontAwesome } from '@expo/vector-icons';
 import { COLORS, FONTFAMILY, FONTSIZE, SPACING, BORDERRADIUS } from '../../src/theme/theme';
 import { updateProfile } from 'firebase/auth';
-import { doc, updateDoc } from 'firebase/firestore';
+import { doc, updateDoc, getDoc } from 'firebase/firestore';
 import * as ImagePicker from 'expo-image-picker';
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import StyledAlert from '../../src/components/StyledAlert';
 
 const EditProfileScreen = () => {
   const [user, setUser] = useState(auth.currentUser);
+  const [userData, setUserData] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [displayName, setDisplayName] = useState(user?.displayName || '');
-  const [photoURL, setPhotoURL] = useState(user?.photoURL || '');
+  const [displayName, setDisplayName] = useState('');
+  const [email, setEmail] = useState('');
+  const [alert, setAlert] = useState({
+    visible: false,
+    title: '',
+    message: '',
+    type: 'info' as 'success' | 'error' | 'info'
+  });
 
   useEffect(() => {
-    if (!user) {
-      router.replace('/(auth)/login');
-    }
+    const fetchUserData = async () => {
+      if (!user) {
+        router.replace('/(auth)/PhoneAuthScreen');
+        return;
+      }
+
+      try {
+        const userDocRef = doc(db, 'users', user.uid);
+        const userDoc = await getDoc(userDocRef);
+        
+        if (userDoc.exists()) {
+          const data = userDoc.data();
+          setUserData(data);
+          setDisplayName(data.displayName || '');
+          setEmail(data.email || '');
+        }
+      } catch (error) {
+        console.error('Error fetching user data:', error);
+        showAlert('Error', 'Failed to load user data', 'error');
+      }
+    };
+
+    fetchUserData();
   }, [user]);
+
+  const showAlert = (title: string, message: string, type: 'success' | 'error' | 'info' = 'info') => {
+    setAlert({
+      visible: true,
+      title,
+      message,
+      type
+    });
+  };
+
+  const hideAlert = () => {
+    setAlert(prev => ({ ...prev, visible: false }));
+  };
 
   const pickImage = async () => {
     try {
@@ -46,62 +87,70 @@ const EditProfileScreen = () => {
       }
     } catch (error) {
       console.error('Error picking image:', error);
-      Alert.alert('Error', 'Failed to pick image');
+      showAlert('Error', 'Failed to pick image', 'error');
     }
   };
 
   const uploadImage = async (uri: string) => {
+    if (!user) return;
+
     try {
       setUploading(true);
       const response = await fetch(uri);
       const blob = await response.blob();
       
       const storage = getStorage();
-      const storageRef = ref(storage, `profile_images/${user?.uid}`);
+      const storageRef = ref(storage, `profile_images/${user.uid}`);
       
       await uploadBytes(storageRef, blob);
       const downloadURL = await getDownloadURL(storageRef);
       
-      setPhotoURL(downloadURL);
-      await updateProfile(user!, { photoURL: downloadURL });
+      // Update Firebase Auth profile
+      await updateProfile(user, { photoURL: downloadURL });
       
       // Update Firestore user document
-      if (user) {
-        await updateDoc(doc(db, 'users', user.uid), {
-          photoURL: downloadURL,
-        });
-      }
+      await updateDoc(doc(db, 'users', user.uid), {
+        photoURL: downloadURL,
+        updatedAt: new Date().toISOString()
+      });
+
+      showAlert('Success', 'Profile photo updated successfully', 'success');
     } catch (error) {
       console.error('Error uploading image:', error);
-      Alert.alert('Error', 'Failed to upload image');
+      showAlert('Error', 'Failed to upload image', 'error');
     } finally {
       setUploading(false);
     }
   };
 
   const handleSave = async () => {
+    if (!user) return;
+
+    if (!displayName.trim()) {
+      showAlert('Missing Information', 'Please enter your name', 'error');
+      return;
+    }
+
     try {
       setLoading(true);
-      if (!user) return;
 
       // Update Firebase Auth profile
       await updateProfile(user, {
-        displayName: displayName,
-        photoURL: photoURL,
+        displayName: displayName.trim()
       });
 
       // Update Firestore user document
       await updateDoc(doc(db, 'users', user.uid), {
-        displayName: displayName,
-        photoURL: photoURL,
+        displayName: displayName.trim(),
+        email: email.trim(),
+        updatedAt: new Date().toISOString()
       });
 
-      Alert.alert('Success', 'Profile updated successfully', [
-        { text: 'OK', onPress: () => router.back() }
-      ]);
+      showAlert('Success', 'Profile updated successfully', 'success');
+      setTimeout(() => router.back(), 1500);
     } catch (error) {
       console.error('Error updating profile:', error);
-      Alert.alert('Error', 'Failed to update profile');
+      showAlert('Error', 'Failed to update profile', 'error');
     } finally {
       setLoading(false);
     }
@@ -124,6 +173,14 @@ const EditProfileScreen = () => {
         }}
       />
 
+      <StyledAlert
+        visible={alert.visible}
+        title={alert.title}
+        message={alert.message}
+        type={alert.type}
+        onClose={hideAlert}
+      />
+
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()}>
@@ -139,8 +196,8 @@ const EditProfileScreen = () => {
           <View style={styles.profileImageContainer}>
             <Image
               source={
-                photoURL
-                  ? { uri: photoURL }
+                user.photoURL
+                  ? { uri: user.photoURL }
                   : require('../../assets/icon.png')
               }
               style={styles.profileImage}
@@ -174,14 +231,27 @@ const EditProfileScreen = () => {
           </View>
 
           <View style={styles.inputContainer}>
-            <Text style={styles.inputLabel}>Email</Text>
+            <Text style={styles.inputLabel}>Email (Optional)</Text>
+            <TextInput
+              style={styles.input}
+              value={email}
+              onChangeText={setEmail}
+              placeholder="Enter your email"
+              placeholderTextColor={COLORS.primaryGreyHex}
+              keyboardType="email-address"
+              autoCapitalize="none"
+            />
+          </View>
+
+          <View style={styles.inputContainer}>
+            <Text style={styles.inputLabel}>Phone Number</Text>
             <TextInput
               style={[styles.input, styles.disabledInput]}
-              value={user.email || ''}
+              value={userData?.phoneNumber || ''}
               editable={false}
               placeholderTextColor={COLORS.primaryGreyHex}
             />
-            <Text style={styles.disabledText}>Email cannot be changed</Text>
+            <Text style={styles.disabledText}>Phone number cannot be changed</Text>
           </View>
         </View>
 
@@ -295,6 +365,39 @@ const styles = StyleSheet.create({
     fontSize: FONTSIZE.size_12,
     color: COLORS.primaryGreyHex,
     marginTop: SPACING.space_4,
+  },
+  notificationSection: {
+    padding: SPACING.space_24,
+    backgroundColor: COLORS.primaryWhiteHex,
+  },
+  sectionTitle: {
+    fontFamily: FONTFAMILY.poppins_semibold,
+    fontSize: FONTSIZE.size_18,
+    color: COLORS.primaryBlackHex,
+    marginBottom: SPACING.space_16,
+  },
+  notificationItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: SPACING.space_12,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.primaryGreyHex + '20',
+  },
+  notificationItemLeft: {
+    flex: 1,
+    marginRight: SPACING.space_16,
+  },
+  notificationLabel: {
+    fontFamily: FONTFAMILY.poppins_medium,
+    fontSize: FONTSIZE.size_14,
+    color: COLORS.primaryBlackHex,
+    marginBottom: SPACING.space_4,
+  },
+  notificationDescription: {
+    fontFamily: FONTFAMILY.poppins_regular,
+    fontSize: FONTSIZE.size_12,
+    color: COLORS.primaryGreyHex,
   },
   saveButton: {
     backgroundColor: COLORS.primaryOrangeHex,

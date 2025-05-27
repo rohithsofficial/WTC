@@ -1,12 +1,12 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   StyleSheet,
   Text,
   View,
   StatusBar,
-  Image,
-  TouchableOpacity,
   ScrollView,
+  TouchableOpacity,
+  Alert,
 } from 'react-native';
 import {
   BORDERRADIUS,
@@ -16,351 +16,365 @@ import {
   SPACING,
 } from '../../src/theme/theme';
 import GradientBGIcon from '../../src/components/GradientBGIcon';
-import { useRouter, useLocalSearchParams } from 'expo-router';
-import { doc, getDoc } from 'firebase/firestore';
-import { db } from '../../src/firebase/config';
+import PaymentMethod from '../../src/components/PaymentMethod';
+import PaymentFooter from '../../src/components/PaymentFooter';
 import { LinearGradient } from 'expo-linear-gradient';
 import CustomIcon from '../../src/components/CustomIcon';
+import { useStore } from '../../src/store/store';
+import PopUpAnimation from '../../src/components/PopUpAnimation';
+import { useRouter, useLocalSearchParams } from 'expo-router';
+import { collection, addDoc } from "firebase/firestore";
+import { db } from "../../src/firebase/config";
+import type { OrderData } from '../../src/types/interfaces';
+import { auth } from '../../src/firebase/config';
 
-const OrderStatusScreen = () => {
+const PaymentScreen = () => {
   const router = useRouter();
   const params = useLocalSearchParams();
-  const [orderDetails, setOrderDetails] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
 
-  // Get parameters from router
-  const orderId = params.orderId as string;
-  const total = params.total as string;
-  const paymentMode = params.paymentMode as string;
-  const orderType = params.orderType as string;
-  const tableNumber = params.tableNumber as string;
+  const toString = (param: string | string[] | undefined): string => {
+    if (!param) return '';
+    return Array.isArray(param) ? param[0] : param;
+  };
+
+  const amountStr = toString(params.total);
+  const amount = amountStr ? Number(amountStr) : 0;
+
+  const itemsStr = toString(params.items);
+  const userId = toString(params.userId);
+  const displayName = toString(params.displayName);
+  const orderType = toString(params.orderType);
+  const tableNumber = toString(params.tableNumber);
+
+  let items: any[] = [];
+  if (itemsStr) {
+    try {
+      items = JSON.parse(itemsStr);
+      console.log("Successfully parsed items from params:", items.length);
+    } catch (error) {
+      console.warn('Failed to parse items from params:', error);
+      items = [];
+    }
+  }
+
+  // Getting state and actions from the store
+  const {
+    calculateCartPrice,
+    CartList,
+    removeFromCart
+  } = useStore();
+
+  const [paymentMode, setPaymentMode] = useState('Credit Card');
+  const [showAnimation, setShowAnimation] = useState(false);
+  const [orderId, setOrderId] = useState<string | null>(null);
   
+  const PaymentList = [
+    { name: 'PayPal', icon: 'paypal', isIcon: true },
+    { name: 'Google Pay', icon: 'google', isIcon: true },
+    { name: 'Apple Pay', icon: 'apple', isIcon: true },
+    { name: 'Cash', icon: 'cash', isIcon: false },
+  ];
+
+  // Save order to Firestore
+  const saveOrderToFirestore = async (orderData: OrderData) => {
+    try {
+      const docRef = await addDoc(collection(db, "orders"), orderData);
+      console.log("Order saved with ID: ", docRef.id);
+      return docRef.id;
+    } catch (e) {
+      console.error("Error saving order: ", e);
+      throw e;
+    }
+  };
+
+  // Add items to store if needed
   useEffect(() => {
-    const fetchOrderDetails = async () => {
-      if (!orderId) {
-        setLoading(false);
-        return;
-      }
-      
+    const syncItemsToStore = async () => {
       try {
-        const orderRef = doc(db, 'orders', orderId);
-        const orderDoc = await getDoc(orderRef);
-        
-        if (orderDoc.exists()) {
-          setOrderDetails({ id: orderDoc.id, ...orderDoc.data() });
+        // Only sync if CartList is empty but we have items in params
+        if ((!CartList || CartList.length === 0) && items && items.length > 0) {
+          console.log("Syncing items from params to store:", items);
+          
+          // If your store has a function to add items in bulk, you could use that here
+          // For example: addItemsToCart(items);
+          
+          // Or if you need to add them one by one:
+          // items.forEach(item => addToCart(item));
+          
+          // If you want to make items available for OrderHistoryScreen
+          // You might want to store them in AsyncStorage
+          // This is especially useful if items aren't being maintained in your store between screens
         }
-        
-        setLoading(false);
       } catch (error) {
-        console.error('Error fetching order details:', error);
-        setLoading(false);
+        console.error("Error syncing items to store:", error);
       }
     };
     
-    fetchOrderDetails();
-  }, [orderId]);
+    syncItemsToStore();
+  }, []);
 
-  // Estimated delivery time (10-15 minutes from now)
-  const estimatedDeliveryTime = () => {
-    const now = new Date();
-    const deliveryTime = new Date(now.getTime() + 15 * 60000); // 15 minutes from now
-    return deliveryTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  // Clear cart function - FIXED
+  const clearCart = () => {
+    // Log the cart items before clearing
+    console.log("Clearing cart with items:", CartList);
+    
+    // Clear each item in cart one by one
+    if (CartList && CartList.length > 0) {
+      // Create a copy to avoid issues during iteration
+      const cartItems = [...CartList];
+      cartItems.forEach(item => {
+        console.log("Removing item from cart:", item);
+        // Pass the entire item object, not just the ID
+        removeFromCart(item);
+      });
+    }
+    
+    // Recalculate cart price
+    calculateCartPrice();
+    
+    // Log cart status after clearing
+    console.log("Cart after clearing:", CartList);
+  };
+
+  const buttonPressHandler = async () => {
+    setShowAnimation(true);
+
+    console.log("Button pressed, performing payment with CartList:", CartList);
+
+    // Use items from params since CartList appears to be empty
+    const orderData: OrderData = {
+      userId,
+      displayName,
+      items,
+      totalAmount: amount,
+      orderType,
+      tableNumber: tableNumber || '', // Store the tableNumber as-is or empty string if null
+      paymentMode,
+      paymentStatus: 'Paid',
+      orderDate: new Date().toISOString(),
+      createdAt: new Date(),
+    };
+
+    try {
+      // Save order and get ID
+      const newOrderId = await saveOrderToFirestore(orderData);
+      setOrderId(newOrderId);
+      
+      // Try clearing the cart - even if it appears to be empty
+      clearCart();
+      
+      // Show success animation
+      setTimeout(() => {
+        setShowAnimation(false);
+        // Navigate to order status page instead of history
+        router.push({
+          pathname: '/OrderStatusScreen',
+          params: { 
+            orderId: newOrderId,
+            total: amount.toString(),
+            paymentMode,
+            orderType,
+            tableNumber: tableNumber || '' // Ensure tableNumber is passed correctly
+          }
+        });
+      }, 1500);
+    } catch (error) {
+      setShowAnimation(false);
+      Alert.alert('Payment Failed', 'Failed to save order details. Please try again.');
+      console.error('Order save error:', error);
+    }
   };
 
   return (
-    <View style={styles.screenContainer}>
+    <View style={styles.ScreenContainer}>
       <StatusBar backgroundColor={COLORS.primaryBlackHex} />
-      
+
+      {showAnimation && (
+        <PopUpAnimation
+          style={styles.LottieAnimation}
+          source={require('../../src/lottie/successful.json')}
+          // Fix for the icon warning:
+          // The animation is looking for "checkmark-circle" icon which doesn't exist
+          // You may need to update your animation file or add this icon to your app_icons
+        />
+      )}
+
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scrollViewContent}>
-        
-        {/* Header */}
-        <View style={styles.headerContainer}>
-          <TouchableOpacity onPress={() => router.push('/Home')}>
+        contentContainerStyle={styles.ScrollViewFlex}>
+        <View style={styles.HeaderContainer}>
+          <TouchableOpacity onPress={() => router.back()}>
             <GradientBGIcon
-              name="home"
+              name="left"
               color={COLORS.primaryLightGreyHex}
               size={FONTSIZE.size_16}
             />
           </TouchableOpacity>
-          <Text style={styles.headerText}>Order Status</Text>
-          <View style={styles.emptyView} />
-        </View>
-        
-        {/* Success Animation/Image */}
-        <View style={styles.successContainer}>
-          <LinearGradient
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            colors={[COLORS.primaryGreyHex, COLORS.primaryBlackHex]}
-            style={styles.successCircle}>
-            <CustomIcon
-              name="checkmark-circle"
-              size={80}
-              color={COLORS.primaryOrangeHex}
-            />
-          </LinearGradient>
-          <Text style={styles.successTitle}>Order Successful!</Text>
-          <Text style={styles.successDescription}>
-            Your order has been placed successfully.
-          </Text>
-        </View>
-        
-        {/* Order Info Card */}
-        <View style={styles.orderInfoCard}>
-          <View style={styles.orderInfoRow}>
-            <Text style={styles.orderInfoLabel}>Order Number</Text>
-            <Text style={styles.orderInfoValue}>{orderId?.substring(0, 8)}</Text>
-          </View>
-          
-          <View style={styles.divider} />
-          
-          <View style={styles.orderInfoRow}>
-            <Text style={styles.orderInfoLabel}>Order Type</Text>
-            <Text style={styles.orderInfoValue}>
-              {orderType === 'table' ? `Table ${tableNumber}` : 'Takeaway'}
-            </Text>
-          </View>
-          
-          <View style={styles.divider} />
-          
-          <View style={styles.orderInfoRow}>
-            <Text style={styles.orderInfoLabel}>Payment Method</Text>
-            <Text style={styles.orderInfoValue}>{paymentMode}</Text>
-          </View>
-          
-          <View style={styles.divider} />
-          
-          <View style={styles.orderInfoRow}>
-            <Text style={styles.orderInfoLabel}>Total Amount</Text>
-            <Text style={styles.orderInfoValue}>${total}</Text>
-          </View>
-          
-          {orderType !== 'table' && (
-            <>
-              <View style={styles.divider} />
-              
-              <View style={styles.orderInfoRow}>
-                <Text style={styles.orderInfoLabel}>Estimated Delivery</Text>
-                <Text style={styles.orderInfoValue}>{estimatedDeliveryTime()}</Text>
-              </View>
-            </>
-          )}
-        </View>
-        
-        {/* Order Status */}
-        <View style={styles.statusContainer}>
-          <Text style={styles.statusTitle}>
-            {orderType === 'table' ? 'Your order is being prepared' : 'Delivery Status'}
-          </Text>
-          
-          <View style={styles.statusTracker}>
-            <View style={styles.statusItem}>
-              <View style={[styles.statusDot, styles.statusCompleted]} />
-              <Text style={styles.statusText}>Order Confirmed</Text>
-            </View>
-            
-            <View style={[styles.statusConnector, styles.statusCompletedConnector]} />
-            
-            <View style={styles.statusItem}>
-              <View style={[styles.statusDot, styles.statusCompleted]} />
-              <Text style={styles.statusText}>Processing</Text>
-            </View>
-            
-            <View style={[styles.statusConnector, styles.statusCompletedConnector]} />
-            
-            <View style={styles.statusItem}>
-              <View style={[styles.statusDot, styles.statusActive]} />
-              <Text style={styles.statusText}>
-                {orderType === 'table' ? 'Preparing' : 'On the Way'}
-              </Text>
-            </View>
-            
-            <View style={styles.statusConnector} />
-            
-            <View style={styles.statusItem}>
-              <View style={styles.statusDot} />
-              <Text style={styles.statusText}>
-                {orderType === 'table' ? 'Served' : 'Delivered'}
-              </Text>
-            </View>
-          </View>
+          <Text style={styles.HeaderText}>Payments</Text>
+          <View style={styles.EmptyView} />
         </View>
 
-        {/* Back to Home Button */}
-        <TouchableOpacity 
-          style={styles.homeButton}
-          onPress={() => router.push('/HomeScreen')}>
-          <Text style={styles.homeButtonText}>Back to Home</Text>
-        </TouchableOpacity>
-        
-        {/* View Order History Button */}
-        <TouchableOpacity 
-          style={styles.historyButton}
-          onPress={() => router.push('/OrderScreen')}>
-          <Text style={styles.historyButtonText}>View Order History</Text>
-        </TouchableOpacity>
+        <View style={styles.PaymentOptionsContainer}>
+          <TouchableOpacity onPress={() => setPaymentMode('Credit Card')}>
+            <View
+              style={[
+                styles.CreditCardContainer,
+                {
+                  borderColor:
+                    paymentMode === 'Credit Card'
+                      ? COLORS.primaryOrangeHex
+                      : COLORS.primaryGreyHex,
+                },
+              ]}>
+              <Text style={styles.CreditCardTitle}>Credit Card</Text>
+              <View style={styles.CreditCardBG}>
+                <LinearGradient
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.LinearGradientStyle}
+                  colors={[COLORS.primaryGreyHex, COLORS.primaryBlackHex]}>
+                  <View style={styles.CreditCardRow}>
+                    <CustomIcon
+                      name="chip"
+                      size={FONTSIZE.size_20 * 2}
+                      color={COLORS.primaryOrangeHex}
+                    />
+                    <CustomIcon
+                      name="visa"
+                      size={FONTSIZE.size_30 * 2}
+                      color={COLORS.primaryWhiteHex}
+                    />
+                  </View>
+                  <View style={styles.CreditCardNumberContainer}>
+                    <Text style={styles.CreditCardNumber}>3879</Text>
+                    <Text style={styles.CreditCardNumber}>8923</Text>
+                    <Text style={styles.CreditCardNumber}>6745</Text>
+                    <Text style={styles.CreditCardNumber}>4638</Text>
+                  </View>
+                  <View style={styles.CreditCardRow}>
+                    <View style={styles.CreditCardNameContainer}>
+                      <Text style={styles.CreditCardNameSubitle}>
+                        Card Holder Name
+                      </Text>
+                      <Text style={styles.CreditCardNameTitle}>Robert Evans</Text>
+                    </View>
+                    <View style={styles.CreditCardDateContainer}>
+                      <Text style={styles.CreditCardNameSubitle}>Expiry Date</Text>
+                      <Text style={styles.CreditCardNameTitle}>02/30</Text>
+                    </View>
+                  </View>
+                </LinearGradient>
+              </View>
+            </View>
+          </TouchableOpacity>
+
+          {PaymentList.map((data: any) => (
+            <TouchableOpacity key={data.name} onPress={() => setPaymentMode(data.name)}>
+              <PaymentMethod
+                paymentMode={paymentMode}
+                name={data.name}
+                icon={data.icon}
+                isIcon={data.isIcon}
+              />
+            </TouchableOpacity>
+          ))}
+        </View>
       </ScrollView>
+
+      <PaymentFooter
+        buttonTitle={`Pay with ${paymentMode}`}
+        price={{ price: amount.toString(), currency: '$' }}
+        buttonPressHandler={buttonPressHandler}
+      />
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  screenContainer: {
+  ScreenContainer: {
     flex: 1,
     backgroundColor: COLORS.primaryBlackHex,
   },
-  scrollViewContent: {
-    flexGrow: 1,
-    paddingBottom: SPACING.space_28,
+  LottieAnimation: {
+    flex: 1,
   },
-  headerContainer: {
+  ScrollViewFlex: {
+    flexGrow: 1,
+  },
+  HeaderContainer: {
     paddingHorizontal: SPACING.space_24,
     paddingVertical: SPACING.space_15,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  headerText: {
+  HeaderText: {
     fontFamily: FONTFAMILY.poppins_semibold,
     fontSize: FONTSIZE.size_20,
     color: COLORS.primaryWhiteHex,
   },
-  emptyView: {
+  EmptyView: {
     height: SPACING.space_36,
     width: SPACING.space_36,
   },
-  successContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: SPACING.space_30,
-  },
-  successCircle: {
-    height: 120,
-    width: 120,
-    borderRadius: 60,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: SPACING.space_20,
+  PaymentOptionsContainer: {
     padding: SPACING.space_15,
+    gap: SPACING.space_15,
   },
-  successTitle: {
-    fontFamily: FONTFAMILY.poppins_bold,
-    fontSize: FONTSIZE.size_24,
-    color: COLORS.primaryWhiteHex,
-    marginBottom: SPACING.space_4,
+  CreditCardContainer: {
+    padding: SPACING.space_10,
+    gap: SPACING.space_10,
+    borderRadius: BORDERRADIUS.radius_15 * 2,
+    borderWidth: 3,
   },
-  successDescription: {
-    fontFamily: FONTFAMILY.poppins_medium,
+  CreditCardTitle: {
+    fontFamily: FONTFAMILY.poppins_semibold,
     fontSize: FONTSIZE.size_14,
-    color: COLORS.primaryLightGreyHex,
-    textAlign: 'center',
+    color: COLORS.primaryWhiteHex,
+    marginLeft: SPACING.space_10,
   },
-  orderInfoCard: {
+  CreditCardBG: {
     backgroundColor: COLORS.primaryGreyHex,
-    borderRadius: BORDERRADIUS.radius_20,
-    marginHorizontal: SPACING.space_24,
-    padding: SPACING.space_20,
-    marginTop: SPACING.space_20,
+    borderRadius: BORDERRADIUS.radius_25,
   },
-  orderInfoRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+  LinearGradientStyle: {
+    borderRadius: BORDERRADIUS.radius_25,
+    gap: SPACING.space_36,
+    paddingHorizontal: SPACING.space_15,
     paddingVertical: SPACING.space_10,
   },
-  orderInfoLabel: {
-    fontFamily: FONTFAMILY.poppins_semibold,
-    fontSize: FONTSIZE.size_14,
-    color: COLORS.primaryLightGreyHex,
-  },
-  orderInfoValue: {
-    fontFamily: FONTFAMILY.poppins_medium,
-    fontSize: FONTSIZE.size_14,
-    color: COLORS.primaryWhiteHex,
-  },
-  divider: {
-    height: 1,
-    backgroundColor: COLORS.primaryBlackHex,
-    opacity: 0.2,
-  },
-  statusContainer: {
-    marginHorizontal: SPACING.space_24,
-    marginTop: SPACING.space_30,
-  },
-  statusTitle: {
-    fontFamily: FONTFAMILY.poppins_semibold,
-    fontSize: FONTSIZE.size_16,
-    color: COLORS.primaryWhiteHex,
-    marginBottom: SPACING.space_15,
-  },
-  statusTracker: {
+  CreditCardRow: {
     flexDirection: 'row',
-    alignItems: 'center',
     justifyContent: 'space-between',
-    marginTop: SPACING.space_10,
-  },
-  statusItem: {
     alignItems: 'center',
-    justifyContent: 'center',
-    width: '20%',
   },
-  statusDot: {
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-    backgroundColor: COLORS.primaryGreyHex,
-    marginBottom: SPACING.space_8,
-  },
-  statusActive: {
-    backgroundColor: COLORS.primaryOrangeHex,
-  },
-  statusCompleted: {
-    backgroundColor: COLORS.secondaryGreenHex,
-  },
-  statusConnector: {
-    height: 3,
-    backgroundColor: COLORS.primaryGreyHex,
-    flex: 1,
-  },
-  statusCompletedConnector: {
-    backgroundColor: COLORS.secondaryGreenHex,
-  },
-  statusText: {
-    fontFamily: FONTFAMILY.poppins_medium,
-    fontSize: FONTSIZE.size_10,
-    color: COLORS.primaryLightGreyHex,
-    textAlign: 'center',
-  },
-  homeButton: {
-    marginHorizontal: SPACING.space_24,
-    backgroundColor: COLORS.primaryOrangeHex,
-    borderRadius: BORDERRADIUS.radius_20,
-    paddingVertical: SPACING.space_15,
+  CreditCardNumberContainer: {
+    flexDirection: 'row',
+    gap: SPACING.space_10,
     alignItems: 'center',
-    marginTop: SPACING.space_36,
   },
-  homeButtonText: {
+  CreditCardNumber: {
     fontFamily: FONTFAMILY.poppins_semibold,
-    fontSize: FONTSIZE.size_16,
+    fontSize: FONTSIZE.size_18,
+    color: COLORS.primaryWhiteHex,
+    letterSpacing: SPACING.space_4 + SPACING.space_2,
+  },
+  CreditCardNameSubitle: {
+    fontFamily: FONTFAMILY.poppins_regular,
+    fontSize: FONTSIZE.size_12,
+    color: COLORS.secondaryLightGreyHex,
+  },
+  CreditCardNameTitle: {
+    fontFamily: FONTFAMILY.poppins_medium,
+    fontSize: FONTSIZE.size_18,
     color: COLORS.primaryWhiteHex,
   },
-  historyButton: {
-    marginHorizontal: SPACING.space_24,
-    backgroundColor: 'transparent',
-    borderRadius: BORDERRADIUS.radius_20,
-    paddingVertical: SPACING.space_15,
-    alignItems: 'center',
-    marginTop: SPACING.space_10,
-    borderWidth: 1,
-    borderColor: COLORS.primaryLightGreyHex,
+  CreditCardNameContainer: {
+    alignItems: 'flex-start',
   },
-  historyButtonText: {
-    fontFamily: FONTFAMILY.poppins_semibold,
-    fontSize: FONTSIZE.size_16,
-    color: COLORS.primaryLightGreyHex,
+  CreditCardDateContainer: {
+    alignItems: 'flex-end',
   },
 });
 
-export default OrderStatusScreen;
+export default PaymentScreen;

@@ -1,396 +1,207 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, TextInput, Modal, Image, StatusBar, Platform } from 'react-native';
-import { Stack, router, useRouter } from 'expo-router';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  Alert,
+  TextInput,
+  Modal,
+  Image,
+  StatusBar,
+  Platform,
+} from 'react-native';
+import { Stack, router } from 'expo-router';
 import { useCart } from '../../src/store/CartContext';
 import CartItem from '../../src/components/CartItem';
 import { FontAwesome } from '@expo/vector-icons';
-import { addOrder } from '../../src/firebase/addData';
 import { auth } from '../../src/firebase/config';
-import { OrderData } from '../../src/types/interfaces';
-import { COLORS, FONTFAMILY, FONTSIZE, SPACING, BORDERRADIUS } from '../../src/theme/theme';
-import RazorpayCheckout from 'react-native-razorpay';
-
-const RAZORPAY_BACKEND_URL = 'https://your-actual-backend-url.com'; // Replace with your actual backend URL
+import {
+  COLORS,
+  FONTFAMILY,
+  FONTSIZE,
+  SPACING,
+  BORDERRADIUS,
+} from '../../src/theme/theme';
 
 export default function CartScreen() {
+  const [showSignInModal, setShowSignInModal] = useState(false);
   const { state, dispatch } = useCart();
-  const router = useRouter();
+  const [orderType, setOrderType] = useState('takeaway');
+  const [tableNumber, setTableNumber] = useState('');
 
   const handleIncrementQuantity = (id: string, size: string) => {
-    dispatch({ type: 'INCREMENT_QUANTITY', payload: { id, size } });
-  };
+  dispatch({ type: 'INCREMENT_QUANTITY', payload: { id, size } });
+};
 
-  const handleDecrementQuantity = (id: string, size: string) => {
-    dispatch({ type: 'DECREMENT_QUANTITY', payload: { id, size } });
-  };
+const handleDecrementQuantity = (id: string, size: string) => {
+  dispatch({ type: 'DECREMENT_QUANTITY', payload: { id, size } });
+};
 
-  const handleRemoveItem = (id: string, size: string) => {
-    dispatch({ type: 'REMOVE_FROM_CART', payload: { id, size } });
-  };
-
-  const [showSuccess, setShowSuccess] = useState(false);
-  const [successMessage, setSuccessMessage] = useState('');
-  const [isProcessingPayment, setIsProcessingPayment] = useState(false);
+const handleRemoveItem = (id: string, size: string) => {
+  dispatch({ type: 'REMOVE_FROM_CART', payload: { id, size } });
+};
 
   const handleClearCart = () => {
     dispatch({ type: 'CLEAR_CART' });
-    setSuccessMessage('Cart cleared!');
-    setShowSuccess(true);
-    setTimeout(() => setShowSuccess(false), 2000);
   };
 
-  const [orderType, setOrderType] = useState<'dinein' | 'takeaway'>('takeaway');
-  const [tableNumber, setTableNumber] = useState('');
-  const [showSignInModal, setShowSignInModal] = useState(false);
-
-  const createRazorpayOrder = async (orderData: OrderData) => {
-    try {
-      const response = await fetch(`${RAZORPAY_BACKEND_URL}/api/create-razorpay-order`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${await auth.currentUser?.getIdToken()}`,
-        },
-        body: JSON.stringify({
-          amount: Math.round(orderData.total * 100), // Amount in paise
-          currency: 'INR',
-          receipt: `receipt_${Date.now()}`,
-          orderDetails: orderData,
-        }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || 'Failed to create Razorpay order');
-      }
-
-      const data = await response.json();
-      return data;
-    } catch (error) {
-      console.error('Error creating Razorpay order:', error);
-      throw error;
-    }
-  };
-
-  const verifyPaymentAndSaveOrder = async (paymentData, OrderData) => {
-    try {
-      const response = await fetch('YOUR_BACKEND_URL/api/verify-payment', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${await auth.currentUser?.getIdToken()}`,
-        },
-        body: JSON.stringify({
-          razorpay_payment_id: paymentData.razorpay_payment_id,
-          razorpay_order_id: paymentData.razorpay_order_id,
-          razorpay_signature: paymentData.razorpay_signature,
-          orderDetails: OrderData,
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error('Payment verification failed');
-      }
-
-      const result = await response.json();
-      return result;
-    } catch (error) {
-      console.error('Error verifying payment:', error);
-      throw error;
-    }
-  };
-
-  const handleCheckout = async () => {
+  const handleCheckout = () => {
     if (!auth.currentUser) {
-      setShowSignInModal(true);
+      Alert.alert('Sign In Required', 'Please sign in to complete your purchase.', [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Sign In', onPress: () => router.push('/(auth)/login') },
+      ]);
       return;
     }
-
-    if (orderType === 'dinein' && !tableNumber.trim()) {
-      Alert.alert('Table Number Required', 'Please enter a table number for dine-in orders.');
-      return;
-    }
-
-    setIsProcessingPayment(true);
 
     try {
-      // Prepare order data
-      const orderData: OrderData = {
-        userId: auth.currentUser.uid,
-        userEmail: auth.currentUser.email,
-        displayName: auth.currentUser.displayName,
-        items: state.items,
-        total: state.total,
-        orderType,
-        tableNumber: orderType === 'dinein' ? tableNumber : null,
-        timestamp: new Date().toISOString(),
-        status: 'pending',
-      };
-
-      // Create Razorpay order in backend
-      const razorpayOrderData = await createRazorpayOrder(orderData);
-
-      // Razorpay payment options
-      const options = {
-        description: 'Coffee Shop Order',
-        image: 'https://your-app-logo-url.com/logo.png',
-        currency: 'INR',
-        key: 'rzp_test_0sgSRmKxTCC2Kd', // Your Razorpay key
-        amount: Math.round(orderData.total * 100),
-        order_id: razorpayOrderData.orderId,
-        name: 'Coffee Shop',
-        prefill: {
-          email: auth.currentUser.email || '',
-          contact: auth.currentUser.phoneNumber || '',
-          name: auth.currentUser.displayName || '',
+      router.push({
+        pathname: '/(app)/PaymentScreen',
+        params: {
+          items: JSON.stringify(state.items),
+          total: state.total.toString(),
+          userId: auth.currentUser.uid,
+          displayName: auth.currentUser.displayName,
+          orderType,
+          tableNumber,
         },
-        theme: {
-          color: COLORS.primaryOrangeHex,
-        },
-      };
-
-      // Open Razorpay checkout
-      const paymentData = await RazorpayCheckout.open(options);
-      
-      // Payment successful
-      try {
-        // Verify payment and save order to database
-        const verificationResult = await verifyPaymentAndSaveOrder(paymentData, orderData);
-        
-        if (verificationResult.success) {
-          // Clear cart and show success
-          dispatch({ type: 'CLEAR_CART' });
-          setSuccessMessage('Payment successful! Order placed.');
-          setShowSuccess(true);
-          
-          // Navigate to order confirmation
-          setTimeout(() => {
-            setShowSuccess(false);
-            router.push({
-              pathname: '/(app)/OrderConfirmation',
-              params: {
-                orderId: verificationResult.orderId,
-                paymentId: paymentData.razorpay_payment_id,
-              },
-            });
-          }, 2000);
-        } else {
-          throw new Error('Payment verification failed');
-        }
-      } catch (verificationError) {
-        console.error('Payment verification error:', verificationError);
-        Alert.alert(
-          'Payment Verification Failed',
-          'Your payment was processed but we couldn\'t verify it. Please contact support with payment ID: ' + paymentData.razorpay_payment_id
-        );
-      }
+      });
     } catch (error) {
-      console.error('Checkout error:', error);
-      let errorMessage = 'Failed to process payment. Please try again.';
-      
-      if (error instanceof Error) {
-        if (error.message.includes('Network request failed')) {
-          errorMessage = 'Network error. Please check your internet connection and try again.';
-        } else if (error.message.includes('PAYMENT_CANCELLED')) {
-          errorMessage = 'Payment was cancelled.';
-        }
-      }
-      
-      setSuccessMessage(errorMessage);
-      setShowSuccess(true);
-      setTimeout(() => setShowSuccess(false), 2000);
-    } finally {
-      setIsProcessingPayment(false);
+      Alert.alert('Checkout Failed', 'Something went wrong. Please try again.');
+      console.error('Checkout Error:', error);
     }
   };
 
   return (
     <>
-      <Stack.Screen
-        options={{
-          title: 'Cart',
-          headerShown: false,
-        }}
-      />
-      {showSuccess && (
-        <View style={styles.successToast}>
-          <Text style={styles.successToastText}>{successMessage}</Text>
-        </View>
-      )}
+      <Stack.Screen options={{ title: 'Cart', headerShown: false }} />
       <View style={styles.screenContainer}>
         <StatusBar backgroundColor={COLORS.primaryWhiteHex} barStyle="dark-content" />
-        {/* Styled Header */}
         <View style={styles.mainHeader}>
-          <TouchableOpacity
-            style={styles.backButton}
-            onPress={() => router.back()}
-          >
+          <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
             <FontAwesome name="arrow-left" size={24} color={COLORS.primaryBlackHex} />
           </TouchableOpacity>
           <View style={styles.headerTextContainer}>
             <Text style={styles.headerTitle}>Cart</Text>
             <Text style={styles.headerSubtitle}>Review your order</Text>
           </View>
-          <TouchableOpacity
-            style={styles.appIconButton}
-            onPress={() => router.push('/(app)/HomeScreen')}
-          >
-            <Image
-              source={require('../../assets/icon.png')}
-              style={styles.appIcon}
-            />
+          <TouchableOpacity style={styles.appIconButton} onPress={() => router.push('/(app)/HomeScreen')}>
+            <Image source={require('../../assets/icon.png')} style={styles.appIcon} />
           </TouchableOpacity>
         </View>
-        {/* Cart Content */}
+
+        <View style={styles.debugContainer}>
+          <Text style={styles.debugText}>Cart: {state.items?.length || 0} items, Total: ₹{state.total?.toFixed(2) || '0.00'}</Text>
+          <Text style={styles.debugText}>User: {auth.currentUser ? auth.currentUser.displayName || auth.currentUser.email : 'Not signed in'}</Text>
+        </View>
+
         <View style={{ flex: 1 }}>
-        {state.items.length === 0 ? (
-          <View style={styles.emptyCart}>
-            <FontAwesome name="shopping-cart" size={64} color="#ccc" />
-            <Text style={styles.emptyText}>Your cart is empty</Text>
-            <TouchableOpacity
-              style={styles.continueShoppingButton}
-              onPress={() => router.push('/HomeScreen')}
-            >
-              <Text style={styles.continueShoppingText}>Continue Shopping</Text>
-            </TouchableOpacity>
-          </View>
-        ) : (
-          <>
+          {state.items.length === 0 ? (
+            <View style={styles.emptyCart}>
+              <FontAwesome name="shopping-cart" size={64} color="#ccc" />
+              <Text style={styles.emptyText}>Your cart is empty</Text>
+              <TouchableOpacity style={styles.continueShoppingButton} onPress={() => router.push('/HomeScreen')}>
+                <Text style={styles.continueShoppingText}>Continue Shopping</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <>
               <ScrollView style={styles.itemsContainer} contentContainerStyle={{ paddingBottom: 220 }}>
-              {state.items.map((item, index) => (
-                <View key={`${item.id}-${item.size}-${index}`} style={styles.cartItemContainer}>
-                  <CartItem
-                    key={`cartItem-${item.id}-${item.size}-${index}`}
-                    id={item.id}
-                    name={item.name}
-                    imagelink_square={{ uri: item.imagelink_square }}
-                    special_ingredient={item.special_ingredient}
-                    roasted={item.roasted}
-                    prices={[{ size: item.size, price: item.price, quantity: item.quantity }]}
+                {state.items.map((item, index) => (
+                  <View key={`${item.id}-${item.size}-${index}`} style={styles.cartItemContainer}>
+                    <CartItem
+                      id={item.id}
+                      name={item.name}
+                      imagelink_square={{ uri: item.imagelink_square }}
+                      special_ingredient={item.special_ingredient}
+                      roasted={item.roasted}
+                      prices={[{ size: item.size, price: item.price, quantity: item.quantity }]}
                       type={item.type || 'coffee'}
-                    incrementCartItemQuantityHandler={() => handleIncrementQuantity(item.id, item.size)}
-                    decrementCartItemQuantityHandler={() => handleDecrementQuantity(item.id, item.size)}
+                      incrementCartItemQuantityHandler={() => handleIncrementQuantity(item.id, item.size)}
+                      decrementCartItemQuantityHandler={() => handleDecrementQuantity(item.id, item.size)}
                       onImagePress={() => router.push({ pathname: '/(app)/product-detail/[id]', params: { id: item.id } })}
-                  />
-                  <TouchableOpacity
-                    style={styles.removeButton}
-                    onPress={() => handleRemoveItem(item.id, item.size)}
-                  >
-                    <FontAwesome name="trash" size={20} color="#e74c3c" />
-                  </TouchableOpacity>
-                </View>
-              ))}
-            </ScrollView>
+                    />
+                    <TouchableOpacity style={styles.removeButton} onPress={() => handleRemoveItem(item.id, item.size)}>
+                      <FontAwesome name="trash" size={20} color="#e74c3c" />
+                    </TouchableOpacity>
+                  </View>
+                ))}
+              </ScrollView>
               <View style={styles.footerAbsolute}>
                 <View style={styles.totalContainer}>
                   <Text style={styles.totalLabel}>Total:</Text>
                   <Text style={styles.totalAmount}>₹{state.total.toFixed(2)}</Text>
                 </View>
                 <View style={styles.orderTypeFooterRow}>
-    <TouchableOpacity
-      style={[
-        styles.orderTypeButton,
-                      orderType === 'dinein' && styles.selectedOrderTypeButton,
-      ]}
+                  <TouchableOpacity
+                    style={[styles.orderTypeButton, orderType === 'dinein' && styles.selectedOrderTypeButton]}
                     onPress={() => setOrderType('dinein')}
-    >
-      <Text
-        style={[
-          styles.orderTypeButtonText,
-                        orderType === 'dinein' && styles.selectedOrderTypeButtonText,
-        ]}
-      >
-                      Dine In
-      </Text>
-    </TouchableOpacity>
-    <TouchableOpacity
-      style={[
-        styles.orderTypeButton,
-        orderType === 'takeaway' && styles.selectedOrderTypeButton,
-      ]}
-      onPress={() => setOrderType('takeaway')}
-    >
-      <Text
-        style={[
-          styles.orderTypeButtonText,
-          orderType === 'takeaway' && styles.selectedOrderTypeButtonText,
-        ]}
-      >
-        Takeaway
-      </Text>
-    </TouchableOpacity>
+                  >
+                    <Text style={[styles.orderTypeButtonText, orderType === 'dinein' && styles.selectedOrderTypeButtonText]}>Dine In</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.orderTypeButton, orderType === 'takeaway' && styles.selectedOrderTypeButton]}
+                    onPress={() => setOrderType('takeaway')}
+                  >
+                    <Text style={[styles.orderTypeButtonText, orderType === 'takeaway' && styles.selectedOrderTypeButtonText]}>Takeaway</Text>
+                  </TouchableOpacity>
                   {orderType === 'dinein' && (
                     <View style={styles.tableNumberInputFooterContainer}>
-      <TextInput
+                      <TextInput
                         style={styles.tableNumberInputFooter}
-        value={tableNumber}
-        onChangeText={setTableNumber}
-        keyboardType="numeric"
+                        value={tableNumber}
+                        onChangeText={setTableNumber}
+                        keyboardType="numeric"
                         placeholder="Table Number"
-      />
-    </View>
-  )}
+                        placeholderTextColor={COLORS.primaryGreyHex}
+                      />
+                    </View>
+                  )}
+                </View>
+                <View style={styles.actionButtons}>
+                  <TouchableOpacity style={[styles.button, styles.clearButton]} onPress={handleClearCart}>
+                    <Text style={styles.buttonText}>Clear Cart</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={[styles.button, styles.checkoutButton]} onPress={handleCheckout}>
+                    <Text style={[styles.buttonText, styles.checkoutButtonText]}>Proceed to Payment</Text>
+                  </TouchableOpacity>
+                </View>
               </View>
-              <View style={styles.actionButtons}>
-                <TouchableOpacity
-                  style={[styles.button, styles.clearButton]}
-                  onPress={handleClearCart}
-                >
-                  <Text style={styles.buttonText}>Clear Cart</Text>
+            </>
+          )}
+        </View>
+
+        <Modal visible={showSignInModal} transparent animationType="fade" onRequestClose={() => setShowSignInModal(false)}>
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContainer}>
+              <Text style={styles.modalTitle}>Sign In Required</Text>
+              <Text style={styles.modalMessage}>Please sign in to complete your purchase.</Text>
+              <View style={styles.modalButtonRow}>
+                <TouchableOpacity style={styles.modalCancelButton} onPress={() => setShowSignInModal(false)}>
+                  <Text style={styles.modalCancelButtonText}>Cancel</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                    style={[
-                      styles.button, 
-                      styles.checkoutButton,
-                      isProcessingPayment && styles.disabledButton
-                    ]}
-                  onPress={handleCheckout}
-                    disabled={isProcessingPayment}
+                  style={styles.modalSignInButton}
+                  onPress={() => {
+                    setShowSignInModal(false);
+                    router.push('/(auth)/login');
+                  }}
                 >
-                  <Text style={[styles.buttonText, styles.checkoutButtonText]}>
-                      {isProcessingPayment ? 'Processing...' : 'Pay Now'}
-                  </Text>
+                  <Text style={styles.modalSignInButtonText}>Sign In</Text>
                 </TouchableOpacity>
               </View>
-            </View>
-          </>
-        )}
-      </View>
-      {/* Sign In Modal */}
-      <Modal
-        visible={showSignInModal}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowSignInModal(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContainer}>
-            <Text style={styles.modalTitle}>Sign In Required</Text>
-            <Text style={styles.modalMessage}>Please sign in to complete your purchase.</Text>
-            <View style={styles.modalButtonRow}>
-              <TouchableOpacity
-                style={styles.modalCancelButton}
-                onPress={() => setShowSignInModal(false)}
-              >
-                <Text style={styles.modalCancelButtonText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.modalSignInButton}
-                onPress={() => {
-                  setShowSignInModal(false);
-                  router.push('/(auth)/login');
-                }}
-              >
-                <Text style={styles.modalSignInButtonText}>Sign In</Text>
-              </TouchableOpacity>
             </View>
           </View>
-        </View>
-      </Modal>
+        </Modal>
       </View>
     </>
   );
 }
+
+
+
 
 const styles = StyleSheet.create({
   screenContainer: {
@@ -439,6 +250,19 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     resizeMode: 'contain',
+  },
+  // Debug styles - Remove in production
+  debugContainer: {
+    padding: SPACING.space_12,
+    backgroundColor: COLORS.primaryOrangeHex,
+    marginHorizontal: SPACING.space_16,
+    marginVertical: SPACING.space_8,
+    borderRadius: BORDERRADIUS.radius_10,
+  },
+  debugText: {
+    color: COLORS.primaryWhiteHex,
+    fontSize: FONTSIZE.size_12,
+    fontFamily: FONTFAMILY.poppins_regular,
   },
   container: {
     flex: 1,
@@ -565,10 +389,6 @@ const styles = StyleSheet.create({
   checkoutButton: {
     backgroundColor: COLORS.primaryOrangeHex,
   },
-  disabledButton: {
-    backgroundColor: '#ccc',
-    opacity: 0.7,
-  },
   buttonText: {
     fontSize: FONTSIZE.size_16,
     fontWeight: 'bold',
@@ -683,4 +503,4 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     fontFamily: FONTFAMILY.poppins_semibold,
   },
-}); 
+});

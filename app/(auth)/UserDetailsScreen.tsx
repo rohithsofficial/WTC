@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -14,16 +14,13 @@ import { Stack, router, useLocalSearchParams } from 'expo-router';
 import { FontAwesome } from '@expo/vector-icons';
 import { COLORS, FONTFAMILY, FONTSIZE, SPACING, BORDERRADIUS } from '../../src/theme/theme';
 import { auth, db } from '../../src/firebase/config';
-import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
-import { doc, setDoc } from 'firebase/firestore';
+import { doc, setDoc, getDoc } from 'firebase/firestore';
 import StyledAlert from '../../src/components/StyledAlert';
 
 const UserDetailsScreen = () => {
-  const params = useLocalSearchParams();
-  const [, setdisplayName] = useState('');
+  const { phoneNumber, userId } = useLocalSearchParams();
+  const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [alert, setAlert] = useState({
     visible: false,
@@ -31,14 +28,6 @@ const UserDetailsScreen = () => {
     message: '',
     type: 'info' as 'success' | 'error' | 'info'
   });
-
-  // Validate required params
-  useEffect(() => {
-    if (!params.phoneNumber || !params.verificationId) {
-      showAlert('Error', 'Missing required information. Please try again.', 'error');
-      router.replace('/(auth)/PhoneAuthScreen');
-    }
-  }, [params]);
 
   const showAlert = (title: string, message: string, type: 'success' | 'error' | 'info' = 'info') => {
     setAlert({
@@ -53,72 +42,43 @@ const UserDetailsScreen = () => {
     setAlert(prev => ({ ...prev, visible: false }));
   };
 
-  const handleSignUp = async () => {
-    if (!displayName.trim() || !email.trim() || !password.trim() || !confirmPassword.trim()) {
-      showAlert('Missing Information', 'Please fill in all fields', 'error');
-      return;
-    }
-
-    if (password !== confirmPassword) {
-      showAlert('Error', 'Passwords do not match', 'error');
-      return;
-    }
-
-    if (password.length < 6) {
-      showAlert('Error', 'Password must be at least 6 characters long', 'error');
+  const handleSubmit = async () => {
+    if (!fullName.trim()) {
+      showAlert('Missing Information', 'Please enter your full name', 'error');
       return;
     }
 
     try {
       setLoading(true);
 
-      // Create user with email and password
-      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-      const user = userCredential.user;
+      // Check if user document already exists
+      const userDocRef = doc(db, 'users', userId as string);
+      const userDoc = await getDoc(userDocRef);
 
-      // Update profile with full name
-      await updateProfile(user, {
-        displayName: displayName
-      });
-
-      // Store additional user data in Firestore
-      const userData = {
-        displa,
-        email,
-        phoneNumber: params.phoneNumber as string,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      };
-
-      await setDoc(doc(db, 'users', user.uid), userData);
-
-      showAlert('Success', 'Account created successfully!', 'success');
-      router.replace('/(app)/HomeScreen');
-    } catch (error: any) {
-      console.log('Signup error details:', {
-        code: error.code,
-        message: error.message,
-        name: error.name
-      });
-
-      let errorMessage = 'Failed to create account. Please try again.';
-
-      switch (error.code) {
-        case 'auth/email-already-in-use':
-          errorMessage = 'This email is already registered. Please use a different email.';
-          break;
-        case 'auth/invalid-email':
-          errorMessage = 'Please enter a valid email address.';
-          break;
-        case 'auth/weak-password':
-          errorMessage = 'Please choose a stronger password.';
-          break;
-        case 'auth/network-request-failed':
-          errorMessage = 'Network error. Please check your internet connection.';
-          break;
+      if (userDoc.exists()) {
+        // Update existing user document
+        await setDoc(userDocRef, {
+          displayName: fullName,
+          email: email.trim(),
+          phoneNumber,
+          updatedAt: new Date().toISOString()
+        }, { merge: true });
+      } else {
+        // Create new user document
+        await setDoc(userDocRef, {
+          displayName: fullName,
+          email: email.trim(),
+          phoneNumber,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        });
       }
 
-      showAlert('Error', errorMessage, 'error');
+      showAlert('Success', 'Profile created successfully!', 'success');
+      router.replace('/(app)/HomeScreen');
+    } catch (error) {
+      console.error('Error saving user details:', error);
+      showAlert('Error', 'Failed to save user details. Please try again.', 'error');
     } finally {
       setLoading(false);
     }
@@ -131,7 +91,7 @@ const UserDetailsScreen = () => {
     >
       <Stack.Screen
         options={{
-          title: 'Complete Your Profile',
+          title: 'Complete Profile',
           headerShown: false,
         }}
       />
@@ -165,8 +125,8 @@ const UserDetailsScreen = () => {
               />
               <TextInput
                 style={styles.input}
-                value={displayName}
-                onChangeText={setdisplayName}
+                value={fullName}
+                onChangeText={setFullName}
                 placeholder="Enter your full name"
                 placeholderTextColor={COLORS.primaryGreyHex}
               />
@@ -174,7 +134,7 @@ const UserDetailsScreen = () => {
           </View>
 
           <View style={styles.inputContainer}>
-            <Text style={styles.inputLabel}>Email</Text>
+            <Text style={styles.inputLabel}>Email (Optional)</Text>
             <View style={styles.inputWrapper}>
               <FontAwesome
                 name="envelope"
@@ -194,55 +154,15 @@ const UserDetailsScreen = () => {
             </View>
           </View>
 
-          <View style={styles.inputContainer}>
-            <Text style={styles.inputLabel}>Password</Text>
-            <View style={styles.inputWrapper}>
-              <FontAwesome
-                name="lock"
-                size={20}
-                color={COLORS.primaryGreyHex}
-                style={styles.inputIcon}
-              />
-              <TextInput
-                style={styles.input}
-                value={password}
-                onChangeText={setPassword}
-                placeholder="Enter your password"
-                placeholderTextColor={COLORS.primaryGreyHex}
-                secureTextEntry
-              />
-            </View>
-          </View>
-
-          <View style={styles.inputContainer}>
-            <Text style={styles.inputLabel}>Confirm Password</Text>
-            <View style={styles.inputWrapper}>
-              <FontAwesome
-                name="lock"
-                size={20}
-                color={COLORS.primaryGreyHex}
-                style={styles.inputIcon}
-              />
-              <TextInput
-                style={styles.input}
-                value={confirmPassword}
-                onChangeText={setConfirmPassword}
-                placeholder="Confirm your password"
-                placeholderTextColor={COLORS.primaryGreyHex}
-                secureTextEntry
-              />
-            </View>
-          </View>
-
           <TouchableOpacity
-            style={styles.signUpButton}
-            onPress={handleSignUp}
+            style={styles.submitButton}
+            onPress={handleSubmit}
             disabled={loading}
           >
             {loading ? (
               <ActivityIndicator color={COLORS.primaryWhiteHex} />
             ) : (
-              <Text style={styles.signUpButtonText}>Create Account</Text>
+              <Text style={styles.submitButtonText}>Complete Profile</Text>
             )}
           </TouchableOpacity>
         </View>
@@ -307,14 +227,14 @@ const styles = StyleSheet.create({
     color: COLORS.primaryBlackHex,
     paddingVertical: SPACING.space_12,
   },
-  signUpButton: {
+  submitButton: {
     backgroundColor: COLORS.primaryOrangeHex,
     padding: SPACING.space_16,
     borderRadius: BORDERRADIUS.radius_15,
     alignItems: 'center',
     marginTop: SPACING.space_24,
   },
-  signUpButtonText: {
+  submitButtonText: {
     fontFamily: FONTFAMILY.poppins_semibold,
     fontSize: FONTSIZE.size_16,
     color: COLORS.primaryWhiteHex,

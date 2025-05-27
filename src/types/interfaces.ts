@@ -1,3 +1,5 @@
+import { Timestamp } from "firebase/firestore";
+
 // src/types/interfaces.ts
 export interface Category {
   id: string;
@@ -51,7 +53,7 @@ export interface OrderData {
   paymentMode: string;
   paymentStatus: string;
   orderDate: string;
-  createdAt: Date;
+  createdAt: Timestamp;
 }
 
 export interface Banner {
@@ -61,4 +63,55 @@ export interface Banner {
   imageUrl: string;
   actionUrl: string;
   actionText: string;
+}
+
+
+// phonepe integration
+
+// src/types/interfaces.ts
+export interface PaymentData {
+  amount: number;
+  currency: string;
+  description: string;
+  orderId: string;
+  invoiceId: string;
+  paymentMethod: string;
+  paymentDetails: any;
+  customerInfo: {
+    userId: string;
+    displayName: string;
+    orderType: string;
+    tableNumber: string;
+  };
+}
+
+export interface PaymentResult {
+  success: boolean;
+  status: string;
+  paymentId?: string;
+  data?: {
+    amount: number;
+    merchantId: string;
+    merchantTransactionId: string;
+    orderId: string;
+    paymentInstrument: { type: string };
+    responseCode: string;
+    state: string;
+    transactionId: string;
+    redirectUrl?: string;
+  };
+  error?: string;
+}
+
+export interface OrderData {
+  userId: string;
+  displayName: string;
+  items: any[];
+  totalAmount: number;
+  orderType: string;
+  tableNumber: string;
+  paymentMode: string;
+  paymentStatus: string;
+  orderDate: string;
+  createdAt: Date | FirebaseFirestore.Timestamp;
 }

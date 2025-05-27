@@ -18,11 +18,11 @@ import { auth } from '../../src/firebase/config';
 import { PhoneAuthProvider, signInWithCredential, updateProfile } from 'firebase/auth';
 import { FirebaseRecaptchaVerifierModal } from 'expo-firebase-recaptcha';
 import Constants from 'expo-constants';
-import StyledAlert from '../../src/components/StyledAlert';
 import { collection, query, where, getDocs, doc, setDoc } from 'firebase/firestore';
 import { db } from '../../src/firebase/config';
+import StyledAlert from '../../src/components/StyledAlert';
 
-const PhoneAuthScreen = () => {
+export const PhoneAuthScreen = () => {
   const [phoneNumber, setPhoneNumber] = useState('');
   const [verificationCode, setVerificationCode] = useState('');
   const [verificationId, setVerificationId] = useState('');
@@ -54,18 +54,6 @@ const PhoneAuthScreen = () => {
   // Set language code for SMS messages
   auth.languageCode = 'en';
 
-  const checkPhoneNumberExists = async (phoneNumber: string) => {
-    try {
-      const usersRef = collection(db, 'users');
-      const q = query(usersRef, where('phoneNumber', '==', phoneNumber));
-      const querySnapshot = await getDocs(q);
-      return !querySnapshot.empty;
-    } catch (error) {
-      console.error('Error checking phone number:', error);
-      return false;
-    }
-  };
-
   const handleSendOTP = async () => {
     if (!phoneNumber.trim()) {
       showAlert('Missing Information', 'Please enter your phone number to continue', 'error');
@@ -81,9 +69,6 @@ const PhoneAuthScreen = () => {
       setLoading(true);
       const formattedPhone = phoneNumber.startsWith('+') ? phoneNumber : `+91${phoneNumber}`;
       
-      // Check if phone number exists in database
-      const phoneExists = await checkPhoneNumberExists(formattedPhone);
-      
       // Create a new PhoneAuthProvider instance
       const phoneProvider = new PhoneAuthProvider(auth);
       
@@ -95,17 +80,7 @@ const PhoneAuthScreen = () => {
       
       setVerificationId(verificationId);
       setShowOTPInput(true);
-      
-      // Check if it's a test number
-      if (formattedPhone === '+1234567890') {
-        showAlert(
-          'Test Mode',
-          'You are using a test phone number. Please enter the verification code you set up in Firebase Console.',
-          'info'
-        );
-      } else {
-        showAlert('Verification Code Sent', 'Please check your messages for the 6-digit code', 'success');
-      }
+      showAlert('Verification Code Sent', 'Please check your messages for the 6-digit code', 'success');
     } catch (error: any) {
       console.error('OTP send error:', error);
       let errorTitle = 'Verification Failed';
@@ -169,7 +144,6 @@ const PhoneAuthScreen = () => {
         const existingUserDoc = querySnapshot.docs[0];
         const existingUserData = existingUserDoc.data();
         
-        // Update the user's auth profile with existing data
         await updateProfile(user, {
           displayName: existingUserData.displayName || user.displayName
         });
@@ -177,24 +151,13 @@ const PhoneAuthScreen = () => {
         showAlert('Success', 'Welcome back!', 'success');
         router.replace('/(app)/HomeScreen');
       } else {
-        // New user - create user document and navigate to user details
-        const userData = {
-          displayName: user.displayName || '',
-          email: user.email || '',
-          phoneNumber: formattedPhone,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString()
-        };
-
-        // Create new user document
-        await setDoc(doc(db, 'users', user.uid), userData);
-        
-        // Navigate to user details screen for new users
+        // New user - navigate to user details screen without creating document
         router.push({
           pathname: '/(auth)/UserDetailsScreen',
           params: {
             phoneNumber: formattedPhone,
-            verificationId: verificationId
+            verificationId: verificationId,
+            userId: user.uid
           }
         });
       }
@@ -270,6 +233,8 @@ const PhoneAuthScreen = () => {
         ref={recaptchaVerifier}
         firebaseConfig={Constants.expoConfig?.web?.config?.firebase}
         attemptInvisibleVerification={true}
+        title="Verify your phone number"
+        cancelLabel="Cancel"
       />
 
       <ScrollView
@@ -408,6 +373,7 @@ const styles = StyleSheet.create({
     fontFamily: FONTFAMILY.poppins_regular,
     fontSize: FONTSIZE.size_14,
     color: COLORS.primaryGreyHex,
+    textAlign: 'center',
   },
   form: {
     marginBottom: SPACING.space_24,
@@ -464,6 +430,7 @@ const styles = StyleSheet.create({
     borderRadius: BORDERRADIUS.radius_15,
     alignItems: 'center',
     marginBottom: SPACING.space_16,
+    opacity: 1,
   },
   verifyButtonText: {
     fontFamily: FONTFAMILY.poppins_semibold,
@@ -496,4 +463,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default PhoneAuthScreen; 
+export default PhoneAuthScreen;

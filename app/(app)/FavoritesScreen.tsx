@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import {
   View,
   Text,
@@ -9,80 +9,231 @@ import {
   StatusBar,
   Platform,
   SafeAreaView,
+  ActivityIndicator,
+  Dimensions,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { COLORS, FONTFAMILY, FONTSIZE, SPACING, BORDERRADIUS } from '../../src/theme/theme';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useStore } from '../../src/store/store';
 
+const { width } = Dimensions.get('window');
+
+// Product interface for better type safety
+interface Product {
+  id: string;
+  name: string;
+  description?: string;
+  imagelink_square: string;
+  prices: Array<{ 
+    size: string;
+    price: string;
+    currency: string;
+  }>;
+  average_rating?: number;
+  ratings_count?: number;
+  roasted?: string;
+  ingredients?: string;
+  special_ingredient?: string;
+  type?: string;
+  index?: number;
+}
+
 const FavoritesScreen = () => {
   const router = useRouter();
-  const { favorites, removeFromFavorites } = useStore();
+  const { favorites, removeFromFavorites, isLoading, syncFavorites, fetchData } = useStore();
 
-  const renderFavoriteItem = ({ item }) => (
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        await fetchData();
+        await syncFavorites();
+      } catch (error) {
+        console.error('Error loading favorites:', error);
+      }
+    };
+    loadData();
+  }, []);
+
+  const handleRemoveFavorite = async (productId: string) => {
+    try {
+      await removeFromFavorites(productId);
+    } catch (error) {
+      console.error('Error removing favorite:', error);
+    }
+  };
+
+  const handleProductPress = (item: Product) => {
+    // Navigate to product details with proper params
+    router.push({
+      pathname: `/product-detail/[id]`,
+      params: { 
+        id: item.id,
+        index: item.index || 0,
+        type: item.type || 'Coffee'
+      }
+    });
+  };
+
+  const renderStars = (rating: number) => {
+    const stars = [];
+    const fullStars = Math.floor(rating);
+    const hasHalfStar = rating % 1 !== 0;
+
+    for (let i = 0; i < fullStars; i++) {
+      stars.push(
+        <MaterialIcons key={i} name="star" size={16} color={COLORS.primaryOrangeHex} />
+      );
+    }
+
+    if (hasHalfStar) {
+      stars.push(
+        <MaterialIcons key="half" name="star-half" size={16} color={COLORS.primaryOrangeHex} />
+      );
+    }
+
+    const emptyStars = 5 - Math.ceil(rating);
+    for (let i = 0; i < emptyStars; i++) {
+      stars.push(
+        <MaterialIcons key={`empty-${i}`} name="star-border" size={16} color={COLORS.primaryGreyHex} />
+      );
+    }
+
+    return stars;
+  };
+
+  const renderItem = ({ item }: { item: Product }) => (
     <TouchableOpacity
-      style={styles.favoriteCard}
-      onPress={() => router.push({
-        pathname: '/(app)/product-detail/[id]',
-        params: { id: item.id }
-      })}
+      style={styles.productCard}
+      onPress={() => handleProductPress(item)}
+      activeOpacity={0.8}
     >
-      <Image
-        source={{ uri: item.imagelink_square }}
-        style={styles.favoriteImage}
-        resizeMode="cover"
-      />
-      <View style={styles.favoriteInfo}>
-        <Text style={styles.favoriteName} numberOfLines={1}>{item.name}</Text>
-        <Text style={styles.favoritePrice}>₹{item.prices[0].toFixed(2)}</Text>
+      <View style={styles.imageContainer}>
+        <Image 
+          source={{ uri: item.imagelink_square }} 
+          style={styles.productImage}
+          resizeMode="cover"
+        />
         <TouchableOpacity
-          style={styles.removeButton}
-          onPress={() => removeFromFavorites(item.id)}
+          style={styles.favoriteButton}
+          onPress={() => handleRemoveFavorite(item.id)}
+          activeOpacity={0.7}
         >
-          <MaterialIcons name="favorite" size={24} color={COLORS.primaryOrangeHex} />
+          <MaterialIcons name="favorite" size={22} color={COLORS.primaryRedHex} />
         </TouchableOpacity>
+      </View>
+
+      <View style={styles.productDetails}>
+        <Text style={styles.productName} numberOfLines={2}>
+          {item.name}
+        </Text>
+        
+        {item.special_ingredient && (
+          <Text style={styles.specialIngredient} numberOfLines={1}>
+            With {item.special_ingredient}
+          </Text>
+        )}
+
+        {item.description && (
+          <Text style={styles.productDescription} numberOfLines={2}>
+            {item.description}
+          </Text>
+        )}
+
+        {item.average_rating && (
+          <View style={styles.ratingContainer}>
+            <View style={styles.starsContainer}>
+              {renderStars(item.average_rating)}
+            </View>
+            <Text style={styles.ratingText}>
+              {item.average_rating.toFixed(1)}
+            </Text>
+            {item.ratings_count && (
+              <Text style={styles.ratingsCount}>
+                ({item.ratings_count})
+              </Text>
+            )}
+          </View>
+        )}
+
+        <View style={styles.priceContainer}>
+          <Text style={styles.currency}>
+            {item.prices[0].currency}
+          </Text>
+          <Text style={styles.price}>
+            {item.prices[0].price}
+          </Text>
+          {item.prices.length > 1 && (
+            <Text style={styles.priceNote}>
+              +{item.prices.length - 1} more
+            </Text>
+          )}
+        </View>
+
+        {item.roasted && (
+          <View style={styles.roastedContainer}>
+            <MaterialIcons name="local-fire-department" size={14} color={COLORS.primaryOrangeHex} />
+            <Text style={styles.roastedText}>{item.roasted}</Text>
+          </View>
+        )}
       </View>
     </TouchableOpacity>
   );
 
+  if (isLoading) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <StatusBar backgroundColor={COLORS.primaryWhiteHex} barStyle="dark-content" />
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={COLORS.primaryOrangeHex} />
+          <Text style={styles.loadingText}>Loading your favorites...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return (
-    <SafeAreaView style={styles.screenContainer}>
+    <SafeAreaView style={styles.container}>
       <StatusBar backgroundColor={COLORS.primaryWhiteHex} barStyle="dark-content" />
       
-      {/* Header */}
-      <View style={styles.headerContainer}>
-        <TouchableOpacity
+      <View style={styles.header}>
+        <TouchableOpacity 
           style={styles.backButton}
           onPress={() => router.back()}
+          activeOpacity={0.7}
         >
           <MaterialIcons name="arrow-back" size={24} color={COLORS.primaryBlackHex} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Favorites</Text>
-        <View style={styles.placeholder} />
+        <Text style={styles.headerTitle}>My Favorites</Text>
+        <View style={styles.favoriteCount}>
+          <Text style={styles.favoriteCountText}>{favorites.length}</Text>
+        </View>
       </View>
 
-      {/* Content */}
       {favorites.length === 0 ? (
         <View style={styles.emptyContainer}>
-          <MaterialIcons name="favorite-border" size={64} color={COLORS.primaryGreyHex} />
-          <Text style={styles.emptyText}>No favorites yet</Text>
-          <Text style={styles.emptySubtext}>
-            Add items to your favorites to see them here
+          <MaterialIcons name="favorite-border" size={80} color={COLORS.primaryGreyHex} />
+          <Text style={styles.emptyTitle}>No favorites yet</Text>
+          <Text style={styles.emptySubtitle}>
+            Start exploring and add your favorite products
           </Text>
           <TouchableOpacity
             style={styles.browseButton}
-            onPress={() => router.push('/MenuScreen')}
+            onPress={() => router.push('/')}
+            activeOpacity={0.8}
           >
-            <Text style={styles.browseButtonText}>Browse Menu</Text>
+            <MaterialIcons name="explore" size={20} color={COLORS.primaryWhiteHex} />
+            <Text style={styles.browseButtonText}>Browse Products</Text>
           </TouchableOpacity>
         </View>
       ) : (
         <FlatList
           data={favorites}
-          renderItem={renderFavoriteItem}
+          renderItem={renderItem}
           keyExtractor={(item) => item.id}
-          contentContainerStyle={styles.favoritesList}
+          contentContainerStyle={styles.listContainer}
           showsVerticalScrollIndicator={false}
+          ItemSeparatorComponent={() => <View style={styles.separator} />}
         />
       )}
     </SafeAreaView>
@@ -90,106 +241,248 @@ const FavoritesScreen = () => {
 };
 
 const styles = StyleSheet.create({
-  screenContainer: {
+  container: {
     flex: 1,
     backgroundColor: COLORS.primaryWhiteHex,
-    paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0,
   },
-  headerContainer: {
+  header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: SPACING.space_24,
-    paddingVertical: SPACING.space_16,
+    paddingHorizontal: SPACING.space_20,
+    paddingVertical: SPACING.space_15,
     backgroundColor: COLORS.primaryWhiteHex,
     borderBottomWidth: 1,
-    borderBottomColor: '#E5E5E5',
+    borderBottomColor: COLORS.primaryLightGreyHex,
+    ...Platform.select({
+      ios: {
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+      },
+      android: {
+        elevation: 4,
+      },
+    }),
   },
   backButton: {
     padding: SPACING.space_8,
+    borderRadius: BORDERRADIUS.radius_8,
+    backgroundColor: COLORS.primaryLightGreyHex,
   },
   headerTitle: {
-    fontFamily: FONTFAMILY.poppins_semibold,
     fontSize: FONTSIZE.size_20,
+    fontFamily: FONTFAMILY.poppins_semibold,
     color: COLORS.primaryBlackHex,
-  },
-  placeholder: {
-    width: 40,
-  },
-  favoritesList: {
-    padding: SPACING.space_16,
-  },
-  favoriteCard: {
-    flexDirection: 'row',
-    backgroundColor: COLORS.primaryWhiteHex,
-    borderRadius: BORDERRADIUS.radius_20,
-    marginBottom: SPACING.space_16,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 3.84,
-    elevation: 5,
-  },
-  favoriteImage: {
-    width: 100,
-    height: 100,
-    borderTopLeftRadius: BORDERRADIUS.radius_20,
-    borderBottomLeftRadius: BORDERRADIUS.radius_20,
-  },
-  favoriteInfo: {
     flex: 1,
-    padding: SPACING.space_16,
-    justifyContent: 'space-between',
+    textAlign: 'center',
+    marginHorizontal: SPACING.space_16,
   },
-  favoriteName: {
+  favoriteCount: {
+    backgroundColor: COLORS.primaryOrangeHex,
+    borderRadius: BORDERRADIUS.radius_15,
+    minWidth: 30,
+    height: 30,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: SPACING.space_8,
+  },
+  favoriteCountText: {
+    fontSize: FONTSIZE.size_12,
     fontFamily: FONTFAMILY.poppins_semibold,
-    fontSize: FONTSIZE.size_16,
-    color: COLORS.primaryBlackHex,
-    marginBottom: SPACING.space_4,
+    color: COLORS.primaryWhiteHex,
   },
-  favoritePrice: {
-    fontFamily: FONTFAMILY.poppins_semibold,
-    fontSize: FONTSIZE.size_16,
-    color: COLORS.primaryOrangeHex,
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: SPACING.space_30,
   },
-  removeButton: {
-    position: 'absolute',
-    right: SPACING.space_16,
-    top: SPACING.space_16,
+  loadingText: {
+    fontSize: FONTSIZE.size_14,
+    fontFamily: FONTFAMILY.poppins_medium,
+    color: COLORS.primaryGreyHex,
+    marginTop: SPACING.space_16,
   },
   emptyContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: SPACING.space_24,
+    paddingHorizontal: SPACING.space_30,
   },
-  emptyText: {
-    fontFamily: FONTFAMILY.poppins_semibold,
+  emptyTitle: {
     fontSize: FONTSIZE.size_20,
+    fontFamily: FONTFAMILY.poppins_semibold,
     color: COLORS.primaryBlackHex,
-    marginTop: SPACING.space_16,
-  },
-  emptySubtext: {
-    fontFamily: FONTFAMILY.poppins_regular,
-    fontSize: FONTSIZE.size_14,
-    color: COLORS.primaryGreyHex,
+    marginTop: SPACING.space_20,
     textAlign: 'center',
+  },
+  emptySubtitle: {
+    fontSize: FONTSIZE.size_14,
+    fontFamily: FONTFAMILY.poppins_regular,
+    color: COLORS.primaryGreyHex,
     marginTop: SPACING.space_8,
-    marginBottom: SPACING.space_24,
+    textAlign: 'center',
+    lineHeight: 22,
   },
   browseButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
     backgroundColor: COLORS.primaryOrangeHex,
     paddingHorizontal: SPACING.space_24,
     paddingVertical: SPACING.space_12,
-    borderRadius: BORDERRADIUS.radius_20,
+    borderRadius: BORDERRADIUS.radius_25,
+    marginTop: SPACING.space_30,
+    ...Platform.select({
+      ios: {
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.3,
+        shadowRadius: 8,
+      },
+      android: {
+        elevation: 8,
+      },
+    }),
   },
   browseButtonText: {
-    fontFamily: FONTFAMILY.poppins_semibold,
     fontSize: FONTSIZE.size_16,
+    fontFamily: FONTFAMILY.poppins_semibold,
     color: COLORS.primaryWhiteHex,
+    marginLeft: SPACING.space_8,
+  },
+  listContainer: {
+    paddingHorizontal: SPACING.space_20,
+    paddingTop: SPACING.space_20,
+    paddingBottom: SPACING.space_30,
+  },
+  separator: {
+    height: SPACING.space_16,
+  },
+  productCard: {
+    backgroundColor: COLORS.primaryWhiteHex,
+    borderRadius: BORDERRADIUS.radius_20,
+    padding: SPACING.space_16,
+    ...Platform.select({
+      ios: {
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.1,
+        shadowRadius: 8,
+      },
+      android: {
+        elevation: 4,
+      },
+    }),
+    borderWidth: 1,
+    borderColor: COLORS.primaryLightGreyHex,
+  },
+  imageContainer: {
+    position: 'relative',
+    alignItems: 'center',
+    marginBottom: SPACING.space_16,
+  },
+  productImage: {
+    width: width * 0.35,
+    height: width * 0.35,
+    borderRadius: BORDERRADIUS.radius_15,
+    backgroundColor: COLORS.primaryLightGreyHex,
+  },
+  favoriteButton: {
+    position: 'absolute',
+    top: SPACING.space_8,
+    right: SPACING.space_8,
+    backgroundColor: COLORS.primaryWhiteHex,
+    borderRadius: BORDERRADIUS.radius_20,
+    padding: SPACING.space_8,
+    ...Platform.select({
+      ios: {
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.2,
+        shadowRadius: 4,
+      },
+      android: {
+        elevation: 4,
+      },
+    }),
+  },
+  productDetails: {
+    flex: 1,
+  },
+  productName: {
+    fontSize: FONTSIZE.size_18,
+    fontFamily: FONTFAMILY.poppins_semibold,
+    color: COLORS.primaryBlackHex,
+    lineHeight: 24,
+    marginBottom: SPACING.space_4,
+  },
+  specialIngredient: {
+    fontSize: FONTSIZE.size_12,
+    fontFamily: FONTFAMILY.poppins_regular,
+    color: COLORS.primaryOrangeHex,
+    marginBottom: SPACING.space_8,
+  },
+  productDescription: {
+    fontSize: FONTSIZE.size_12,
+    fontFamily: FONTFAMILY.poppins_regular,
+    color: COLORS.primaryGreyHex,
+    lineHeight: 18,
+    marginBottom: SPACING.space_12,
+  },
+  ratingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: SPACING.space_12,
+  },
+  starsContainer: {
+    flexDirection: 'row',
+    marginRight: SPACING.space_8,
+  },
+  ratingText: {
+    fontSize: FONTSIZE.size_14,
+    fontFamily: FONTFAMILY.poppins_semibold,
+    color: COLORS.primaryBlackHex,
+    marginRight: SPACING.space_4,
+  },
+  ratingsCount: {
+    fontSize: FONTSIZE.size_12,
+    fontFamily: FONTFAMILY.poppins_regular,
+    color: COLORS.primaryGreyHex,
+  },
+  priceContainer: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    marginBottom: SPACING.space_8,
+  },
+  currency: {
+    fontSize: FONTSIZE.size_18,
+    fontFamily: FONTFAMILY.poppins_semibold,
+    color: COLORS.primaryOrangeHex,
+  },
+  price: {
+    fontSize: FONTSIZE.size_20,
+    fontFamily: FONTFAMILY.poppins_bold,
+    color: COLORS.primaryOrangeHex,
+    marginLeft: SPACING.space_4,
+  },
+  priceNote: {
+    fontSize: FONTSIZE.size_12,
+    fontFamily: FONTFAMILY.poppins_regular,
+    color: COLORS.primaryGreyHex,
+    marginLeft: SPACING.space_8,
+  },
+  roastedContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.primaryLightGreyHex,
+    paddingHorizontal: SPACING.space_8,
+    paddingVertical: SPACING.space_4,
+    borderRadius: BORDERRADIUS.radius_8,
+    alignSelf: 'flex-start',
+  },
+  roastedText: {
+    fontSize: FONTSIZE.size_12,
+    fontFamily: FONTFAMILY.poppins_medium,
+    color: COLORS.primaryBlackHex,
+    marginLeft: SPACING.space_4,
   },
 });
 

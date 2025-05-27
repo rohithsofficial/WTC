@@ -13,7 +13,8 @@ import { Stack, router } from 'expo-router';
 import { FontAwesome } from '@expo/vector-icons';
 import { COLORS, FONTFAMILY, FONTSIZE, SPACING, BORDERRADIUS } from '../../src/theme/theme';
 import { auth, db } from '../../src/firebase/config';
-import { collection, addDoc, getDocs, deleteDoc, doc, query, where } from 'firebase/firestore';
+import { collection, addDoc, getDocs, deleteDoc, doc, query, where, updateDoc } from 'firebase/firestore';
+import StyledAlert from '../../src/components/StyledAlert';
 
 interface Address {
   id: string;
@@ -31,7 +32,8 @@ const AddressScreen = () => {
   const [addresses, setAddresses] = useState<Address[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddForm, setShowAddForm] = useState(false);
-  const [newAddress, setNewAddress] = useState({
+  const [editingAddress, setEditingAddress] = useState<Address | null>(null);
+  const [addressForm, setAddressForm] = useState({
     name: '',
     phone: '',
     address: '',
@@ -39,10 +41,29 @@ const AddressScreen = () => {
     state: '',
     pincode: '',
   });
+  const [alert, setAlert] = useState({
+    visible: false,
+    title: '',
+    message: '',
+    type: 'info' as 'success' | 'error' | 'info'
+  });
 
   useEffect(() => {
     loadAddresses();
   }, []);
+
+  const showAlert = (title: string, message: string, type: 'success' | 'error' | 'info' = 'info') => {
+    setAlert({
+      visible: true,
+      title,
+      message,
+      type
+    });
+  };
+
+  const hideAlert = () => {
+    setAlert(prev => ({ ...prev, visible: false }));
+  };
 
   const loadAddresses = async () => {
     try {
@@ -60,114 +81,147 @@ const AddressScreen = () => {
       setAddresses(addressList);
     } catch (error) {
       console.error('Error loading addresses:', error);
-      Alert.alert('Error', 'Failed to load addresses');
+      showAlert('Error', 'Failed to load addresses', 'error');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleAddAddress = async () => {
+  const resetForm = () => {
+    setAddressForm({
+      name: '',
+      phone: '',
+      address: '',
+      city: '',
+      state: '',
+      pincode: '',
+    });
+    setEditingAddress(null);
+    setShowAddForm(false);
+  };
+
+  const handleEditAddress = (address: Address) => {
+    setEditingAddress(address);
+    setAddressForm({
+      name: address.name,
+      phone: address.phone,
+      address: address.address,
+      city: address.city,
+      state: address.state,
+      pincode: address.pincode,
+    });
+    setShowAddForm(true);
+  };
+
+  const handleSaveAddress = async () => {
     try {
       const userId = auth.currentUser?.uid;
       if (!userId) {
-        Alert.alert('Error', 'Please sign in to add an address');
+        showAlert('Error', 'Please sign in to manage addresses', 'error');
         return;
       }
 
       // Validate inputs
-      if (!newAddress.name || !newAddress.phone || !newAddress.address || 
-          !newAddress.city || !newAddress.state || !newAddress.pincode) {
-        Alert.alert('Error', 'Please fill in all fields');
+      if (!addressForm.name || !addressForm.phone || !addressForm.address || 
+          !addressForm.city || !addressForm.state || !addressForm.pincode) {
+        showAlert('Error', 'Please fill in all fields', 'error');
         return;
       }
 
-      const addressData = {
-        ...newAddress,
-        userId,
-        isDefault: addresses.length === 0, // First address is default
-      };
+      if (editingAddress) {
+        // Update existing address
+        await updateDoc(doc(db, 'addresses', editingAddress.id), {
+          ...addressForm,
+          updatedAt: new Date().toISOString()
+        });
+        showAlert('Success', 'Address updated successfully', 'success');
+      } else {
+        // Add new address
+        const addressData = {
+          ...addressForm,
+          userId,
+          isDefault: addresses.length === 0, // First address is default
+          createdAt: new Date().toISOString()
+        };
+        await addDoc(collection(db, 'addresses'), addressData);
+        showAlert('Success', 'Address added successfully', 'success');
+      }
 
-      await addDoc(collection(db, 'addresses'), addressData);
-      setShowAddForm(false);
-      setNewAddress({
-        name: '',
-        phone: '',
-        address: '',
-        city: '',
-        state: '',
-        pincode: '',
-      });
+      resetForm();
       loadAddresses();
     } catch (error) {
-      console.error('Error adding address:', error);
-      Alert.alert('Error', 'Failed to add address');
+      console.error('Error saving address:', error);
+      showAlert('Error', 'Failed to save address', 'error');
     }
   };
 
   const handleDeleteAddress = async (addressId: string) => {
     try {
       await deleteDoc(doc(db, 'addresses', addressId));
+      showAlert('Success', 'Address deleted successfully', 'success');
       loadAddresses();
     } catch (error) {
       console.error('Error deleting address:', error);
-      Alert.alert('Error', 'Failed to delete address');
+      showAlert('Error', 'Failed to delete address', 'error');
     }
   };
 
   const renderAddressForm = () => (
     <View style={styles.formContainer}>
-      <Text style={styles.formTitle}>Add New Address</Text>
+      <Text style={styles.formTitle}>{editingAddress ? 'Edit Address' : 'Add New Address'}</Text>
       <TextInput
         style={styles.input}
         placeholder="Full Name"
-        value={newAddress.name}
-        onChangeText={(text) => setNewAddress({ ...newAddress, name: text })}
+        value={addressForm.name}
+        onChangeText={(text) => setAddressForm({ ...addressForm, name: text })}
       />
       <TextInput
         style={styles.input}
         placeholder="Phone Number"
-        value={newAddress.phone}
-        onChangeText={(text) => setNewAddress({ ...newAddress, phone: text })}
+        value={addressForm.phone}
+        onChangeText={(text) => setAddressForm({ ...addressForm, phone: text })}
         keyboardType="phone-pad"
       />
       <TextInput
         style={styles.input}
         placeholder="Address"
-        value={newAddress.address}
-        onChangeText={(text) => setNewAddress({ ...newAddress, address: text })}
+        value={addressForm.address}
+        onChangeText={(text) => setAddressForm({ ...addressForm, address: text })}
         multiline
       />
       <TextInput
         style={styles.input}
         placeholder="City"
-        value={newAddress.city}
-        onChangeText={(text) => setNewAddress({ ...newAddress, city: text })}
+        value={addressForm.city}
+        onChangeText={(text) => setAddressForm({ ...addressForm, city: text })}
       />
       <TextInput
         style={styles.input}
         placeholder="State"
-        value={newAddress.state}
-        onChangeText={(text) => setNewAddress({ ...newAddress, state: text })}
+        value={addressForm.state}
+        onChangeText={(text) => setAddressForm({ ...addressForm, state: text })}
       />
       <TextInput
         style={styles.input}
         placeholder="Pincode"
-        value={newAddress.pincode}
-        onChangeText={(text) => setNewAddress({ ...newAddress, pincode: text })}
+        value={addressForm.pincode}
+        onChangeText={(text) => setAddressForm({ ...addressForm, pincode: text })}
         keyboardType="numeric"
       />
       <View style={styles.formButtons}>
         <TouchableOpacity
           style={[styles.button, styles.cancelButton]}
-          onPress={() => setShowAddForm(false)}
+          onPress={resetForm}
         >
           <Text style={styles.buttonText}>Cancel</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.button, styles.addButton]}
-          onPress={handleAddAddress}
+          onPress={handleSaveAddress}
         >
-          <Text style={[styles.buttonText, styles.addButtonText]}>Add Address</Text>
+          <Text style={[styles.buttonText, styles.addButtonText]}>
+            {editingAddress ? 'Update Address' : 'Add Address'}
+          </Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -180,6 +234,14 @@ const AddressScreen = () => {
           title: 'Addresses',
           headerShown: false,
         }}
+      />
+
+      <StyledAlert
+        visible={alert.visible}
+        title={alert.title}
+        message={alert.message}
+        type={alert.type}
+        onClose={hideAlert}
       />
 
       {/* Header */}
@@ -211,6 +273,12 @@ const AddressScreen = () => {
                 {address.city}, {address.state} - {address.pincode}
               </Text>
               <View style={styles.addressActions}>
+                <TouchableOpacity
+                  style={styles.editButton}
+                  onPress={() => handleEditAddress(address)}
+                >
+                  <FontAwesome name="edit" size={20} color={COLORS.primaryOrangeHex} />
+                </TouchableOpacity>
                 <TouchableOpacity
                   style={styles.deleteButton}
                   onPress={() => handleDeleteAddress(address.id)}
@@ -313,6 +381,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'flex-end',
     marginTop: SPACING.space_12,
+  },
+  editButton: {
+    padding: SPACING.space_8,
+    marginRight: SPACING.space_8,
   },
   deleteButton: {
     padding: SPACING.space_8,

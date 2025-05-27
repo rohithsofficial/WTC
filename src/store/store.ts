@@ -5,6 +5,8 @@ import {persist, createJSONStorage} from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Product, Category, CartItem, OrderHistoryItem } from '../types/interfaces';
 import { fetchAllProductsWithCategories } from '../firebase/product-service';
+import { auth, db } from '../firebase/config';
+import { doc, updateDoc, getDoc, setDoc } from 'firebase/firestore';
 
 interface StoreState {
   categories: Category[];
@@ -27,6 +29,7 @@ interface StoreState {
   addToFavorites: (product: Product) => void;
   removeFromFavorites: (productId: string) => void;
   isFavorite: (productId: string) => boolean;
+  syncFavorites: () => Promise<void>;
 }
 
 export const useStore = create<StoreState>((set, get) => ({
@@ -40,22 +43,17 @@ export const useStore = create<StoreState>((set, get) => ({
   favorites: [],
 
   fetchData: async () => {
-    set({ isLoading: true, error: null });
     try {
-      const { categories, productsByCategory, allProducts } = await fetchAllProductsWithCategories();
-      
-      set({ 
-        categories,
-        productsByCategory,
-        allProducts,
-        isLoading: false 
+      set({ isLoading: true, error: null });
+      const data = await fetchAllProductsWithCategories();
+      set({
+        categories: data.categories,
+        productsByCategory: data.productsByCategory,
+        allProducts: data.allProducts,
+        isLoading: false,
       });
     } catch (error) {
-      set({ 
-        error: 'Failed to fetch products',
-        isLoading: false 
-      });
-      console.error('Error fetching products:', error);
+      set({ error: 'Failed to fetch data', isLoading: false });
     }
   },
 
@@ -145,20 +143,99 @@ export const useStore = create<StoreState>((set, get) => ({
     });
   },
 
-  addToFavorites: (product: Product) => {
+  addToFavorites: async (product: Product) => {
     const { favorites } = get();
     if (!favorites.some(item => item.id === product.id)) {
-      set({ favorites: [...favorites, product] });
+      const newFavorites = [...favorites, product];
+      set({ favorites: newFavorites });
+      
+      // Sync with Firestore
+      const user = auth.currentUser;
+      if (user) {
+        try {
+          const userDocRef = doc(db, 'users', user.uid);
+          const userDoc = await getDoc(userDocRef);
+          
+          if (userDoc.exists()) {
+            await updateDoc(userDocRef, {
+              favorites: newFavorites.map(fav => fav.id),
+              updatedAt: new Date().toISOString()
+            });
+          } else {
+            // If user document doesn't exist, create it with favorites
+            await setDoc(userDocRef, {
+              favorites: [product.id],
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString()
+            });
+          }
+        } catch (error) {
+          console.error('Error syncing favorites:', error);
+          // Revert local state if Firestore update fails
+          set({ favorites });
+        }
+      }
     }
   },
 
-  removeFromFavorites: (productId: string) => {
+  removeFromFavorites: async (productId: string) => {
     const { favorites } = get();
-    set({ favorites: favorites.filter(item => item.id !== productId) });
+    const newFavorites = favorites.filter(item => item.id !== productId);
+    set({ favorites: newFavorites });
+    
+    // Sync with Firestore
+    const user = auth.currentUser;
+    if (user) {
+      try {
+        const userDocRef = doc(db, 'users', user.uid);
+        const userDoc = await getDoc(userDocRef);
+        
+        if (userDoc.exists()) {
+          await updateDoc(userDocRef, {
+            favorites: newFavorites.map(fav => fav.id),
+            updatedAt: new Date().toISOString()
+          });
+        }
+      } catch (error) {
+        console.error('Error syncing favorites:', error);
+        // Revert local state if Firestore update fails
+        set({ favorites });
+      }
+    }
   },
 
   isFavorite: (productId: string) => {
     const { favorites } = get();
     return favorites.some(item => item.id === productId);
+  },
+
+  syncFavorites: async () => {
+    const user = auth.currentUser;
+    if (!user) return;
+
+    try {
+      set({ isLoading: true });
+      const userDocRef = doc(db, 'users', user.uid);
+      const userDoc = await getDoc(userDocRef);
+      
+      if (userDoc.exists() && userDoc.data().favorites) {
+        const favoriteIds = userDoc.data().favorites;
+        const { allProducts } = get();
+        
+        // Ensure allProducts are loaded before filtering
+        if (allProducts.length === 0) {
+          await get().fetchData();
+        }
+        
+        const favoriteProducts = allProducts.filter(product => 
+          favoriteIds.includes(product.id)
+        );
+        set({ favorites: favoriteProducts });
+      }
+    } catch (error) {
+      console.error('Error syncing favorites:', error);
+    } finally {
+      set({ isLoading: false });
+    }
   },
 }));

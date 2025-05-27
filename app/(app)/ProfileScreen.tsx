@@ -6,86 +6,95 @@ import {
   TouchableOpacity,
   Image,
   ScrollView,
-  Alert,
   ActivityIndicator,
 } from 'react-native';
 import { Stack, router } from 'expo-router';
 import { auth, db } from '../../src/firebase/config';
 import { FontAwesome } from '@expo/vector-icons';
-import { COLORS, FONTFAMILY, FONTSIZE, SPACING, BORDERRADIUS } from '../../src/theme/theme';
-import { signOut, updateProfile } from 'firebase/auth';
-import { doc, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
+import {
+  COLORS,
+  FONTFAMILY,
+  FONTSIZE,
+  SPACING,
+  BORDERRADIUS,
+} from '../../src/theme/theme';
+import { signOut, onAuthStateChanged } from 'firebase/auth';
+import { doc, getDoc, onSnapshot } from 'firebase/firestore';
 import StyledAlert from '../../src/components/StyledAlert';
 
 const ProfileScreen = () => {
-  const [user, setUser] = useState(auth.currentUser);
+  const [user, setUser] = useState<any>(null);
   const [userData, setUserData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [alert, setAlert] = useState({
     visible: false,
     title: '',
     message: '',
-    type: 'info' as 'success' | 'error' | 'info'
+    type: 'info' as 'success' | 'error' | 'info',
   });
 
-  useEffect(() => {
-    const unsubscribe = auth.onAuthStateChanged(async (user) => {
-      if (!user) {
-        // If no user is authenticated, redirect to phone auth
-        router.replace('/(auth)/PhoneAuthScreen');
-        return;
-      }
+useEffect(() => {
+  let unsubscribeSnapshot: (() => void) | null = null;
 
-      setUser(user);
+  const unsubscribeAuth = onAuthStateChanged(auth, async (currentUser) => {
+    setUser(currentUser);
+    setLoading(true);
+
+    if (currentUser) {
+      const userDocRef = doc(db, 'users', currentUser.uid);
+
       try {
-        // Get user document from Firestore
-        const userDocRef = doc(db, 'users', user.uid);
         const userDoc = await getDoc(userDocRef);
-
-        if (!userDoc.exists()) {
-          // If no user document exists, redirect to phone auth
-          await signOut(auth);
-          router.replace('/(auth)/PhoneAuthScreen');
-          return;
-        }
-
-        // Set up real-time listener for existing user document
-        const unsubscribeSnapshot = onSnapshot(userDocRef, 
-          (doc) => {
-            if (doc.exists()) {
-              setUserData(doc.data());
+        if (userDoc.exists()) {
+          unsubscribeSnapshot = onSnapshot(
+            userDocRef,
+            (doc) => {
+              if (doc.exists()) {
+                setUserData(doc.data());
+              } else {
+                setUserData(null);
+              }
+              setLoading(false);
+            },
+            (error) => {
+              console.error('Error fetching user data:', error);
+              showAlert('Error', 'Failed to load user data', 'error');
+              setLoading(false);
             }
-            setLoading(false);
-          },
-          (error) => {
-            console.error('Error fetching user data:', error);
-            showAlert('Error', 'Failed to load user data', 'error');
-            setLoading(false);
-          }
-        );
-
-        return () => unsubscribeSnapshot();
+          );
+        } else {
+          setUserData(null);
+          setLoading(false);
+        }
       } catch (error) {
-        console.error('Error handling user data:', error);
-        showAlert('Error', 'Failed to initialize user profile', 'error');
+        console.error('Error getting user doc:', error);
+        showAlert('Error', 'Something went wrong', 'error');
         setLoading(false);
       }
-    });
+    } else {
+      setUserData(null);
+      setLoading(false);
+    }
+  });
 
-    return () => unsubscribe();
-  }, []);
+  return () => {
+    unsubscribeAuth();
+    if (unsubscribeSnapshot) unsubscribeSnapshot();
+  };
+}, []);
+
 
   const showAlert = (title: string, message: string, type: 'success' | 'error' | 'info' = 'info') => {
     setAlert({
       visible: true,
       title,
       message,
-      type
+      type,
     });
   };
 
   const hideAlert = () => {
-    setAlert(prev => ({ ...prev, visible: false }));
+    setAlert((prev) => ({ ...prev, visible: false }));
   };
 
   const handleSignOut = async () => {
@@ -101,36 +110,21 @@ const ProfileScreen = () => {
     }
   };
 
+  const handleLogin = () => {
+    router.replace('/(auth)/PhoneAuthScreen');
+  };
+
   const handleEditProfile = () => {
     router.push('/(app)/EditProfileScreen');
   };
 
   const menuItems = [
-    {
-      title: 'My Orders',
-      icon: 'shopping-bag' as const,
-      onPress: () => router.push('/(app)/OrderScreen'),
-    },
-    {
-      title: 'Payment Methods',
-      icon: 'credit-card' as const,
-      onPress: () => router.push('/(app)/PaymentScreen'),
-    },
-    {
-      title: 'Addresses',
-      icon: 'map-marker' as const,
-      onPress: () => router.push('/(app)/AddressScreen'),
-    },
-    {
-      title: 'Notifications',
-      icon: 'bell' as const,
-      onPress: () => router.push('/(app)/NotificationSettings'),
-    },
-    {
-      title: 'Help & Support',
-      icon: 'question-circle' as const,
-      onPress: () => router.push('/(app)/SupportScreen'),
-    },
+    { title: 'My Orders', icon: 'shopping-bag', onPress: () => router.push('/(app)/OrderScreen') },
+    { title: 'Payment Methods', icon: 'credit-card', onPress: () => router.push('/(app)/PaymentScreen') },
+    { title: 'Favorites', icon: 'heart', onPress: () => router.push('/(app)/FavoritesScreen') },
+    { title: 'Addresses', icon: 'map-marker', onPress: () => router.push('/(app)/AddressScreen') },
+    { title: 'Notifications', icon: 'bell', onPress: () => router.push('/(app)/NotificationSettings') },
+    { title: 'Help & Support', icon: 'question-circle', onPress: () => router.push('/(app)/SupportScreen') }, 
   ];
 
   if (loading) {
@@ -141,18 +135,9 @@ const ProfileScreen = () => {
     );
   }
 
-  if (!user || !userData) {
-    return null;
-  }
-
   return (
     <View style={styles.container}>
-      <Stack.Screen
-        options={{
-          title: 'Profile',
-          headerShown: false,
-        }}
-      />
+      <Stack.Screen options={{ title: 'Profile', headerShown: false }} />
 
       <StyledAlert
         visible={alert.visible}
@@ -162,13 +147,11 @@ const ProfileScreen = () => {
         onClose={hideAlert}
       />
 
-      {/* Header */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Profile</Text>
       </View>
 
       <ScrollView style={styles.scrollView}>
-        {/* Profile Section */}
         <View style={styles.profileSection}>
           <View style={styles.profileImageContainer}>
             <Image
@@ -179,29 +162,26 @@ const ProfileScreen = () => {
               }
               style={styles.profileImage}
             />
-            <TouchableOpacity style={styles.editImageButton}>
-              <FontAwesome name="camera" size={16} color={COLORS.primaryWhiteHex} />
-            </TouchableOpacity>
+            {user && (
+              <TouchableOpacity style={styles.editImageButton}>
+                <FontAwesome name="camera" size={16} color={COLORS.primaryWhiteHex} />
+              </TouchableOpacity>
+            )}
           </View>
-          <Text style={styles.userName}>{userData.displayName || 'User'}</Text>
-          <Text style={styles.userEmail}>{userData.phoneNumber || 'No phone number'}</Text>
-          <TouchableOpacity
-            style={styles.editProfileButton}
-            onPress={handleEditProfile}
-          >
-            <FontAwesome name="edit" size={16} color={COLORS.primaryWhiteHex} />
-            <Text style={styles.editProfileText}>Edit Profile</Text>
-          </TouchableOpacity>
+          <Text style={styles.userName}>{userData?.displayName || 'Guest'}</Text>
+          <Text style={styles.userEmail}>{userData?.phoneNumber || 'Not logged in'}</Text>
+
+          {user && (
+            <TouchableOpacity style={styles.editProfileButton} onPress={handleEditProfile}>
+              <FontAwesome name="edit" size={16} color={COLORS.primaryWhiteHex} />
+              <Text style={styles.editProfileText}>Edit Profile</Text>
+            </TouchableOpacity>
+          )}
         </View>
 
-        {/* Menu Items */}
         <View style={styles.menuSection}>
           {menuItems.map((item, index) => (
-            <TouchableOpacity
-              key={index}
-              style={styles.menuItem}
-              onPress={item.onPress}
-            >
+            <TouchableOpacity key={index} style={styles.menuItem} onPress={item.onPress}>
               <View style={styles.menuItemLeft}>
                 <FontAwesome name={item.icon} size={20} color={COLORS.primaryOrangeHex} />
                 <Text style={styles.menuItemText}>{item.title}</Text>
@@ -211,20 +191,16 @@ const ProfileScreen = () => {
           ))}
         </View>
 
-        {/* Sign Out Button */}
         <TouchableOpacity
           style={styles.signOutButton}
-          onPress={handleSignOut}
-          disabled={loading}
+          onPress={user ? handleSignOut : handleLogin}
         >
-          {loading ? (
-            <ActivityIndicator color={COLORS.primaryWhiteHex} />
-          ) : (
-            <>
-              <FontAwesome name="sign-out" size={20} color={COLORS.primaryWhiteHex} />
-              <Text style={styles.signOutText}>Sign Out</Text>
-            </>
-          )}
+          <FontAwesome
+            name={user ? 'sign-out' : 'sign-in'}
+            size={20}
+            color={COLORS.primaryWhiteHex}
+          />
+          <Text style={styles.signOutText}>{user ? 'Sign Out' : 'Login'}</Text>
         </TouchableOpacity>
       </ScrollView>
     </View>
@@ -232,43 +208,22 @@ const ProfileScreen = () => {
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: COLORS.primaryWhiteHex,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: COLORS.primaryWhiteHex,
-  },
-  header: {
-    padding: SPACING.space_24,
-    paddingTop: SPACING.space_36,
-    backgroundColor: COLORS.primaryWhiteHex,
-  },
+  container: { flex: 1, backgroundColor: COLORS.primaryWhiteHex },
+  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  header: { padding: SPACING.space_24, paddingTop: SPACING.space_36 },
   headerTitle: {
     fontFamily: FONTFAMILY.poppins_semibold,
     fontSize: FONTSIZE.size_24,
     color: COLORS.primaryBlackHex,
   },
-  scrollView: {
-    flex: 1,
-  },
+  scrollView: { flex: 1 },
   profileSection: {
     alignItems: 'center',
     padding: SPACING.space_24,
-    backgroundColor: COLORS.primaryWhiteHex,
   },
-  profileImageContainer: {
-    position: 'relative',
-    marginBottom: SPACING.space_16,
-  },
+  profileImageContainer: { position: 'relative', marginBottom: SPACING.space_16 },
   profileImage: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    backgroundColor: COLORS.primaryGreyHex,
+    width: 100, height: 100, borderRadius: 50, backgroundColor: COLORS.primaryGreyHex,
   },
   editImageButton: {
     position: 'absolute',
@@ -325,28 +280,29 @@ const styles = StyleSheet.create({
   menuItemLeft: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: SPACING.space_16,
   },
   menuItemText: {
-    fontFamily: FONTFAMILY.poppins_medium,
+    fontFamily: FONTFAMILY.poppins_regular,
     fontSize: FONTSIZE.size_16,
     color: COLORS.primaryBlackHex,
-    marginLeft: SPACING.space_16,
   },
   signOutButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: COLORS.primaryOrangeHex,
-    margin: SPACING.space_24,
-    padding: SPACING.space_16,
-    borderRadius: BORDERRADIUS.radius_20,
+    paddingVertical: SPACING.space_16,
+    marginHorizontal: SPACING.space_24,
+    borderRadius: BORDERRADIUS.radius_15,
+    marginTop: SPACING.space_24,
     gap: SPACING.space_12,
   },
   signOutText: {
-    fontFamily: FONTFAMILY.poppins_semibold,
+    fontFamily: FONTFAMILY.poppins_medium,
     fontSize: FONTSIZE.size_16,
     color: COLORS.primaryWhiteHex,
   },
 });
 
-export default ProfileScreen; 
+export default ProfileScreen;

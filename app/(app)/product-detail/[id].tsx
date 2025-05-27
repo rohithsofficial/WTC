@@ -20,8 +20,7 @@ import { Product } from '../../../src/types/database';
 import { FontAwesome, MaterialIcons } from '@expo/vector-icons';
 import { useCart } from '../../../src/store/CartContext';
 import { SafeAreaView } from 'react-native-safe-area-context';
-// Assume useFavorites context exists
-// import { useFavorites } from '../../../src/store/FavoritesContext';
+import { useStore } from '../../../src/store/store';
 
 const { width } = Dimensions.get('window');
 
@@ -31,8 +30,7 @@ export default function ProductDetails() {
   const [loading, setLoading] = useState(true);
   const [selectedSize, setSelectedSize] = useState(0);
   const [quantity, setQuantity] = useState(1);
-  // const { favorites, addFavorite, removeFavorite, isFavorite } = useFavorites();
-  const [isFavorite, setIsFavorite] = useState(false); // Replace with useFavorites logic
+  const { addToFavorites, removeFromFavorites, isFavorite } = useStore();
   const { dispatch } = useCart();
   const [showSuccess, setShowSuccess] = useState(false);
 
@@ -42,7 +40,6 @@ export default function ProductDetails() {
         setLoading(true);
         const productData = await getProductById(id as string);
         setProduct(productData);
-        // setIsFavorite(isFavorite(productData.id)); // If using useFavorites
       } catch (error) {
         console.error('Error fetching product:', error);
       } finally {
@@ -68,24 +65,25 @@ export default function ProductDetails() {
     dispatch({ type: 'ADD_TO_CART', payload: cartItem });
     setShowSuccess(true);
     setTimeout(() => setShowSuccess(false), 2000);
-    // Optionally, you can keep the Alert for navigation options
-    // Alert.alert('Success', 'Item added to cart!', [
-    //   { text: 'Continue Shopping', style: 'cancel', onPress: () => router.back() },
-    //   { text: 'View Cart', onPress: () => router.push('/CartScreen') },
-    // ]);
   };
 
   const incrementQuantity = () => setQuantity(prev => prev + 1);
   const decrementQuantity = () => setQuantity(prev => Math.max(1, prev - 1));
 
-  // --- Favourites logic ---
-  const handleToggleFavorite = () => {
-    setIsFavorite(fav => !fav);
-    // if (!isFavorite && product) addFavorite(product);
-    // else if (isFavorite && product) removeFavorite(product.id);
+  const handleToggleFavorite = async () => {
+    if (!product) return;
+    try {
+      if (isFavorite(product.id)) {
+        await removeFromFavorites(product.id);
+      } else {
+        await addToFavorites(product);
+      }
+    } catch (error) {
+      console.error('Error toggling favorite:', error);
+      Alert.alert('Error', 'Failed to update favorites');
+    }
   };
 
-  // --- Share logic ---
   const handleShare = async () => {
     if (!product) return;
     try {
@@ -124,7 +122,6 @@ export default function ProductDetails() {
 
   return (
     <SafeAreaView style={styles.screen} edges={["top"]}>
-      {/* Success Toast */}
       {showSuccess && (
         <View style={styles.successToast}>
           <Text style={styles.successToastText}>Added to cart!</Text>
@@ -155,7 +152,11 @@ export default function ProductDetails() {
             style={styles.favoriteButton}
             onPress={handleToggleFavorite}
           >
-            <FontAwesome name={isFavorite ? 'heart' : 'heart-o'} size={26} color={isFavorite ? '#e53935' : '#222'} />
+            <FontAwesome 
+              name={isFavorite(product.id) ? 'heart' : 'heart-o'} 
+              size={26} 
+              color={isFavorite(product.id) ? '#e53935' : '#222'} 
+            />
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.shareButton}
@@ -228,7 +229,6 @@ export default function ProductDetails() {
           )}
         </View>
       </ScrollView>
-      {/* Sticky Add to Cart Button */}
       <View style={styles.stickyFooter}>
         <TouchableOpacity style={styles.addToCartButton} onPress={handleAddToCart}>
           <Text style={styles.addToCartText}>Add to Cart</Text>
