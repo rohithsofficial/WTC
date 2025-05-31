@@ -13,8 +13,8 @@ export default function RootLayout() {
             <Stack.Screen name="index" options={{ headerShown: false }} />
             <Stack.Screen name="(auth)" options={{ headerShown: false }} />
             <Stack.Screen name="(app)" options={{ headerShown: false }} />
-            <Stack.Screen name="product-detail/[id]" options={{ headerShown: false }} />
-            <Stack.Screen name="product/[category]" options={{ headerShown: false }} />
+            <Stack.Screen name="products/[id]" options={{ headerShown: false }} />
+            <Stack.Screen name="category/[category]" options={{ headerShown: false }} />
           </Stack>
         </CartProvider>
       </GestureHandlerRootView>

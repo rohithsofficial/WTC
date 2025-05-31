@@ -121,7 +121,7 @@ const handleRemoveItem = (id: string, size: string) => {
                       type={item.type || 'coffee'}
                       incrementCartItemQuantityHandler={() => handleIncrementQuantity(item.id, item.size)}
                       decrementCartItemQuantityHandler={() => handleDecrementQuantity(item.id, item.size)}
-                      onImagePress={() => router.push({ pathname: '/(app)/product-detail/[id]', params: { id: item.id } })}
+                      onImagePress={() => router.push({ pathname: '/(app)/products/[id]', params: { id: item.id } })}
                     />
                     <TouchableOpacity style={styles.removeButton} onPress={() => handleRemoveItem(item.id, item.size)}>
                       <FontAwesome name="trash" size={20} color="#e74c3c" />

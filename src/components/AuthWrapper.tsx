@@ -14,7 +14,7 @@ const AuthWrapper: React.FC<AuthWrapperProps> = ({ children }) => {
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged((user) => {
       if (!user) {
-        router.replace('/(auth)/PhoneAuthScreen');
+        router.replace('/(auth)/phone-auth');
       }
       setLoading(false);
     });

@@ -101,7 +101,7 @@ useEffect(() => {
     try {
       setLoading(true);
       await signOut(auth);
-      router.replace('/(auth)/PhoneAuthScreen');
+      router.replace('/(auth)/phone-auth');
     } catch (error) {
       console.error('Error signing out:', error);
       showAlert('Error', 'Failed to sign out', 'error');
@@ -111,7 +111,7 @@ useEffect(() => {
   };
 
   const handleLogin = () => {
-    router.replace('/(auth)/PhoneAuthScreen');
+    router.replace('/(auth)/phone-auth');
   };
 
   const handleEditProfile = () => {

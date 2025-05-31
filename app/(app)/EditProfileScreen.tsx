@@ -37,7 +37,7 @@ const EditProfileScreen = () => {
   useEffect(() => {
     const fetchUserData = async () => {
       if (!user) {
-        router.replace('/(auth)/PhoneAuthScreen');
+        router.replace('/(auth)/phone-auth');
         return;
       }
 

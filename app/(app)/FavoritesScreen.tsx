@@ -66,7 +66,7 @@ const FavoritesScreen = () => {
   const handleProductPress = (item: Product) => {
     // Navigate to product details with proper params
     router.push({
-      pathname: `/product-detail/[id]`,
+      pathname: `/products/[id]`,
       params: { 
         id: item.id,
         index: item.index || 0,

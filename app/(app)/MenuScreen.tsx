@@ -187,7 +187,7 @@ const MenuScreen = () => {
     <TouchableOpacity
       style={styles.productCard}
       onPress={() => router.push({
-        pathname: '/(app)/product-detail/[id]',
+        pathname: '/(app)/products/[id]',
         params: { id: item.id }
       })}
     >
@@ -226,7 +226,7 @@ const MenuScreen = () => {
       key={product.id}
       style={styles.featuredProductCard}
       onPress={() => router.push({
-        pathname: '/(app)/product-detail/[id]',
+        pathname: '/(app)/products/[id]',
         params: { id: product.id }
       })}
     >

@@ -87,7 +87,7 @@ export default function ProductDetails() {
   const handleShare = async () => {
     if (!product) return;
     try {
-      const productLink = `https://yourapp.com/product-detail/${product.id}`;
+      const productLink = `https://yourapp.com/products/${product.id}`;
       await Share.share({
         message: `Check out this product: ${product.name} - ₹${product.prices[selectedSize].toFixed(2)}\n${productLink}`,
         url: productLink,

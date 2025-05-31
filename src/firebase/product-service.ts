@@ -254,10 +254,10 @@ export const fetchActiveBanners = async (): Promise<Banner[]> => {
     
     const banners = querySnapshot.docs.map(doc => {
       const data = doc.data();
-      console.log('Raw banner data from Firestore:', {
-        id: doc.id,
-        data: data
-      });
+      // console.log('Raw banner data from Firestore:', {
+      //   id: doc.id,
+      //   data: data
+      // });
       
       // Create banner object with proper field mapping
       const banner = {
@@ -273,7 +273,7 @@ export const fetchActiveBanners = async (): Promise<Banner[]> => {
         endDate: data.endDate?.toDate?.()?.toISOString() || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
       } as Banner;
 
-      console.log('Processed banner:', banner);
+      // console.log('Processed banner:', banner);
       return banner;
     });
 
@@ -282,19 +282,19 @@ export const fetchActiveBanners = async (): Promise<Banner[]> => {
 
     const filteredBanners = banners.filter(banner => {
       const isActive = banner.startDate <= now && banner.endDate >= now;
-      console.log('Banner date check:', {
-        id: banner.id,
-        startDate: banner.startDate,
-        endDate: banner.endDate,
-        isActive,
-        imageUrl: banner.imageUrl,
-        actionUrl: banner.actionUrl
-      });
+      // console.log('Banner date check:', {
+      //   id: banner.id,
+      //   startDate: banner.startDate,
+      //   endDate: banner.endDate,
+      //   isActive,
+      //   imageUrl: banner.imageUrl,
+      //   actionUrl: banner.actionUrl
+      // });
       return isActive;
     });
 
     const sortedBanners = filteredBanners.sort((a, b) => a.displayOrder - b.displayOrder);
-    console.log('Final banners to display:', sortedBanners);
+    // console.log('Final banners to display:', sortedBanners);
 
     return sortedBanners;
   } catch (error) {
@@ -311,43 +311,15 @@ export const fetchMenuOptions = async (): Promise<{
   type: string;
 }[]> => {
   try {
-    const menuOptionsRef = collection(db, 'menuOptions');
-    const q = query(menuOptionsRef, orderBy('displayOrder', 'asc'));
+    const categoriesRef = collection(db, 'categories');
+    const q = query(categoriesRef, orderBy('createdAt', 'desc'));
     const querySnapshot = await getDocs(q);
     
-    if (querySnapshot.empty) {
-      // If no menu options found, return default options
-      return [
-        {
-          id: 'breakfast',
-          name: 'Breakfast',
-          imageUrl: 'https://images.unsplash.com/photo-1533089860892-a7c6f0a88666?w=800&q=80',
-          type: 'breakfast'
-        },
-        {
-          id: 'lunch',
-          name: 'Lunch',
-          imageUrl: 'https://images.unsplash.com/photo-1544025162-d76694265947?w=800&q=80',
-          type: 'lunch'
-        },
-        {
-          id: 'dinner',
-          name: 'Dinner',
-          imageUrl: 'https://images.unsplash.com/photo-1414235077428-338989a2e8c0?w=800&q=80',
-          type: 'dinner'
-        },
-        {
-          id: 'desserts',
-          name: 'Desserts',
-          imageUrl: 'https://images.unsplash.com/photo-1551024506-0bccd828d307?w=800&q=80',
-          type: 'desserts'
-        }
-      ];
-    }
-
     return querySnapshot.docs.map(doc => ({
       id: doc.id,
-      ...doc.data()
+      name: doc.data().name,
+      imageUrl: doc.data().image || '',
+      type: doc.data().type || 'default'
     }));
   } catch (error) {
     console.error('Error fetching menu options:', error);

@@ -14,15 +14,14 @@ import {
 import { Stack, router } from 'expo-router';
 import { FontAwesome } from '@expo/vector-icons';
 import { COLORS, FONTFAMILY, FONTSIZE, SPACING, BORDERRADIUS } from '../../src/theme/theme';
-import { auth } from '../../src/firebase/config';
+import { auth, firebaseConfig } from '../../src/firebase/firebase-config';
 import { PhoneAuthProvider, signInWithCredential, updateProfile } from 'firebase/auth';
 import { FirebaseRecaptchaVerifierModal } from 'expo-firebase-recaptcha';
-import Constants from 'expo-constants';
 import { collection, query, where, getDocs, doc, setDoc } from 'firebase/firestore';
-import { db } from '../../src/firebase/config';
+import { db } from '../../src/firebase/firebase-config';
 import StyledAlert from '../../src/components/StyledAlert';
 
-export const PhoneAuthScreen = () => {
+export default function PhoneAuth() {
   const [phoneNumber, setPhoneNumber] = useState('');
   const [verificationCode, setVerificationCode] = useState('');
   const [verificationId, setVerificationId] = useState('');
@@ -231,7 +230,7 @@ export const PhoneAuthScreen = () => {
 
       <FirebaseRecaptchaVerifierModal
         ref={recaptchaVerifier}
-        firebaseConfig={Constants.expoConfig?.web?.config?.firebase}
+        firebaseConfig={firebaseConfig}
         attemptInvisibleVerification={true}
         title="Verify your phone number"
         cancelLabel="Cancel"
@@ -334,7 +333,7 @@ export const PhoneAuthScreen = () => {
 
           <View style={styles.loginContainer}>
             <Text style={styles.loginText}>Or login with email? </Text>
-            <TouchableOpacity onPress={() => router.push('/(auth)/LoginScreen')}>
+            <TouchableOpacity onPress={() => router.push('/(auth)/login')}>
               <Text style={styles.loginLink}>Login</Text>
             </TouchableOpacity>
           </View>
@@ -342,7 +341,7 @@ export const PhoneAuthScreen = () => {
       </ScrollView>
     </KeyboardAvoidingView>
   );
-};
+}
 
 const styles = StyleSheet.create({
   container: {
@@ -463,4 +462,3 @@ const styles = StyleSheet.create({
   },
 });
 
-export default PhoneAuthScreen;

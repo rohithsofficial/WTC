@@ -172,7 +172,7 @@ const HomeScreen = () => {
   }, []);
 
   useEffect(() => {
-    console.log("All products loaded:", allProducts);
+    // console.log("All products loaded:", allProducts);
   }, [allProducts]);
 
   // Rotate through top banners
@@ -218,7 +218,7 @@ const HomeScreen = () => {
       console.log("Starting to load banners...");
       setIsLoadingBanners(true);
       const activeBanners = await fetchActiveBanners();
-      console.log("Banners loaded:", activeBanners);
+      // console.log("Banners loaded:", activeBanners);
       setBanners(activeBanners);
     } catch (error) {
       console.error("Error loading banners:", error);
@@ -297,7 +297,7 @@ const HomeScreen = () => {
   // Handle search result press
   const handleSearchResultPress = (product: Product) => {
     router.push({
-      pathname: "/product-detail/[id]",
+      pathname: "/products/[id]",
       params: { id: product.id },
     });
     setSearchText("");
@@ -316,14 +316,14 @@ const HomeScreen = () => {
 
   // Handle category selection
   const handleCategoryPress = (category: Category) => {
-    console.log("Navigating to category:", {
-      id: category.id,
-      name: category.name,
-      path: "/(app)/product/[category]",
-    });
+    // console.log("Navigating to category:", {
+    //   id: category.id,
+    //   name: category.name,
+    //   path: "/(app)/category/[category]",
+    // });
     try {
       router.push({
-        pathname: "/(app)/product/[category]",
+        pathname: "/(app)/category/[category]",
         params: { category: category.id },
       });
     } catch (error) {
@@ -634,14 +634,14 @@ const HomeScreen = () => {
             renderItem={({ item }) => (
               <TouchableOpacity
                 onPress={() => {
-                  console.log("Navigating to product:", {
-                    id: item.id,
-                    name: item.name,
-                    path: "/(app)/product-detail/[id]",
-                  });
+                  // console.log("Navigating to product:", {
+                  //   id: item.id,
+                  //   name: item.name,
+                  //   path: "/(app)/products/[id]",
+                  // });
                   try {
                     router.push({
-                      pathname: "/(app)/product-detail/[id]",
+                      pathname: "/(app)/products/[id]",
                       params: { id: item.id },
                     });
                   } catch (error) {

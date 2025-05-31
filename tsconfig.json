@@ -4,7 +4,7 @@
     "module": "ESNext",
     "jsx": "react-native",
     "strict": true,
-    "moduleResolution": "node",
+    "moduleResolution": "bundler",
     "allowJs": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
@@ -14,8 +14,9 @@
   "include": [
     "**/*.ts",
     "**/*.tsx",
-    "src/firebase/config.js"
-, "app/styles.js"  ],
+    "src/firebase/config.js",
+    "app/styles.js"
+  ],
   "exclude": [
     "node_modules"
   ],

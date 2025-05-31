@@ -40,7 +40,7 @@ const SearchScreen = () => {
 
   const handleProductPress = (product: Product) => {
     router.push({
-      pathname: '/product-detail/[id]',
+      pathname: '/products/[id]',
       params: { id: product.id }
     });
   };

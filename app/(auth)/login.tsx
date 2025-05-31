@@ -209,7 +209,7 @@ const Login = () => {
 
           <TouchableOpacity
             style={styles.phoneLoginButton}
-            onPress={() => router.push('/(auth)/PhoneAuthScreen')}
+            onPress={() => router.push('/(auth)/phone-auth')}
           >
             <FontAwesome
               name="phone"

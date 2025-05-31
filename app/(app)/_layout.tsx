@@ -73,18 +73,16 @@ const AppLayout = () => {
 
       {/* Hidden Screens */}
       <Tabs.Screen name="styles" options={{ href: null }} />
-      <Tabs.Screen name="PaymentScreen" options={{ href: null }} />
       <Tabs.Screen name="ProductsScreen" options={{ href: null }} />
       <Tabs.Screen name="OrderStatusScreen" options={{ href: null }} />
       <Tabs.Screen name="FavoritesScreen" options={{ href: null }} />
       <Tabs.Screen name="SearchScreen" options={{ href: null }} />
-      <Tabs.Screen name="product-detail/[id]" options={{ href: null }} />
-      <Tabs.Screen name="product/[category]" options={{ href: null }} />
+      <Tabs.Screen name="products/[id]" options={{ href: null }} />
+      <Tabs.Screen name="category/[category]" options={{ href: null }} />
       <Tabs.Screen name="AddressScreen" options={{ href: null }} />
       <Tabs.Screen name="SupportScreen" options={{ href: null }} />
       <Tabs.Screen name="NotificationSettings" options={{ href: null }} />
       <Tabs.Screen name="EditProfileScreen" options={{ href: null }} />
-      <Tabs.Screen name="Profile" options={{ href: null }} />
     </Tabs>
   );
 };
