@@ -14,7 +14,7 @@
   "include": [
     "**/*.ts",
     "**/*.tsx",
-    "src/firebase/config.js",
+    "src/firebase/config.ts",
     "app/styles.js"
   ],
   "exclude": [

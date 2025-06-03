@@ -119,12 +119,14 @@ useEffect(() => {
   };
 
   const menuItems = [
-    { title: 'My Orders', icon: 'shopping-bag', onPress: () => router.push('/(app)/OrderScreen') },
-    { title: 'Payment Methods', icon: 'credit-card', onPress: () => router.push('/(app)/PaymentScreen') },
-    { title: 'Favorites', icon: 'heart', onPress: () => router.push('/(app)/FavoritesScreen') },
-    { title: 'Addresses', icon: 'map-marker', onPress: () => router.push('/(app)/AddressScreen') },
-    { title: 'Notifications', icon: 'bell', onPress: () => router.push('/(app)/NotificationSettings') },
-    { title: 'Help & Support', icon: 'question-circle', onPress: () => router.push('/(app)/SupportScreen') }, 
+    { title: 'My Orders', icon: 'shopping-bag' as const, onPress: () => router.push('/(app)/OrderScreen') },
+    { title: 'Payment Methods', icon: 'credit-card' as const, onPress: () => router.push('/(app)/PaymentScreen') },
+    { title: 'Favorites', icon: 'heart' as const, onPress: () => router.push('/(app)/FavoritesScreen') },
+    { title: 'Addresses', icon: 'map-marker' as const, onPress: () => router.push('/(app)/AddressScreen') },
+    { title: 'Notifications Setting', icon: 'bell' as const, onPress: () => router.push('/(app)/NotificationSettings') },
+    { title: 'Notifications', icon: 'bell' as const, onPress: () => router.push('/(app)/NotificationScreen') },
+    { title: 'Explore Cafe', icon: 'coffee' as const, onPress: () => router.push('/(app)/explore') },
+    { title: 'Help & Support', icon: 'question-circle' as const, onPress: () => router.push('/(app)/SupportScreen') }, 
   ];
 
   if (loading) {

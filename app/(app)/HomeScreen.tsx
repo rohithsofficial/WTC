@@ -14,8 +14,6 @@ import {
   Linking,
   ImageBackground,
   Animated,
-  SafeAreaView,
-  Platform,
 } from "react-native";
 import { useStore } from "../../src/store/store";
 import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
@@ -36,6 +34,7 @@ import {
   CartItem,
   Category,
   Banner,
+  Offer,
 } from "../../src/types/interfaces";
 import {
   searchProducts,
@@ -50,21 +49,13 @@ import {
   Feather,
   FontAwesome5,
 } from "@expo/vector-icons";
-import MapView, { Marker, PROVIDER_GOOGLE, Region } from "react-native-maps";
 import { LinearGradient } from "expo-linear-gradient";
-
-// Add type definition for store location
-interface StoreLocation {
-  id: string;
-  name: string;
-  address: string;
-  coordinates: {
-    latitude: number;
-    longitude: number;
-  };
-  phone: string;
-  hours: string;
-}
+import { fetchActiveOffers } from "../../src/firebase/offer-service";
+import {
+  getUnreadNotificationCount,
+  subscribeToNotifications,
+} from "../../src/firebase/notification-service";
+import { useAuth } from "../../src/context/AuthContext";
 
 // Add type definition for footer special offer
 interface FooterOffer {
@@ -78,13 +69,14 @@ interface FooterOffer {
 
 const quickActions = [
   { label: "Menu", icon: "restaurant-menu" as const, sub: "Explore" },
-  { label: "Coffee", icon: "coffee" as const, sub: "Beans" },
+  { label: "Coffee", icon: "grain" as const, sub: "Beans" },
   { label: "Offers", icon: "local-offer" as const, sub: "2 New", badge: true },
   { label: "Cafes", icon: "storefront" as const, sub: "Explore" },
 ];
 
 const HomeScreen = () => {
   const router = useRouter();
+  const { user } = useAuth();
 
   // Access store state and actions
   const {
@@ -107,21 +99,14 @@ const HomeScreen = () => {
   const [isLoadingBanners, setIsLoadingBanners] = useState(true);
   const [isLoadingCategories, setIsLoadingCategories] = useState(true);
   const [showStorePicker, setShowStorePicker] = useState(false);
-  const [showMap, setShowMap] = useState(false);
-  const [selectedStoreLocation, setSelectedStoreLocation] =
-    useState<StoreLocation | null>(null);
-  const [mapRegion, setMapRegion] = useState<Region>({
-    latitude: 12.3810688,
-    longitude: 76.0332978,
-    latitudeDelta: 0.0922,
-    longitudeDelta: 0.0421,
-  });
-  const [searchQuery, setSearchQuery] = useState("");
   const [currentTopBannerIndex, setCurrentTopBannerIndex] = useState(0);
   const [footerOffers, setFooterOffers] = useState<FooterOffer[]>([]);
   const [showSearchBar, setShowSearchBar] = useState(false);
   const [bannerIndex, setBannerIndex] = useState(0);
   const fadeAnim = useRef(new Animated.Value(1)).current;
+  const [offers, setOffers] = useState<Offer[]>([]);
+  const [visitedOffers, setVisitedOffers] = useState<string[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
 
   // Store options with icons
   const storeOptions = [
@@ -140,22 +125,6 @@ const HomeScreen = () => {
     },
   ];
 
-  // Store locations with coordinates
-  const storeLocations = [
-    {
-      id: "main",
-      name: "Western Terrain Coffee Roasters | Kundanahalli",
-      address:
-        "Madikeri, SH 88 Piriyapatna - Kushalnagar, Road, Kundanahalli, Karnataka 571107",
-      coordinates: {
-        latitude: 12.3810688,
-        longitude: 76.0332978,
-      },
-      phone: "+1 234 567 8900",
-      hours: "Mon-Sun: 7:00 AM - 10:00 PM",
-    },
-  ];
-
   // Refs
   const ListRef = useRef<FlatList<Product>>(null);
 
@@ -169,6 +138,7 @@ const HomeScreen = () => {
     loadBanners();
     loadCategories();
     loadFooterOffers();
+    loadOffers();
   }, []);
 
   useEffect(() => {
@@ -212,13 +182,23 @@ const HomeScreen = () => {
     }
   }, [fadeAnim, banners]);
 
+  useEffect(() => {
+    // Set up real-time notification listener
+    const unsubscribe = subscribeToNotifications(user?.uid, (count) => {
+      setUnreadCount(count);
+    });
+
+    // Cleanup subscription on unmount
+    return () => unsubscribe();
+  }, [user?.uid]);
+
   // Load banners
   const loadBanners = async () => {
     try {
       console.log("Starting to load banners...");
       setIsLoadingBanners(true);
       const activeBanners = await fetchActiveBanners();
-      // console.log("Banners loaded:", activeBanners);
+      console.log("Banners loaded:", activeBanners);
       setBanners(activeBanners);
     } catch (error) {
       console.error("Error loading banners:", error);
@@ -275,6 +255,17 @@ const HomeScreen = () => {
     setFooterOffers(mockFooterOffers);
   };
 
+  // Load offers from Firebase
+  const loadOffers = async () => {
+    try {
+      const activeOffers = await fetchActiveOffers();
+      setOffers(activeOffers);
+    } catch (error) {
+      console.error("Error loading offers:", error);
+      ToastAndroid.show("Failed to load offers", ToastAndroid.SHORT);
+    }
+  };
+
   // Handle search
   const handleSearch = async (search: string) => {
     setSearchText(search);
@@ -307,7 +298,17 @@ const HomeScreen = () => {
   // Handle banner action
   const handleBannerAction = async (actionUrl: string) => {
     try {
-      await Linking.openURL(actionUrl);
+      // Ensure URL has proper format
+      const formattedUrl = actionUrl.startsWith("http")
+        ? actionUrl
+        : `https://${actionUrl}`;
+      const canOpen = await Linking.canOpenURL(formattedUrl);
+
+      if (canOpen) {
+        await Linking.openURL(formattedUrl);
+      } else {
+        ToastAndroid.show("Cannot open this link", ToastAndroid.SHORT);
+      }
     } catch (error) {
       console.error("Error opening URL:", error);
       ToastAndroid.show("Could not open the link", ToastAndroid.SHORT);
@@ -316,11 +317,11 @@ const HomeScreen = () => {
 
   // Handle category selection
   const handleCategoryPress = (category: Category) => {
-    // console.log("Navigating to category:", {
-    //   id: category.id,
-    //   name: category.name,
-    //   path: "/(app)/category/[category]",
-    // });
+    console.log("Navigating to category:", {
+      id: category.id,
+      name: category.name,
+      path: "/(app)/category/[category]",
+    });
     try {
       router.push({
         pathname: "/(app)/category/[category]",
@@ -353,12 +354,33 @@ const HomeScreen = () => {
   // Handle footer offer press
   const handleFooterOfferPress = (offer: FooterOffer) => {
     try {
-      Linking.openURL(offer.actionUrl);
+      // Ensure URL has proper format
+      const formattedUrl = offer.actionUrl.startsWith("http")
+        ? offer.actionUrl
+        : `https://${offer.actionUrl}`;
+      Linking.canOpenURL(formattedUrl).then((canOpen) => {
+        if (canOpen) {
+          Linking.openURL(formattedUrl);
+        } else {
+          ToastAndroid.show("Cannot open this link", ToastAndroid.SHORT);
+        }
+      });
     } catch (error) {
       console.error("Error opening URL:", error);
       ToastAndroid.show("Could not open the link", ToastAndroid.SHORT);
     }
   };
+
+  // Handle offer press
+  const handleOfferPress = (offerId: string) => {
+    setVisitedOffers((prev) => [...prev, offerId]);
+    router.push("/OffersScreen");
+  };
+
+  // Filter active and unvisited offers
+  const activeUnvisitedOffers = offers.filter(
+    (offer) => offer.isActive && !visitedOffers.includes(offer.id)
+  );
 
   // Loading view
   if (isLoading) {
@@ -390,8 +412,8 @@ const HomeScreen = () => {
     banners.length > 0 ? banners[currentTopBannerIndex] : null;
 
   return (
-    <SafeAreaView style={styles.screenContainer}>
-      <StatusBar backgroundColor={COLORS.primaryWhiteHex} barStyle="dark-content" />
+    <View style={styles.screenContainer}>
+      <StatusBar backgroundColor={COLORS.primaryBlackHex} />
 
       {/* Top Bar */}
       <View style={styles.topBar}>
@@ -429,23 +451,22 @@ const HomeScreen = () => {
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.iconButton}
-            onPress={() => router.push("/notifications")}
+            onPress={() => router.push("/NotificationScreen")}
           >
-            <MaterialIcons
-              name="notifications"
-              size={24}
-              color={COLORS.primaryBlackHex}
-            />
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.iconButton}
-            onPress={() => router.push("/FavoritesScreen")}
-          >
-            <MaterialIcons
-              name="favorite-border"
-              size={24}
-              color={COLORS.primaryBlackHex}
-            />
+            <View style={styles.notificationIconContainer}>
+              <MaterialIcons
+                name="notifications"
+                size={24}
+                color={COLORS.primaryBlackHex}
+              />
+              {unreadCount > 0 && (
+                <View style={styles.notificationBadge}>
+                  <Text style={styles.notificationBadgeText}>
+                    {unreadCount > 99 ? "99+" : unreadCount}
+                  </Text>
+                </View>
+              )}
+            </View>
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.iconButton}
@@ -460,6 +481,63 @@ const HomeScreen = () => {
         </View>
       </View>
 
+      {/* Search Bar Overlay */}
+      {showSearchBar && (
+        <View style={styles.searchBarOverlay}>
+          <View style={styles.searchBarContainer}>
+            <View style={styles.searchBarWrapper}>
+              <MaterialIcons
+                name="search"
+                size={24}
+                color={COLORS.primaryDarkGreyHex}
+              />
+              <TextInput
+                style={styles.searchInputField}
+                placeholder="Search for coffee..."
+                value={searchText}
+                onChangeText={handleSearch}
+                placeholderTextColor={COLORS.primaryDarkGreyHex}
+                autoFocus={true}
+              />
+            </View>
+            <TouchableOpacity
+              style={styles.closeSearchButton}
+              onPress={() => {
+                setShowSearchBar(false);
+                setSearchText("");
+                setSearchResults([]);
+              }}
+            >
+              <MaterialIcons
+                name="close"
+                size={24}
+                color={COLORS.primaryBlackHex}
+              />
+            </TouchableOpacity>
+          </View>
+
+          {/* Search Results */}
+          {searchResults.length > 0 && (
+            <View style={styles.searchResultsContainer}>
+              {searchResults.map((product) => (
+                <TouchableOpacity
+                  key={product.id}
+                  style={styles.searchResultItem}
+                  onPress={() => handleSearchResultPress(product)}
+                >
+                  <View style={styles.searchResultInfo}>
+                    <Text style={styles.searchResultName}>{product.name}</Text>
+                    <Text style={styles.searchResultPrice}>
+                      ₹{product.prices[0]}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+        </View>
+      )}
+
       {/* Banner and Quick Actions */}
       <View style={styles.bannerWrap}>
         <Animated.View style={{ opacity: fadeAnim }}>
@@ -471,13 +549,13 @@ const HomeScreen = () => {
         </Animated.View>
         <View style={styles.bannerOverlay} />
         <View style={styles.bannerContent}>
+          <Text style={styles.bannerSectionTitle}>Featured Collection</Text>
           <Text style={styles.bannerTitle}>Welcome Back!</Text>
           <Text style={styles.bannerSubtitle}>
             Discover our latest coffee and treats
           </Text>
         </View>
 
-        {/* Quick Actions Overlap */}
         <View style={styles.quickActionsRowOverlap}>
           {quickActions.map((action) => (
             <TouchableOpacity
@@ -487,7 +565,11 @@ const HomeScreen = () => {
                 if (action.label === "Menu") {
                   router.push("/MenuScreen");
                 } else if (action.label === "Coffee") {
-                  router.push("");
+                  router.push("/HomeScreen1");
+                } else if (action.label === "Offers") {
+                  router.push("/OffersScreen");
+                } else if (action.label === "Cafes") {
+                  router.push("/explore");
                 }
               }}
             >
@@ -499,10 +581,12 @@ const HomeScreen = () => {
                 />
                 {action.badge && (
                   <View style={styles.badge}>
-                    <Text style={styles.badgeText}>!</Text>
+                    <Text style={styles.badgeText}></Text>
                   </View>
                 )}
               </View>
+              <Text style={styles.quickActionLabel}>{action.label}</Text>
+              <Text style={styles.quickActionSub}>{action.sub}</Text>
             </TouchableOpacity>
           ))}
         </View>
@@ -510,7 +594,10 @@ const HomeScreen = () => {
 
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scrollViewContent}
+        contentContainerStyle={[
+          styles.scrollViewContent,
+          { paddingTop: 100 }, // Add padding to start after quick actions
+        ]}
       >
         {/* Dynamic Hero Section */}
         {currentBanner ? (
@@ -617,6 +704,46 @@ const HomeScreen = () => {
             ))}
           </ScrollView>
         </View>
+        {/* Additional Offers Section */}
+        {activeUnvisitedOffers.length > 0 && (
+          <View style={styles.additionalOffersContainer}>
+            <FlatList
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              data={activeUnvisitedOffers}
+              keyExtractor={(item) => item.id}
+              contentContainerStyle={styles.offersScrollContent}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  onPress={() => router.push("/OffersScreen")}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.offerCard}>
+                    <LinearGradient
+                      colors={item.gradientColors}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 1 }}
+                      style={styles.offerGradient}
+                    >
+                      <View style={styles.offerContent}>
+                        <View style={styles.offerTextContainer}>
+                          <Text style={styles.offerTitle}>{item.title}</Text>
+                        </View>
+                        <View style={styles.offerIconContainer}>
+                          <MaterialIcons
+                            name="card-giftcard"
+                            size={24}
+                            color={COLORS.primaryOrangeHex}
+                          />
+                        </View>
+                      </View>
+                    </LinearGradient>
+                  </View>
+                </TouchableOpacity>
+              )}
+            />
+          </View>
+        )}
 
         {/* Featured Products */}
         <View style={styles.featuredContainer}>
@@ -634,11 +761,11 @@ const HomeScreen = () => {
             renderItem={({ item }) => (
               <TouchableOpacity
                 onPress={() => {
-                  // console.log("Navigating to product:", {
-                  //   id: item.id,
-                  //   name: item.name,
-                  //   path: "/(app)/products/[id]",
-                  // });
+                  console.log("Navigating to product:", {
+                    id: item.id,
+                    name: item.name,
+                    path: "/(app)/products/[id]",
+                  });
                   try {
                     router.push({
                       pathname: "/(app)/products/[id]",
@@ -670,151 +797,66 @@ const HomeScreen = () => {
             )}
           />
         </View>
-        {/* Special Offers
-        <View style={styles.offersContainer}>
-          <Text style={styles.sectionTitle}>Special Offers</Text>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.offersScrollContent}
-          >
-            {banners.map((offer, index) => (
-              <TouchableOpacity
-                key={index}
-                style={styles.offerCard}
-                onPress={() => handleBannerAction(offer.actionUrl)}
-              >
-                <LinearGradient
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  colors={[COLORS.primaryGreyHex, COLORS.primaryBlackHex]}
-                  style={styles.offerGradient}
-                >
-                  <Image
-                    source={{ uri: offer.imageUrl }}
-                    style={styles.offerImage}
-                  />
-                  <View style={styles.offerInfo}>
-                    <Text style={styles.offerTitle}>{offer.title}</Text>
-                    <Text style={styles.offerDescription}>{offer.subtitle}</Text>
-                  </View>
-                </LinearGradient>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-        </View> */}
 
-        {/* Store Locator Section */}
-        <View style={styles.storeLocatorContainer}>
-          <Text style={styles.sectionTitle}>Find a Store</Text>
-
-          {/* Search Bar */}
-          <View style={styles.mapSearchContainer}>
-            <TextInput
-              style={styles.mapSearchInput}
-              placeholder="Search location..."
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-              placeholderTextColor={COLORS.primaryDarkGreyHex}
-            />
+        {/* Coffee Categories */}
+        <View style={styles.coffeeCategoriesContainer}>
+          <Text style={styles.sectionTitle}>Coffee Beans Categories</Text>
+          <View style={styles.coffeeCategoriesGrid}>
             <TouchableOpacity
-              style={styles.mapSearchButton}
-              onPress={() => {
-                ToastAndroid.show(
-                  "Search functionality coming soon!",
-                  ToastAndroid.SHORT
-                );
-              }}
+              style={styles.coffeeCategoryItem}
+              onPress={() => router.push("/HomeScreen1")}
             >
-              <MaterialIcons
-                name="search"
-                size={24}
-                color={COLORS.primaryOrangeHex}
-              />
+              <View style={styles.coffeeCategoryIcon}>
+                <MaterialIcons
+                  name="grain"
+                  size={32}
+                  color={COLORS.primaryOrangeHex}
+                />
+              </View>
+              <Text style={styles.coffeeCategoryText}>Coffee Beans</Text>
             </TouchableOpacity>
-          </View>
 
-          {/* Map View */}
-          <View style={styles.mapContainer}>
-            <MapView
-              provider={PROVIDER_GOOGLE}
-              style={styles.map}
-              region={mapRegion}
-              onRegionChangeComplete={setMapRegion}
-              showsUserLocation={true}
-              showsMyLocationButton={true}
-              showsCompass={true}
-              showsScale={true}
-              zoomEnabled={true}
-              scrollEnabled={true}
-              rotateEnabled={true}
+            <TouchableOpacity
+              style={styles.coffeeCategoryItem}
+              onPress={() => router.push("/HomeScreen1")}
             >
-              {storeLocations.map((store) => (
-                <Marker
-                  key={store.id}
-                  coordinate={store.coordinates}
-                  title={store.name}
-                  description={store.address}
-                  onPress={() => setSelectedStoreLocation(store)}
-                >
-                  <View style={styles.markerContainer}>
-                    <MaterialIcons
-                      name="store"
-                      size={24}
-                      color={COLORS.primaryOrangeHex}
-                    />
-                  </View>
-                </Marker>
-              ))}
-            </MapView>
-          </View>
+              <View style={styles.coffeeCategoryIcon}>
+                <MaterialIcons
+                  name="filter-alt"
+                  size={32}
+                  color={COLORS.primaryOrangeHex}
+                />
+              </View>
+              <Text style={styles.coffeeCategoryText}>Filter Coffee</Text>
+            </TouchableOpacity>
 
-          {/* Store List */}
-          <View style={styles.storeListContainer}>
-            {storeLocations.map((store) => (
-              <TouchableOpacity
-                key={store.id}
-                style={[
-                  styles.storeCard,
-                  selectedStoreLocation?.id === store.id &&
-                    styles.selectedStoreCard,
-                ]}
-                onPress={() => {
-                  setSelectedStoreLocation(store);
-                  setMapRegion({
-                    ...mapRegion,
-                    latitude: store.coordinates.latitude,
-                    longitude: store.coordinates.longitude,
-                  });
-                }}
-              >
-                <View style={styles.storeCardContent}>
-                  <MaterialIcons
-                    name="store"
-                    size={24}
-                    color={COLORS.primaryOrangeHex}
-                  />
-                  <View style={styles.storeCardInfo}>
-                    <Text style={styles.storeCardName}>{store.name}</Text>
-                    <Text style={styles.storeCardAddress}>{store.address}</Text>
-                    <Text style={styles.storeCardHours}>{store.hours}</Text>
-                  </View>
-                  <TouchableOpacity
-                    style={styles.directionsButton}
-                    onPress={() => {
-                      const url = `https://www.google.com/maps/dir/?api=1&destination=${store.coordinates.latitude},${store.coordinates.longitude}`;
-                      Linking.openURL(url);
-                    }}
-                  >
-                    <Ionicons
-                      name="navigate"
-                      size={24}
-                      color={COLORS.primaryOrangeHex}
-                    />
-                  </TouchableOpacity>
-                </View>
-              </TouchableOpacity>
-            ))}
+            <TouchableOpacity
+              style={styles.coffeeCategoryItem}
+              onPress={() => router.push("/HomeScreen1")}
+            >
+              <View style={styles.coffeeCategoryIcon}>
+                <MaterialIcons
+                  name="coffee"
+                  size={32}
+                  color={COLORS.primaryOrangeHex}
+                />
+              </View>
+              <Text style={styles.coffeeCategoryText}>Instant Coffee</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.coffeeCategoryItem}
+              onPress={() => router.push("/HomeScreen1")}
+            >
+              <View style={styles.coffeeCategoryIcon}>
+                <MaterialIcons
+                  name="local-cafe"
+                  size={32}
+                  color={COLORS.primaryOrangeHex}
+                />
+              </View>
+              <Text style={styles.coffeeCategoryText}>Tea</Text>
+            </TouchableOpacity>
           </View>
         </View>
 
@@ -843,7 +885,7 @@ const HomeScreen = () => {
           </View>
         </View>
       </ScrollView>
-    </SafeAreaView>
+    </View>
   );
 };
 
@@ -851,7 +893,6 @@ const styles = StyleSheet.create({
   screenContainer: {
     flex: 1,
     backgroundColor: COLORS.primaryWhiteHex,
-    paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0,
   },
   topBar: {
     flexDirection: "row",
@@ -883,27 +924,9 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "flex-end",
-  },
-  searchBar: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: COLORS.primaryLightGreyHex,
-    borderRadius: BORDERRADIUS.radius_20,
-    paddingHorizontal: SPACING.space_12,
-    paddingVertical: SPACING.space_8,
-    marginRight: SPACING.space_8,
-  },
-  searchInput: {
-    flex: 1,
-    fontFamily: FONTFAMILY.poppins_regular,
-    fontSize: FONTSIZE.size_12,
-    color: COLORS.primaryBlackHex,
-    marginLeft: SPACING.space_4,
-    padding: 0,
+    gap: SPACING.space_8,
   },
   iconButton: {
-    marginLeft: SPACING.space_8,
     padding: SPACING.space_4,
   },
   scrollViewContent: {
@@ -917,6 +940,8 @@ const styles = StyleSheet.create({
     borderRadius: BORDERRADIUS.radius_20,
     overflow: "hidden",
     backgroundColor: COLORS.primaryWhiteHex,
+    top: -100,
+    marginBottom: -90,
   },
   heroGradient: {
     flex: 1,
@@ -1003,11 +1028,13 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: COLORS.primaryLightGreyHex,
+    backgroundColor: COLORS.primaryWhiteHex,
     borderRadius: BORDERRADIUS.radius_20,
     paddingHorizontal: SPACING.space_16,
     paddingVertical: SPACING.space_12,
     marginRight: SPACING.space_8,
+    borderWidth: 1,
+    borderColor: COLORS.primaryLightGreyHex,
   },
   searchInputField: {
     flex: 1,
@@ -1117,40 +1144,57 @@ const styles = StyleSheet.create({
   },
   offersContainer: {
     marginTop: SPACING.space_24,
+    paddingHorizontal: SPACING.space_24,
   },
   offersScrollContent: {
-    paddingHorizontal: SPACING.space_24,
+    paddingVertical: SPACING.space_16,
   },
   offerCard: {
     width: 280,
-    height: 160,
+    height: 70,
     marginRight: SPACING.space_20,
     borderRadius: BORDERRADIUS.radius_20,
     overflow: "hidden",
+    elevation: 2,
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 1,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
   },
   offerGradient: {
     flex: 1,
     padding: SPACING.space_16,
+    justifyContent: "center",
   },
-  offerImage: {
-    width: "100%",
-    height: 100,
-    borderRadius: BORDERRADIUS.radius_15,
-    marginBottom: SPACING.space_12,
+  offerContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
   },
-  offerInfo: {
+  offerTextContainer: {
     flex: 1,
+  },
+  offerIconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: COLORS.primaryWhiteHex,
+    justifyContent: "center",
+    alignItems: "center",
+    marginLeft: SPACING.space_12,
   },
   offerTitle: {
     fontFamily: FONTFAMILY.poppins_semibold,
     fontSize: FONTSIZE.size_16,
-    color: COLORS.primaryWhiteHex,
-    marginBottom: SPACING.space_4,
+    color: COLORS.primaryBlackHex,
   },
   offerDescription: {
     fontFamily: FONTFAMILY.poppins_regular,
     fontSize: FONTSIZE.size_12,
-    color: COLORS.primaryLightGreyHex,
+    color: COLORS.primaryBlackHex,
   },
   loadingContainer: {
     flex: 1,
@@ -1188,55 +1232,142 @@ const styles = StyleSheet.create({
     fontSize: FONTSIZE.size_16,
     color: COLORS.primaryWhiteHex,
   },
-  storeLocatorContainer: {
-    marginVertical: SPACING.space_20,
+  bannerWrap: {
+    position: "relative",
+    marginBottom: 64,
+    zIndex: 1,
   },
-  mapSearchContainer: {
-    flexDirection: "row",
-    marginHorizontal: SPACING.space_20,
-    marginBottom: SPACING.space_15,
-    backgroundColor: COLORS.primaryWhiteHex,
-    borderRadius: BORDERRADIUS.radius_10,
-    padding: SPACING.space_10,
-    shadowColor: "#000",
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 3.84,
-    elevation: 5,
+  banner: {
+    height: 190,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: COLORS.primaryLightGreyHex,
   },
-  mapSearchInput: {
-    flex: 1,
+  bannerOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0,0,0,0.35)",
+    zIndex: 1,
+  },
+  bannerContent: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: "center",
+    padding: SPACING.space_16,
+    zIndex: 2,
+  },
+  bannerSectionTitle: {
+    fontFamily: FONTFAMILY.poppins_medium,
+    fontSize: FONTSIZE.size_16,
+    color: COLORS.primaryOrangeHex,
+    marginBottom: SPACING.space_8,
+    textShadowColor: "rgba(0, 0, 0, 0.5)",
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 2,
+  },
+  bannerTitle: {
+    fontFamily: FONTFAMILY.poppins_bold,
+    fontSize: FONTSIZE.size_28,
+    color: COLORS.primaryWhiteHex,
+    textShadowColor: "rgba(0, 0, 0, 0.5)",
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 2,
+  },
+  bannerSubtitle: {
     fontFamily: FONTFAMILY.poppins_regular,
     fontSize: FONTSIZE.size_14,
-    color: COLORS.primaryBlackHex,
-    paddingHorizontal: SPACING.space_10,
+    color: COLORS.primaryWhiteHex,
+    marginTop: SPACING.space_4,
+    textShadowColor: "rgba(0, 0, 0, 0.5)",
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 2,
   },
-  mapSearchButton: {
-    padding: SPACING.space_10,
+  quickActionsRowOverlap: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: -60,
+    flexDirection: "row",
+    justifyContent: "space-around",
+    paddingHorizontal: SPACING.space_8,
+    zIndex: 10,
   },
-  mapContainer: {
-    height: 300,
-    marginHorizontal: SPACING.space_20,
-    borderRadius: BORDERRADIUS.radius_20,
-    overflow: "hidden",
-    marginBottom: SPACING.space_20,
+  quickAction: {
+    alignItems: "center",
+    flex: 1,
   },
-  map: {
-    width: "100%",
-    height: "100%",
-  },
-  markerContainer: {
+  quickActionIconWrap: {
+    position: "relative",
     backgroundColor: COLORS.primaryWhiteHex,
-    padding: SPACING.space_10,
+    padding: SPACING.space_12,
     borderRadius: BORDERRADIUS.radius_10,
-    borderWidth: 2,
-    borderColor: COLORS.primaryOrangeHex,
+    elevation: 4,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 3,
   },
-  storeListContainer: {
-    paddingHorizontal: SPACING.space_20,
+  badge: {
+    position: "absolute",
+    top: -6,
+    right: -10,
+    backgroundColor: COLORS.primaryOrangeHex,
+    borderRadius: 10,
+    width: 20,
+    height: 20,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  badgeText: {
+    color: COLORS.primaryWhiteHex,
+    fontSize: FONTSIZE.size_10,
+    fontWeight: "bold",
+  },
+  quickActionLabel: {
+    fontFamily: FONTFAMILY.poppins_medium,
+    fontSize: FONTSIZE.size_12,
+    color: COLORS.primaryBlackHex,
+    marginTop: SPACING.space_4,
+  },
+  quickActionSub: {
+    fontFamily: FONTFAMILY.poppins_regular,
+    fontSize: FONTSIZE.size_10,
+    color: COLORS.primaryDarkGreyHex,
+  },
+  footer: {
+    backgroundColor: COLORS.primaryWhiteHex,
+    padding: SPACING.space_20,
+    marginTop: SPACING.space_20,
+    borderTopWidth: 1,
+    borderTopColor: "#E5E5E5",
+  },
+  footerTitle: {
+    fontSize: FONTSIZE.size_18,
+    fontFamily: FONTFAMILY.poppins_semibold,
+    color: COLORS.primaryBlackHex,
+    textAlign: "center",
+    marginBottom: SPACING.space_16,
+  },
+  socialLinks: {
+    flexDirection: "row",
+    justifyContent: "center",
+    gap: SPACING.space_24,
+    marginBottom: SPACING.space_16,
+  },
+  socialButton: {
+    alignItems: "center",
+    backgroundColor: "#F8F8F8",
+    padding: SPACING.space_12,
+    borderRadius: BORDERRADIUS.radius_10,
+    width: 100,
+  },
+  socialText: {
+    marginTop: SPACING.space_8,
+    fontSize: FONTSIZE.size_12,
+    fontFamily: FONTFAMILY.poppins_medium,
+    color: COLORS.primaryBlackHex,
   },
   featuredContainer: {
     marginVertical: SPACING.space_20,
@@ -1274,11 +1405,23 @@ const styles = StyleSheet.create({
     marginLeft: SPACING.space_20,
     marginBottom: SPACING.space_20,
   },
-  storeCard: {
+  coffeeCategoriesContainer: {
+    marginTop: SPACING.space_24,
+    paddingHorizontal: SPACING.space_20,
+  },
+  coffeeCategoriesGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "space-between",
+    marginTop: SPACING.space_16,
+  },
+  coffeeCategoryItem: {
+    width: "48%",
     backgroundColor: COLORS.primaryWhiteHex,
-    borderRadius: BORDERRADIUS.radius_20,
-    padding: SPACING.space_15,
-    marginBottom: SPACING.space_15,
+    borderRadius: BORDERRADIUS.radius_15,
+    padding: SPACING.space_16,
+    marginBottom: SPACING.space_16,
+    alignItems: "center",
     shadowColor: "#000",
     shadowOffset: {
       width: 0,
@@ -1288,153 +1431,51 @@ const styles = StyleSheet.create({
     shadowRadius: 3.84,
     elevation: 5,
   },
-  selectedStoreCard: {
-    borderWidth: 2,
-    borderColor: COLORS.primaryOrangeHex,
-  },
-  storeCardContent: {
-    flexDirection: "row",
+  coffeeCategoryIcon: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: "#F8E9DB",
+    justifyContent: "center",
     alignItems: "center",
+    marginBottom: SPACING.space_8,
   },
-  storeCardInfo: {
-    flex: 1,
-    marginLeft: SPACING.space_15,
-  },
-  storeCardName: {
-    fontFamily: FONTFAMILY.poppins_semibold,
-    fontSize: FONTSIZE.size_16,
+  coffeeCategoryText: {
+    fontFamily: FONTFAMILY.poppins_medium,
+    fontSize: FONTSIZE.size_14,
     color: COLORS.primaryBlackHex,
-    marginBottom: SPACING.space_4,
+    textAlign: "center",
   },
-  storeCardAddress: {
+  additionalOffersContainer: {
+    marginTop: SPACING.space_24,
+    paddingHorizontal: SPACING.space_24,
+  },
+  noOffersText: {
     fontFamily: FONTFAMILY.poppins_regular,
-    fontSize: FONTSIZE.size_14,
+    fontSize: FONTSIZE.size_16,
     color: COLORS.primaryDarkGreyHex,
-    marginBottom: SPACING.space_4,
+    textAlign: "center",
+    marginTop: SPACING.space_20,
   },
-  storeCardHours: {
-    fontFamily: FONTFAMILY.poppins_regular,
-    fontSize: FONTSIZE.size_12,
-    color: COLORS.primaryOrangeHex,
-  },
-  directionsButton: {
-    padding: SPACING.space_10,
-  },
-  bannerWrap: {
+  notificationIconContainer: {
     position: "relative",
-    marginBottom: 40,
   },
-  banner: {
-    height: 180,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: COLORS.primaryLightGreyHex,
-  },
-  bannerOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0,0,0,0.35)",
-    zIndex: 1,
-  },
-  bannerContent: {
+  notificationBadge: {
     position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    justifyContent: "center",
-    padding: SPACING.space_16,
-    zIndex: 2,
-  },
-  bannerTitle: {
-    fontFamily: FONTFAMILY.poppins_bold,
-    fontSize: FONTSIZE.size_28,
-    color: COLORS.primaryWhiteHex,
-    textShadowColor: "rgba(0, 0, 0, 0.5)",
-    textShadowOffset: { width: 1, height: 1 },
-    textShadowRadius: 2,
-  },
-  bannerSubtitle: {
-    fontFamily: FONTFAMILY.poppins_regular,
-    fontSize: FONTSIZE.size_14,
-    color: COLORS.primaryWhiteHex,
-    marginTop: SPACING.space_4,
-    textShadowColor: "rgba(0, 0, 0, 0.5)",
-    textShadowOffset: { width: 1, height: 1 },
-    textShadowRadius: 2,
-  },
-  quickActionsRowOverlap: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    bottom: -40,
-    flexDirection: "row",
-    justifyContent: "space-around",
-    paddingHorizontal: SPACING.space_8,
-    zIndex: 10,
-  },
-  quickAction: {
-    alignItems: "center",
-    flex: 1,
-  },
-  quickActionIconWrap: {
-    position: "relative",
-    backgroundColor: COLORS.primaryWhiteHex,
-    padding: SPACING.space_12,
-    borderRadius: BORDERRADIUS.radius_10,
-    elevation: 2,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.08,
-    shadowRadius: 2,
-  },
-  badge: {
-    position: "absolute",
-    top: -6,
-    right: -10,
+    top: -5,
+    right: -5,
     backgroundColor: COLORS.primaryOrangeHex,
     borderRadius: 10,
-    width: 20,
+    minWidth: 20,
     height: 20,
     justifyContent: "center",
     alignItems: "center",
+    paddingHorizontal: 4,
   },
-  badgeText: {
+  notificationBadgeText: {
     color: COLORS.primaryWhiteHex,
     fontSize: FONTSIZE.size_10,
-    fontWeight: "bold",
-  },
-  footer: {
-    backgroundColor: COLORS.primaryWhiteHex,
-    padding: SPACING.space_20,
-    marginTop: SPACING.space_20,
-    borderTopWidth: 1,
-    borderTopColor: "#E5E5E5",
-  },
-  footerTitle: {
-    fontSize: FONTSIZE.size_18,
-    fontFamily: FONTFAMILY.poppins_semibold,
-    color: COLORS.primaryBlackHex,
-    textAlign: "center",
-    marginBottom: SPACING.space_16,
-  },
-  socialLinks: {
-    flexDirection: "row",
-    justifyContent: "center",
-    gap: SPACING.space_24,
-    marginBottom: SPACING.space_16,
-  },
-  socialButton: {
-    alignItems: "center",
-    backgroundColor: "#F8F8F8",
-    padding: SPACING.space_12,
-    borderRadius: BORDERRADIUS.radius_10,
-    width: 100,
-  },
-  socialText: {
-    marginTop: SPACING.space_8,
-    fontSize: FONTSIZE.size_12,
-    fontFamily: FONTFAMILY.poppins_medium,
-    color: COLORS.primaryBlackHex,
+    fontFamily: FONTFAMILY.poppins_bold,
   },
 });
 

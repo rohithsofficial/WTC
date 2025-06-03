@@ -65,7 +65,7 @@ const handleRemoveItem = (id: string, size: string) => {
           userId: auth.currentUser.uid,
           displayName: auth.currentUser.displayName,
           orderType,
-          tableNumber,
+          tableNumber: orderType === 'dinein' ? tableNumber : '',
         },
       });
     } catch (error) {

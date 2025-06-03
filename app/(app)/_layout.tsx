@@ -83,6 +83,11 @@ const AppLayout = () => {
       <Tabs.Screen name="SupportScreen" options={{ href: null }} />
       <Tabs.Screen name="NotificationSettings" options={{ href: null }} />
       <Tabs.Screen name="EditProfileScreen" options={{ href: null }} />
+      <Tabs.Screen name="NotificationScreen" options={{ href: null }} />
+      <Tabs.Screen name="explore" options={{ href: null }} />
+       <Tabs.Screen name="HomeScreen1" options={{ href: null }} />
+        <Tabs.Screen name="OffersScreen" options={{ href: null }} />
+         <Tabs.Screen name="PaymentScreen" options={{ href: null }} />
     </Tabs>
   );
 };

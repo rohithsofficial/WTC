@@ -114,8 +114,29 @@ export interface OrderData {
   totalAmount: number;
   orderType: string;
   tableNumber: string;
+  orderStatus: string;
   paymentMode: string;
   paymentStatus: string;
   orderDate: string;
   createdAt: Date | FirebaseFirestore.Timestamp;
+}
+
+export interface Offer {
+  id: string;
+  title: string;
+  description: string;
+  gradientColors: [string, string];
+  isActive: boolean;
+}
+
+export interface Notifications {
+  id: string;
+  title: string;
+  message: string;
+  timestamp: Timestamp;
+  readAt?: Timestamp;
+  isRead: boolean;
+  isActive: boolean;
+  type: "offer" | "order" | "system";
+  userId: string;
 }
