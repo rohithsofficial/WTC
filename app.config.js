@@ -2,11 +2,12 @@ import 'dotenv/config';
 
 export default {
   expo: {
-    name: "React Native Firebase",
-    slug: "react-native-firebase",
+    name: "WTC COFFEE SHOP",
+    slug: "react-native-firebase", // ✅ use kebab-case (no spaces/underscores)
     platforms: ["ios", "android", "web"],
     version: "1.0.0",
     orientation: "portrait",
+    sdkVersion: "53.0.0",
     icon: "./assets/icon.png",
     splash: {
       image: "./assets/splash.png",
@@ -18,6 +19,7 @@ export default {
     },
     assetBundlePatterns: ["**/*"],
     ios: {
+       bundleIdentifier: "com.rohithofficial.wtccoffee",
       supportsTablet: true,
       infoPlist: {
         NSPhotoLibraryUsageDescription: "Allow $(PRODUCT_NAME) to access your photos to let you share them with your friends.",
@@ -29,7 +31,8 @@ export default {
         "CAMERA",
         "READ_EXTERNAL_STORAGE",
         "WRITE_EXTERNAL_STORAGE"
-      ]
+      ],
+      package: "com.rohithofficial.wtccoffee",
     },
     plugins: [
       "expo-router",
@@ -43,6 +46,9 @@ export default {
     ],
     scheme: "wtc",
     extra: {
+      eas: {
+        projectId: "ef749917-19c7-4e5b-992f-99d37805c8d7",
+      },
       firebaseApiKey: process.env.FIREBASE_API_KEY,
       firebaseAuthDomain: process.env.FIREBASE_AUTH_DOMAIN,
       firebaseProjectId: process.env.FIREBASE_PROJECT_ID,
@@ -57,4 +63,4 @@ export default {
       phonepeSaltIndex: process.env.PHONEPE_SALT_INDEX,
     }
   }
-}; 
+};

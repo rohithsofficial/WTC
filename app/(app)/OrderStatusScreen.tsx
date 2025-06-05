@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, ReactElement } from 'react';
 import {
   StyleSheet,
   Text,
@@ -25,6 +25,9 @@ import { LinearGradient } from 'expo-linear-gradient';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import FontAwesome from 'react-native-vector-icons/FontAwesome';
 import Ionicons from 'react-native-vector-icons/Ionicons';
+import LottieView from 'lottie-react-native';
+import QRCode from 'react-native-qrcode-svg';
+import { CountdownCircleTimer } from 'react-native-countdown-circle-timer';
 
 const { width } = Dimensions.get('window');
 
@@ -43,9 +46,23 @@ interface OrderData {
   userId: string;
 }
 
-// Icon mapping function
-const getIconComponent = (iconName, size, color) => {
-  const iconMap = {
+interface BaristaNote {
+  message: string;
+  timestamp: Date;
+}
+
+// Add TypeScript types for icon components
+type IconName = 'back' | 'tick' | 'order' | 'coffee' | 'takeaway' | 'dine' | 'bell' | 'smile';
+
+interface IconWrapperProps {
+  name: IconName;
+  size: number;
+  color: string;
+}
+
+// Update icon mapping function with proper types
+const getIconComponent = (iconName: IconName, size: number, color: string): ReactElement => {
+  const iconMap: Record<IconName, ReactElement> = {
     'back': <Icon name="arrow-back" size={size} color={color} />,
     'tick': <Icon name="check" size={size} color={color} />,
     'order': <Icon name="receipt" size={size} color={color} />,
@@ -59,8 +76,67 @@ const getIconComponent = (iconName, size, color) => {
   return iconMap[iconName] || <Icon name="help" size={size} color={color} />;
 };
 
-const IconWrapper = ({ name, size, color }) => {
+const IconWrapper = ({ name, size, color }: IconWrapperProps) => {
   return getIconComponent(name, size, color);
+};
+
+// Add type for customization
+interface Customization {
+  name: string;
+  value: string;
+}
+
+// Update the customization mapping with proper types
+const getCustomizationText = (custom: Customization, idx: number) => {
+  const customMap: Record<string, string> = {
+    'milk': 'Milk',
+    'sugar': 'Sugar',
+    'ice': 'Ice',
+    'size': 'Size',
+    'temperature': 'Temperature',
+    'toppings': 'Toppings',
+    'syrup': 'Syrup',
+    'espresso': 'Espresso Shots',
+    'foam': 'Foam',
+    'whip': 'Whipped Cream',
+    'drizzle': 'Drizzle',
+    'spice': 'Spice Level',
+    'sweetness': 'Sweetness Level',
+    'strength': 'Coffee Strength',
+    'blend': 'Coffee Blend',
+    'roast': 'Roast Level',
+    'grind': 'Grind Size',
+    'water': 'Water Ratio',
+    'steam': 'Steam Level',
+    'foam_density': 'Foam Density',
+    'milk_temp': 'Milk Temperature',
+    'milk_type': 'Milk Type',
+    'milk_ratio': 'Milk Ratio',
+    'sugar_type': 'Sugar Type',
+    'sugar_amount': 'Sugar Amount',
+    'ice_amount': 'Ice Amount',
+    'ice_type': 'Ice Type',
+    'topping_amount': 'Topping Amount',
+    'syrup_amount': 'Syrup Amount',
+    'syrup_type': 'Syrup Type',
+    'espresso_amount': 'Espresso Amount',
+    'foam_amount': 'Foam Amount',
+    'whip_amount': 'Whipped Cream Amount',
+    'drizzle_amount': 'Drizzle Amount',
+    'drizzle_type': 'Drizzle Type',
+    'spice_amount': 'Spice Amount',
+    'sweetness_amount': 'Sweetness Amount',
+    'strength_amount': 'Strength Amount',
+    'blend_type': 'Blend Type',
+    'roast_level': 'Roast Level',
+    'grind_size': 'Grind Size',
+    'water_ratio': 'Water Ratio',
+    'steam_level': 'Steam Level',
+    'foam_density_level': 'Foam Density Level',
+    'milk_temp_level': 'Milk Temperature Level',
+  };
+
+  return customMap[custom.name] || custom.name;
 };
 
 const OrderStatusScreen = () => {
@@ -69,12 +145,20 @@ const OrderStatusScreen = () => {
   const [orderDetails, setOrderDetails] = useState<OrderData | null>(null);
   const [loading, setLoading] = useState(true);
   const [currentStatusIndex, setCurrentStatusIndex] = useState(0);
+  const [estimatedTime, setEstimatedTime] = useState(4);
+  const [baristaNotes, setBaristaNotes] = useState<BaristaNote[]>([]);
+  const [showQRCode, setShowQRCode] = useState(false);
+  const [loyaltyPoints, setLoyaltyPoints] = useState(0);
+  const [isRewardUnlocked, setIsRewardUnlocked] = useState(false);
   
   // Animation refs
   const progressAnim = useRef(new Animated.Value(0)).current;
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const slideAnim = useRef(new Animated.Value(50)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
+  const brewAnimationRef = useRef<LottieView>(null);
+  const steamAnimationRef = useRef<LottieView>(null);
+  const confettiAnimationRef = useRef<LottieView>(null);
 
   const getFirstParam = (param: string | string[]) => Array.isArray(param) ? param[0] : param;
 
@@ -88,79 +172,19 @@ const OrderStatusScreen = () => {
   const getOrderStatuses = () => {
     if (orderType === 'dinein') {
       return [
-        { 
-          id: 1, 
-          label: 'Order Placed', 
-          description: `Table ${tableNumber}`,
-          icon: 'order',
-          color: '#FF6B35'
-        },
-        { 
-          id: 2, 
-          label: 'Received', 
-          description: 'Order received by kitchen',
-          icon: 'tick',
-          color: '#4ECDC4'
-        },
-        { 
-          id: 3, 
-          label: 'Preparing', 
-          description: 'Chef is preparing your order',
-          icon: 'dine',
-          color: '#45B7D1'
-        },
-        { 
-          id: 4, 
-          label: 'Ready', 
-          description: 'Order is ready to be served',
-          icon: 'bell',
-          color: '#F7DC6F'
-        },
-        { 
-          id: 5, 
-          label: 'Served', 
-          description: 'Thank you for dining with us! Enjoy your meal! 🎉',
-          icon: 'smile',
-          color: '#58D68D'
-        }
+        { id: 1, label: 'Order Placed', description:  `Table${tableNumber}`, icon: 'order' as IconName, color: '#FF6B35' },
+        { id: 2, label: 'Received', description: 'Order received by kitchen', icon: 'tick' as IconName, color: '#4ECDC4' },
+        { id: 3, label: 'Preparing', description: 'Chef is preparing your order', icon: 'dine' as IconName, color: '#45B7D1' },
+        { id: 4, label: 'Ready', description: 'Order is ready to be served', icon: 'bell' as IconName, color: '#F7DC6F' },
+        { id: 5, label: 'Served', description: 'Thank you for dining with us! Enjoy your meal! 🎉', icon: 'smile' as IconName, color: '#58D68D' }
       ];
     } else {
       return [
-        { 
-          id: 1, 
-          label: 'Order Placed', 
-          description: 'Order confirmed',
-          icon: 'order',
-          color: '#FF6B35'
-        },
-        { 
-          id: 2, 
-          label: 'Received', 
-          description: 'Barista received order',
-          icon: 'tick',
-          color: '#4ECDC4'
-        },
-        { 
-          id: 3, 
-          label: 'Preparing', 
-          description: 'Brewing your coffee',
-          icon: 'coffee',
-          color: '#45B7D1'
-        },
-        { 
-          id: 4, 
-          label: 'Ready', 
-          description: 'Ready for pickup',
-          icon: 'takeaway',
-          color: '#F7DC6F'
-        },
-        { 
-          id: 5, 
-          label: 'Collected', 
-          description: 'Thank you for your order! We hope you enjoy! 🎉',
-          icon: 'tick',
-          color: '#58D68D'
-        }
+        { id: 1, label: 'Order Placed', description: 'Order confirmed', icon: 'order' as IconName, color: '#FF6B35' },
+        { id: 2, label: 'Received', description: 'Barista received order', icon: 'tick' as IconName, color: '#4ECDC4' },
+        { id: 3, label: 'Preparing', description: 'Brewing your coffee', icon: 'coffee' as IconName, color: '#45B7D1' },
+        { id: 4, label: 'Ready', description: 'Ready for pickup', icon: 'takeaway' as IconName, color: '#F7DC6F' },
+        { id: 5, label: 'Collected', description: 'Thank you for your order! We hope you enjoy! 🎉', icon: 'tick' as IconName, color: '#58D68D' },
       ];
     }
   };
@@ -324,6 +348,178 @@ const OrderStatusScreen = () => {
     return Math.max(baseTime - additionalTime, 5);
   };
 
+  const renderOrderProgress = () => (
+    <View style={styles.progressSection}>
+      <Text style={styles.sectionTitle}>Order Progress</Text>
+      <View style={styles.progressSteps}>
+        {orderStatuses.map((status, index) => {
+          const isCompleted = index < currentStatusIndex;
+          const isActive = index === currentStatusIndex;
+          
+          return (
+            <View key={status.id} style={styles.progressStep}>
+              <View style={[
+                styles.stepIcon,
+                isCompleted && styles.stepCompleted,
+                isActive && styles.stepActive
+              ]}>
+                {isActive && status.label === 'Preparing' && (
+                  <LottieView
+                    ref={brewAnimationRef}
+                    source={require('../../src/assets/animations/brewing.json')}
+                    autoPlay
+                    loop
+                    style={styles.animation}
+                  />
+                )}
+                {isActive && status.label === 'Ready' && (
+                  <LottieView
+                    ref={steamAnimationRef}
+                    source={require('../../src/assets/animations/brewing.json')}
+                    autoPlay
+                    loop
+                    style={styles.animation}
+                  />
+                )}
+                <IconWrapper
+                  name={status.icon as IconName}
+                  size={24}
+                  color={isCompleted ? COLORS.primaryWhiteHex : COLORS.primaryGreyHex}
+                />
+              </View>
+              <Text style={[
+                styles.stepLabel,
+                isCompleted && styles.stepLabelCompleted,
+                isActive && styles.stepLabelActive
+              ]}>
+                {status.label}
+              </Text>
+            </View>
+          );
+        })}
+      </View>
+    </View>
+  );
+
+  const renderCountdownTimer = () => (
+    <View style={styles.timerSection}>
+      <CountdownCircleTimer
+        isPlaying
+        duration={estimatedTime * 60}
+        colors={['#FF6B35', '#F7931E']}
+        colorsTime={[estimatedTime * 30, estimatedTime * 30]}
+        size={120}
+        strokeWidth={8}
+      >
+        {({ remainingTime }) => (
+          <View style={styles.timerContent}>
+            <Text style={styles.timerText}>
+              {Math.ceil(remainingTime / 60)}
+            </Text>
+            <Text style={styles.timerLabel}>minutes</Text>
+          </View>
+        )}
+      </CountdownCircleTimer>
+    </View>
+  );
+
+  const renderQRCode = () => (
+    <View style={styles.qrSection}>
+      <Text style={styles.sectionTitle}>Pickup QR Code</Text>
+      <TouchableOpacity 
+        style={styles.qrContainer}
+        onPress={() => setShowQRCode(!showQRCode)}
+      >
+        <QRCode
+        value={`order-${orderId}`}
+          size={200}
+          backgroundColor={COLORS.primaryWhiteHex}
+          color={COLORS.primaryBlackHex}
+        />
+        <Text style={styles.qrInstructions}>
+          Show this code at the counter
+        </Text>
+      </TouchableOpacity>
+    </View>
+  );
+
+  const renderBaristaNotes = () => (
+    <View style={styles.notesSection}>
+      <Text style={styles.sectionTitle}>Barista Notes</Text>
+      {baristaNotes.map((note, index) => (
+        <View key={index} style={styles.noteBubble}>
+          <Text style={styles.noteText}>{note.message}</Text>
+          <Text style={styles.noteTime}>
+            {new Date(note.timestamp).toLocaleTimeString()}
+          </Text>
+        </View>
+      ))}
+    </View>
+  );
+
+  const renderOrderSummary = () => (
+    <View style={styles.summarySection}>
+      <Text style={styles.sectionTitle}>Order Details</Text>
+      {orderDetails?.items.map((item, index) => (
+        <View key={index} style={styles.itemCard}>
+          <View style={styles.itemHeader}>
+            <Text style={styles.itemName}>{item.name}</Text>
+            <Text style={styles.itemQuantity}>x{item.quantity}</Text>
+          </View>
+          
+          {item.size && (
+            <Text style={styles.itemDetail}>Size: {item.size}</Text>
+          )}
+          
+          {item.customizations && item.customizations.length > 0 && (
+            <View style={styles.customizationsList}>
+              {item.customizations.map((custom: Customization, idx: number) => (
+                <Text key={idx} style={styles.customizationItem}>• {getCustomizationText(custom, idx)}</Text>
+              ))}
+            </View>
+          )}
+          
+          <View style={styles.itemPrice}>
+            <Text style={styles.priceText}>
+              ₹{(item.price * item.quantity).toFixed(2)}
+            </Text>
+            {item.quantity > 1 && (
+              <Text style={styles.unitPrice}>
+                (₹{item.price.toFixed(2)} each)
+              </Text>
+            )}
+          </View>
+        </View>
+      ))}
+    </View>
+  );
+
+  const renderLoyaltySection = () => (
+    <View style={styles.loyaltySection}>
+      <Text style={styles.sectionTitle}>Loyalty Points</Text>
+      <View style={styles.loyaltyCard}>
+        <View style={styles.pointsContainer}>
+          <Text style={styles.pointsText}>{loyaltyPoints}</Text>
+          <Text style={styles.pointsLabel}>Points</Text>
+        </View>
+        {isRewardUnlocked && (
+          <LottieView
+            ref={confettiAnimationRef}
+            source={require('../../src/assets/animations/brewing.json')}
+            autoPlay
+            loop={false}
+            style={styles.confettiAnimation}
+          />
+        )}
+        <Text style={styles.rewardText}>
+          {isRewardUnlocked 
+            ? "🎉 You've unlocked a free drink!"
+            : "1 more order to unlock a free drink!"}
+        </Text>
+      </View>
+    </View>
+  );
+
   // ADDED: Loading state handling
   if (loading) {
     return (
@@ -341,18 +537,10 @@ const OrderStatusScreen = () => {
       
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scrollViewContent}>
-        
+        contentContainerStyle={styles.scrollViewContent}
+      >
         {/* Header */}
-        <Animated.View 
-          style={[
-            styles.headerContainer,
-            {
-              opacity: fadeAnim,
-              transform: [{ translateY: slideAnim }]
-            }
-          ]}
-        >
+        <View style={styles.headerContainer}>
           <TouchableOpacity onPress={() => router.push('/Home')}>
             <GradientBGIcon
               name="back"
@@ -362,206 +550,22 @@ const OrderStatusScreen = () => {
           </TouchableOpacity>
           <Text style={styles.headerText}>Order Status</Text>
           <Text style={styles.timeText}>{formatTime()}</Text>
-        </Animated.View>
-        
-        {/* Success Hero Section */}
-        <Animated.View 
-          style={[
-            styles.heroContainer,
-            {
-              opacity: fadeAnim,
-              transform: [{ translateY: slideAnim }]
-            }
-          ]}
-        >
-          <LinearGradient
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            colors={['#FF6B35', '#F7931E']}
-            style={styles.heroCircle}>
-            <Animated.View style={{ transform: [{ scale: pulseAnim }] }}>
-              <IconWrapper
-                name="tick"
-                size={60}
-                color={COLORS.primaryWhiteHex}
-              />
-            </Animated.View>
-          </LinearGradient>
-          
-          <Text style={styles.heroTitle}>Order Confirmed!</Text>
-          <Text style={styles.heroSubtitle}>
-            Estimated time: {getEstimatedTime()} minutes
-          </Text>
-          
-          {/* Order Type Badge */}
-          <View style={[
-            styles.orderTypeBadge,
-            { backgroundColor: orderType === 'dinein' ? '#4ECDC4' : '#45B7D1' }
-          ]}>
-            <IconWrapper
-              name={orderType === 'dinein' ? 'dine' : 'takeaway'}
-              size={16}
-              color={COLORS.primaryWhiteHex}
-            />
-            <Text style={styles.orderTypeText}>
-              {orderType === 'dinein' ? `Dine In - Table ${tableNumber}` : 'Takeaway'}
-            </Text>
-          </View>
-        </Animated.View>
+        </View>
 
-        {/* Progress Bar */}
-        <Animated.View 
-          style={[
-            styles.progressContainer,
-            {
-              opacity: fadeAnim,
-              transform: [{ translateY: slideAnim }]
-            }
-          ]}
-        >
-          <View style={styles.progressTrack}>
-            <Animated.View 
-              style={[
-                styles.progressBar,
-                {
-                  width: progressAnim.interpolate({
-                    inputRange: [0, 100],
-                    outputRange: ['0%', '100%'],
-                    extrapolate: 'clamp',
-                  }),
-                }
-              ]} 
-            />
-          </View>
-        </Animated.View>
-        
-        {/* Status Timeline */}
-        <Animated.View 
-          style={[
-            styles.timelineContainer,
-            {
-              opacity: fadeAnim,
-              transform: [{ translateY: slideAnim }]
-            }
-          ]}
-        >
-          {orderStatuses.map((status, index) => {
-            const isCompleted = index < currentStatusIndex;
-            const isActive = index === currentStatusIndex;
-            const isPending = index > currentStatusIndex;
-
-            return (
-              <View key={status.id} style={styles.timelineItem}>
-                <View style={styles.timelineLeft}>
-                  <View 
-                    style={[
-                      styles.timelineDot,
-                      isCompleted && styles.timelineDotCompleted,
-                      isActive && [styles.timelineDotActive, { backgroundColor: status.color }],
-                      isPending && styles.timelineDotPending,
-                    ]}
-                  >
-                    {isCompleted ? (
-                      <IconWrapper
-                        name="tick"
-                        size={12}
-                        color={COLORS.primaryWhiteHex}
-                      />
-                    ) : (
-                      <IconWrapper
-                        name={status.icon}
-                        size={isActive ? 16 : 12}
-                        color={isActive ? COLORS.primaryWhiteHex : COLORS.primaryLightGreyHex}
-                      />
-                    )}
-                  </View>
-                  {index < orderStatuses.length - 1 && (
-                    <View 
-                      style={[
-                        styles.timelineConnector,
-                        isCompleted && styles.timelineConnectorCompleted
-                      ]} 
-                    />
-                  )}
-                </View>
-                
-                <View style={styles.timelineRight}>
-                  <Text style={[
-                    styles.timelineTitle,
-                    isCompleted && styles.timelineTitleCompleted,
-                    isActive && styles.timelineTitleActive,
-                  ]}>
-                    {status.label}
-                  </Text>
-                  <Text style={styles.timelineDescription}>
-                    {status.description}
-                  </Text>
-                  {isActive && (
-                    <View style={styles.activeIndicator}>
-                      <View style={styles.pulseDot} />
-                      <Text style={styles.activeText}>
-                        {orderDetails?.orderStatus === 'Order Placed' ? 'Waiting for Confirmation' : 'In Progress'}
-                      </Text>
-                    </View>
-                  )}
-                </View>
-              </View>
-            );
-          })}
-        </Animated.View>
-
-        {/* Order Summary Card */}
-        <Animated.View 
-          style={[
-            styles.summaryCard,
-            {
-              opacity: fadeAnim,
-              transform: [{ translateY: slideAnim }]
-            }
-          ]}
-        >
-          <LinearGradient
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            colors={[COLORS.primaryGreyHex, COLORS.primaryBlackRGBA]}
-            style={styles.summaryGradient}
-          >
-            <View style={styles.summaryHeader}>
-              <Text style={styles.summaryTitle}>Order Summary</Text>
-              <Text style={styles.orderNumber}>#{orderId?.substring(0, 8)}</Text>
-            </View>
-            
-            <View style={styles.summaryDivider} />
-            
-            <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>Payment Method</Text>
-              <View style={styles.paymentBadge}>
-                <Text style={styles.summaryValue}>{paymentMode}</Text>
-              </View>
-            </View>
-            
-            <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>Total Amount</Text>
-              <Text style={styles.totalAmount}>
-                ${orderDetails?.totalAmount ? orderDetails.totalAmount.toFixed(2) : total}
-              </Text>
-            </View>
-          </LinearGradient>
-        </Animated.View>
+        {/* Main Content */}
+        {renderOrderProgress()}
+        {renderCountdownTimer()}
+        {renderQRCode()}
+        {renderBaristaNotes()}
+        {renderOrderSummary()}
+        {renderLoyaltySection()}
 
         {/* Action Buttons */}
-        <Animated.View 
-          style={[
-            styles.buttonContainer,
-            {
-              opacity: fadeAnim,
-              transform: [{ translateY: slideAnim }]
-            }
-          ]}
-        >
+        <View style={styles.buttonContainer}>
           <TouchableOpacity 
             style={styles.primaryButton}
-            onPress={() => router.push('/HomeScreen')}>
+            onPress={() => router.push('/HomeScreen')}
+          >
             <LinearGradient
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 0 }}
@@ -574,10 +578,11 @@ const OrderStatusScreen = () => {
           
           <TouchableOpacity 
             style={styles.secondaryButton}
-            onPress={() => router.push('/OrderScreen')}>
+            onPress={() => router.push('/OrderScreen')}
+          >
             <Text style={styles.secondaryButtonText}>View Order History</Text>
           </TouchableOpacity>
-        </Animated.View>
+        </View>
       </ScrollView>
     </SafeAreaView>
   );
@@ -620,210 +625,228 @@ const styles = StyleSheet.create({
     fontSize: FONTSIZE.size_14,
     color: COLORS.primaryBlackHex,
   },
-  heroContainer: {
-    alignItems: 'center',
-    paddingVertical: SPACING.space_36,
-    paddingHorizontal: SPACING.space_24,
-    backgroundColor: '#F5F5DC',
-  },
-  heroCircle: {
-    height: 120,
-    width: 120,
-    borderRadius: 60,
-    justifyContent: 'center',
-    alignItems: 'center',
+  progressSection: {
+    padding: SPACING.space_24,
+    backgroundColor: COLORS.primaryWhiteHex,
+    borderRadius: BORDERRADIUS.radius_20,
+    marginHorizontal: SPACING.space_24,
     marginBottom: SPACING.space_24,
-    backgroundColor: COLORS.primaryBlackHex,
-    shadowColor: COLORS.primaryOrangeHex,
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.3,
-    shadowRadius: 16,
-    elevation: 10,
-  },
-  heroTitle: {
-    fontFamily: FONTFAMILY.poppins_bold,
-    fontSize: FONTSIZE.size_28,
-    color: COLORS.primaryBlackHex,
-    marginBottom: SPACING.space_8,
-    textAlign: 'center',
-  },
-  heroSubtitle: {
-    fontFamily: FONTFAMILY.poppins_medium,
-    fontSize: FONTSIZE.size_16,
-    color: COLORS.primaryBlackHex,
-    textAlign: 'center',
-    marginBottom: SPACING.space_20,
-  },
-  orderTypeBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: SPACING.space_16,
-    paddingVertical: SPACING.space_8,
-    borderRadius: BORDERRADIUS.radius_25,
-    gap: SPACING.space_8,
-    backgroundColor: COLORS.primaryBlackHex,
-  },
-  orderTypeText: {
-    fontFamily: FONTFAMILY.poppins_medium,
-    fontSize: FONTSIZE.size_14,
-    color: COLORS.primaryWhiteHex,
-  },
-  progressContainer: {
-    paddingHorizontal: SPACING.space_36,
-    marginBottom: SPACING.space_36,
-  },
-  progressTrack: {
-    height: 6,
-    backgroundColor: '#E8E8D0',
-    borderRadius: 3,
-    overflow: 'hidden',
-  },
-  progressBar: {
-    height: '100%',
-    backgroundColor: COLORS.primaryOrangeHex,
-    borderRadius: 3,
-  },
-  timelineContainer: {
-    paddingHorizontal: SPACING.space_24,
-    marginBottom: SPACING.space_36,
-  },
-  timelineItem: {
-    flexDirection: 'row',
-    marginBottom: SPACING.space_4,
-  },
-  timelineLeft: {
-    alignItems: 'center',
-    marginRight: SPACING.space_20,
-  },
-  timelineDot: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#E8E8D0',
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: COLORS.primaryOrangeHex,
+    shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
+    shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 3,
   },
-  timelineDotCompleted: {
-    backgroundColor: COLORS.primaryGreenHex,
-  },
-  timelineDotActive: {
-    backgroundColor: COLORS.primaryOrangeHex,
-    transform: [{ scale: 1.1 }],
-  },
-  timelineDotPending: {
-    backgroundColor: '#E8E8D0',
-  },
-  timelineConnector: {
-    width: 2,
-    height: 40,
-    backgroundColor: '#E8E8D0',
-    marginTop: SPACING.space_8,
-  },
-  timelineConnectorCompleted: {
-    backgroundColor: COLORS.primaryGreenHex,
-  },
-  timelineRight: {
-    flex: 1,
-    paddingTop: SPACING.space_8,
-  },
-  timelineTitle: {
+  sectionTitle: {
     fontFamily: FONTFAMILY.poppins_semibold,
-    fontSize: FONTSIZE.size_16,
+    fontSize: FONTSIZE.size_18,
     color: COLORS.primaryBlackHex,
-    marginBottom: SPACING.space_4,
+    marginBottom: SPACING.space_16,
   },
-  timelineTitleCompleted: {
+  progressSteps: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  progressStep: {
+    alignItems: 'center',
+    flex: 1,
+  },
+  stepIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#E8E8D0',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: SPACING.space_8,
+  },
+  stepCompleted: {
+    backgroundColor: COLORS.primaryGreenHex,
+  },
+  stepActive: {
+    backgroundColor: COLORS.primaryOrangeHex,
+  },
+  stepLabel: {
+    fontFamily: FONTFAMILY.poppins_medium,
+    fontSize: FONTSIZE.size_12,
+    color: COLORS.primaryGreyHex,
+    textAlign: 'center',
+  },
+  stepLabelCompleted: {
     color: COLORS.primaryGreenHex,
   },
-  timelineTitleActive: {
+  stepLabelActive: {
     color: COLORS.primaryOrangeHex,
   },
-  timelineDescription: {
+  animation: {
+    width: 48,
+    height: 48,
+    position: 'absolute',
+  },
+  timerSection: {
+    alignItems: 'center',
+    marginVertical: SPACING.space_24,
+  },
+  timerContent: {
+    alignItems: 'center',
+  },
+  timerText: {
+    fontFamily: FONTFAMILY.poppins_bold,
+    fontSize: FONTSIZE.size_24,
+    color: COLORS.primaryBlackHex,
+  },
+  timerLabel: {
+    fontFamily: FONTFAMILY.poppins_medium,
+    fontSize: FONTSIZE.size_14,
+    color: COLORS.primaryGreyHex,
+  },
+  qrSection: {
+    padding: SPACING.space_24,
+    backgroundColor: COLORS.primaryWhiteHex,
+    borderRadius: BORDERRADIUS.radius_20,
+    marginHorizontal: SPACING.space_24,
+    marginBottom: SPACING.space_24,
+    alignItems: 'center',
+  },
+  qrContainer: {
+    padding: SPACING.space_16,
+    backgroundColor: COLORS.primaryWhiteHex,
+    borderRadius: BORDERRADIUS.radius_20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  qrInstructions: {
+    fontFamily: FONTFAMILY.poppins_medium,
+    fontSize: FONTSIZE.size_14,
+    color: COLORS.primaryGreyHex,
+    marginTop: SPACING.space_12,
+    textAlign: 'center',
+  },
+  notesSection: {
+    padding: SPACING.space_24,
+    backgroundColor: COLORS.primaryWhiteHex,
+    borderRadius: BORDERRADIUS.radius_20,
+    marginHorizontal: SPACING.space_24,
+    marginBottom: SPACING.space_24,
+  },
+  noteBubble: {
+    backgroundColor: '#F5F5DC',
+    padding: SPACING.space_16,
+    borderRadius: BORDERRADIUS.radius_15,
+    marginBottom: SPACING.space_12,
+  },
+  noteText: {
     fontFamily: FONTFAMILY.poppins_regular,
     fontSize: FONTSIZE.size_14,
     color: COLORS.primaryBlackHex,
-    opacity: 0.8,
-    marginBottom: SPACING.space_12,
   },
-  activeIndicator: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.space_8,
-  },
-  pulseDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: COLORS.primaryOrangeHex,
-  },
-  activeText: {
-    fontFamily: FONTFAMILY.poppins_medium,
+  noteTime: {
+    fontFamily: FONTFAMILY.poppins_regular,
     fontSize: FONTSIZE.size_12,
-    color: COLORS.primaryOrangeHex,
+    color: COLORS.primaryGreyHex,
+    marginTop: SPACING.space_4,
   },
-  summaryCard: {
-    marginHorizontal: SPACING.space_24,
-    borderRadius: BORDERRADIUS.radius_20,
-    marginBottom: SPACING.space_36,
-    overflow: 'hidden',
-    backgroundColor: COLORS.primaryBlackHex,
-  },
-  summaryGradient: {
+  summarySection: {
     padding: SPACING.space_24,
+    backgroundColor: COLORS.primaryWhiteHex,
+    borderRadius: BORDERRADIUS.radius_20,
+    marginHorizontal: SPACING.space_24,
+    marginBottom: SPACING.space_24,
   },
-  summaryHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: SPACING.space_16,
-  },
-  summaryTitle: {
-    fontFamily: FONTFAMILY.poppins_semibold,
-    fontSize: FONTSIZE.size_18,
-    color: COLORS.primaryWhiteHex,
-  },
-  orderNumber: {
-    fontFamily: FONTFAMILY.poppins_medium,
-    fontSize: FONTSIZE.size_14,
-    color: COLORS.primaryOrangeHex,
-  },
-  summaryDivider: {
-    height: 1,
-    backgroundColor: '#E8E8D0',
-    opacity: 0.2,
-    marginBottom: SPACING.space_16,
-  },
-  summaryRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+  itemCard: {
+    backgroundColor: '#F5F5DC',
+    padding: SPACING.space_16,
+    borderRadius: BORDERRADIUS.radius_15,
     marginBottom: SPACING.space_12,
   },
-  summaryLabel: {
+  itemHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: SPACING.space_8,
+  },
+  itemName: {
+    fontFamily: FONTFAMILY.poppins_medium,
+    fontSize: FONTSIZE.size_16,
+    color: COLORS.primaryBlackHex,
+  },
+  itemQuantity: {
     fontFamily: FONTFAMILY.poppins_medium,
     fontSize: FONTSIZE.size_14,
-    color: COLORS.primaryWhiteHex,
-  },
-  summaryValue: {
-    fontFamily: FONTFAMILY.poppins_medium,
-    fontSize: FONTSIZE.size_14,
-    color: COLORS.primaryWhiteHex,
-  },
-  paymentBadge: {
-    backgroundColor: COLORS.primaryGreyHex,
-    paddingHorizontal: SPACING.space_12,
-    paddingVertical: SPACING.space_4,
-    borderRadius: BORDERRADIUS.radius_10,
-  },
-  totalAmount: {
-    fontFamily: FONTFAMILY.poppins_bold,
-    fontSize: FONTSIZE.size_18,
     color: COLORS.primaryOrangeHex,
+  },
+  itemDetail: {
+    fontFamily: FONTFAMILY.poppins_regular,
+    fontSize: FONTSIZE.size_14,
+    color: COLORS.primaryGreyHex,
+    marginBottom: SPACING.space_4,
+  },
+  customizationsList: {
+    marginTop: SPACING.space_8,
+  },
+  customizationItem: {
+    fontFamily: FONTFAMILY.poppins_regular,
+    fontSize: FONTSIZE.size_12,
+    color: COLORS.primaryGreyHex,
+    marginBottom: SPACING.space_2,
+  },
+  itemPrice: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: SPACING.space_8,
+  },
+  priceText: {
+    fontFamily: FONTFAMILY.poppins_semibold,
+    fontSize: FONTSIZE.size_16,
+    color: COLORS.primaryOrangeHex,
+  },
+  unitPrice: {
+    fontFamily: FONTFAMILY.poppins_regular,
+    fontSize: FONTSIZE.size_12,
+    color: COLORS.primaryGreyHex,
+    marginLeft: SPACING.space_8,
+  },
+  loyaltySection: {
+    padding: SPACING.space_24,
+    backgroundColor: COLORS.primaryWhiteHex,
+    borderRadius: BORDERRADIUS.radius_20,
+    marginHorizontal: SPACING.space_24,
+    marginBottom: SPACING.space_24,
+  },
+  loyaltyCard: {
+    backgroundColor: '#F5F5DC',
+    padding: SPACING.space_24,
+    borderRadius: BORDERRADIUS.radius_15,
+    alignItems: 'center',
+  },
+  pointsContainer: {
+    alignItems: 'center',
+    marginBottom: SPACING.space_16,
+  },
+  pointsText: {
+    fontFamily: FONTFAMILY.poppins_bold,
+    fontSize: FONTSIZE.size_24,
+    color: COLORS.primaryOrangeHex,
+  },
+  pointsLabel: {
+    fontFamily: FONTFAMILY.poppins_medium,
+    fontSize: FONTSIZE.size_14,
+    color: COLORS.primaryGreyHex,
+  },
+  rewardText: {
+    fontFamily: FONTFAMILY.poppins_medium,
+    fontSize: FONTSIZE.size_16,
+    color: COLORS.primaryBlackHex,
+    textAlign: 'center',
+  },
+  confettiAnimation: {
+    position: 'absolute',
+    width: '100%',
+    height: '100%',
   },
   buttonContainer: {
     paddingHorizontal: SPACING.space_24,

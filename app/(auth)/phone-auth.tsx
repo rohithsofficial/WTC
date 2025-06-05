@@ -331,12 +331,12 @@ export default function PhoneAuth() {
             </>
           )}
 
-          <View style={styles.loginContainer}>
+          {/* <View style={styles.loginContainer}>
             <Text style={styles.loginText}>Or login with email? </Text>
             <TouchableOpacity onPress={() => router.push('/(auth)/login')}>
               <Text style={styles.loginLink}>Login</Text>
             </TouchableOpacity>
-          </View>
+          </View> */}
         </View>
       </ScrollView>
     </KeyboardAvoidingView>

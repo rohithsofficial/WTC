@@ -188,6 +188,9 @@ buck-out/
 .expo/*
 web-build/
 
+# Native directories
+/android/
+/ios/
 
 # notes
 notes.txt
