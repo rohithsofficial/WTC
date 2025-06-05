@@ -25,7 +25,7 @@ service cloud.firestore {
     match /users/{userId} {
       allow read: if isAuthenticated() && (isOwner(userId) || isStaff());
       allow update: if isAuthenticated() && (isOwner(userId) || isStaff());
-      allow create: if isAuthenticated() && isAdmin();
+      allow create: if isAuthenticated(); // Allow users to create their own profile
       allow delete: if isAuthenticated() && isAdmin();
     }
 
@@ -33,8 +33,18 @@ service cloud.firestore {
     match /orders/{orderId} {
       allow read: if isAuthenticated() && 
         (isOwner(resource.data.userId) || isStaff());
-      allow create: if isAuthenticated() && isStaff();
+      allow create: if isAuthenticated(); // Allow users to create their own orders
       allow update: if false; // Orders should not be modified after creation
+      allow delete: if isAuthenticated() && isAdmin();
+    }
+
+    // Loyalty transactions collection
+    match /loyaltyTransactions/{transactionId} {
+      allow read: if isAuthenticated() && 
+        (isOwner(resource.data.userId) || isStaff());
+      allow create: if isAuthenticated() && 
+        (isOwner(request.resource.data.userId) || isStaff());
+      allow update: if false; // Transactions should not be modified
       allow delete: if isAuthenticated() && isAdmin();
     }
   }

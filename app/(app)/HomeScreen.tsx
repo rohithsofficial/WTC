@@ -70,6 +70,7 @@ interface FooterOffer {
 const quickActions = [
   { label: "Menu", icon: "restaurant-menu" as const, sub: "Explore" },
   { label: "Coffee", icon: "grain" as const, sub: "Beans" },
+  { label: "Loyalty", icon: "stars" as const, sub: "Points" },
   { label: "Offers", icon: "local-offer" as const, sub: "2 New", badge: true },
   { label: "Cafes", icon: "storefront" as const, sub: "Explore" },
 ];
@@ -566,6 +567,8 @@ const HomeScreen = () => {
                   router.push("/MenuScreen");
                 } else if (action.label === "Coffee") {
                   router.push("/HomeScreen1");
+                } else if (action.label === "Loyalty") {
+                  router.push("/LoyaltyScreen");
                 } else if (action.label === "Offers") {
                   router.push("/OffersScreen");
                 } else if (action.label === "Cafes") {

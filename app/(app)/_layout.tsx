@@ -53,6 +53,15 @@ const AppLayout = () => {
         }}
       />
       <Tabs.Screen
+        name="LoyaltyScreen"
+        options={{
+          title: 'Loyalty',
+          tabBarIcon: ({ color }) => (
+            <MaterialIcons name="stars" size={24} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="OrderScreen"
         options={{
           title: 'Orders',

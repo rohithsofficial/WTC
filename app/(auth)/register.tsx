@@ -43,6 +43,7 @@ export default function Register() {
         id: uid,
         email: email.trim(),
         displayName,
+        loyaltyPoints: 0,
         createdAt: new Date().toISOString(),
       }; 
       

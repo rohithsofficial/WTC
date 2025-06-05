@@ -52,6 +52,7 @@ const SignupScreen = () => {
       await setDoc(doc(db, 'users', userCredential.user.uid), {
         name: name.trim(),
         email: email.trim(),
+        loyaltyPoints: 0,
         createdAt: new Date().toISOString(),
       });
 

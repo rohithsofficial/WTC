@@ -120,6 +120,7 @@ useEffect(() => {
 
   const menuItems = [
     { title: 'My Orders', icon: 'shopping-bag' as const, onPress: () => router.push('/(app)/OrderScreen') },
+    { title: 'Loyalty Points', icon: 'star' as const, onPress: () => router.push('/(app)/LoyaltyScreen') },
     { title: 'Payment Methods', icon: 'credit-card' as const, onPress: () => router.push('/(app)/PaymentScreen') },
     { title: 'Favorites', icon: 'heart' as const, onPress: () => router.push('/(app)/FavoritesScreen') },
     { title: 'Addresses', icon: 'map-marker' as const, onPress: () => router.push('/(app)/AddressScreen') },

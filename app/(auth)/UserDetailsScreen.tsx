@@ -69,6 +69,7 @@ const UserDetailsScreen = () => {
           displayName: fullName,
           email: email.trim(),
           phoneNumber,
+          loyaltyPoints: 0,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString()
         });

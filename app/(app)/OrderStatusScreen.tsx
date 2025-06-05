@@ -44,6 +44,8 @@ interface OrderData {
   orderDate: string;
   paymentStatus: string;
   userId: string;
+  pointsEarned?: number;
+  pointsRedeemed?: number;
 }
 
 interface BaristaNote {
@@ -494,31 +496,38 @@ const OrderStatusScreen = () => {
     </View>
   );
 
-  const renderLoyaltySection = () => (
-    <View style={styles.loyaltySection}>
-      <Text style={styles.sectionTitle}>Loyalty Points</Text>
-      <View style={styles.loyaltyCard}>
-        <View style={styles.pointsContainer}>
-          <Text style={styles.pointsText}>{loyaltyPoints}</Text>
-          <Text style={styles.pointsLabel}>Points</Text>
+  const renderLoyaltySection = () => {
+    if (!orderDetails) return null;
+
+    const pointsEarned = orderDetails.pointsEarned || 0;
+    const pointsRedeemed = orderDetails.pointsRedeemed || 0;
+    const netPoints = pointsEarned - pointsRedeemed;
+
+    return (
+      <View style={styles.loyaltySection}>
+        <Text style={styles.sectionTitle}>Loyalty Points</Text>
+        <View style={styles.loyaltyCard}>
+          <View style={styles.pointsContainer}>
+            <Text style={styles.pointsText}>{netPoints}</Text>
+            <Text style={styles.pointsLabel}>Net Points</Text>
+          </View>
+          {pointsEarned > 0 && (
+            <Text style={[styles.rewardText, { color: COLORS.primaryGreenHex }]}>
+              +{pointsEarned} points earned
+            </Text>
+          )}
+          {pointsRedeemed > 0 && (
+            <Text style={[styles.rewardText, { color: COLORS.primaryRedHex }]}>
+              -{pointsRedeemed} points redeemed
+            </Text>
+          )}
+          <Text style={[styles.rewardText, { marginTop: SPACING.space_8 }]}>
+            {netPoints > 0 ? "Keep earning points for rewards!" : "Thanks for using your points!"}
+          </Text>
         </View>
-        {isRewardUnlocked && (
-          <LottieView
-            ref={confettiAnimationRef}
-            source={require('../../src/assets/animations/brewing.json')}
-            autoPlay
-            loop={false}
-            style={styles.confettiAnimation}
-          />
-        )}
-        <Text style={styles.rewardText}>
-          {isRewardUnlocked 
-            ? "🎉 You've unlocked a free drink!"
-            : "1 more order to unlock a free drink!"}
-        </Text>
       </View>
-    </View>
-  );
+    );
+  };
 
   // ADDED: Loading state handling
   if (loading) {
