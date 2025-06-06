@@ -45,15 +45,23 @@ export interface OrderHistoryItem {
 
 export interface OrderData {
   userId: string;
-  displayName : string;
+  displayName: string;
   items: any[];
   totalAmount: number;
+  discountAmount: number;
+  finalAmount: number;
+  pointsRedeemed: number;
+  pointsEarned: number;
+  paymentMethod: string;
   orderType: string;
-  tableNumber: string | null;
-  paymentMode: string;
-  paymentStatus: string;
+  tableNumber: string;
+  status: string;
+  timestamp: Date;
   orderDate: string;
-  createdAt: Timestamp;
+  orderStatus: string;
+  paymentStatus: string;
+  createdAt: Date;
+  updatedAt?: Date;
 }
 
 export interface Banner {

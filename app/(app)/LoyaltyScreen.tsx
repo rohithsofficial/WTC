@@ -11,7 +11,7 @@ import {
 import { useRouter, useFocusEffect } from 'expo-router';
 import { COLORS, FONTFAMILY, FONTSIZE, SPACING, BORDERRADIUS } from '../../src/theme/theme';
 import GradientBGIcon from '../../src/components/GradientBGIcon';
-import { LoyaltyPointsDisplay } from '../../src/components/LoyaltyPointsDisplay';
+import LoyaltyPointsDisplay from '../../src/components/LoyaltyPointsDisplay';
 import { LoyaltyService } from '../../src/services/loyaltyService';
 import { auth } from '../../src/firebase/config';
 import type { LoyaltyTransaction } from '../../src/types/loyalty';
@@ -104,8 +104,7 @@ const LoyaltyScreen = () => {
         {/* Points Display */}
         <LoyaltyPointsDisplay
           availablePoints={points}
-          pointsToNextReward={nextMilestone.pointsNeeded}
-          nextRewardValue={nextMilestone.rewardValue}
+          nextMilestone={nextMilestone}
         />
 
         {/* Transaction History */}

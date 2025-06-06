@@ -21,9 +21,10 @@ interface StoreState {
   error: string | null;
   favorites: Product[];
   fetchData: () => Promise<void>;
-  addToCart: (cartItem: CartItem) => void;
+  addToCart: (item: CartItem) => void;
+  removeFromCart: (id: string) => void;
+  clearCart: () => void;
   calculateCartPrice: () => void;
-  removeFromCart: (cartItem: CartItem) => void;
   incrementCartItemQuantity: (id: string, size: string) => void;
   decrementCartItemQuantity: (id: string, size: string) => void;
   addToFavorites: (product: Product) => void;
@@ -57,56 +58,35 @@ export const useStore = create<StoreState>((set, get) => ({
     }
   },
 
-  addToCart: (cartItem: CartItem) => {
-    const { CartList } = get();
-    
-    // Check if item already exists in cart
-    const existingItem = CartList.find(
-      item => item.id === cartItem.id && 
-      item.prices[0].size === cartItem.prices[0].size
-    );
+  addToCart: (item: CartItem) => {
+    set((state) => ({
+      CartList: [...state.CartList, item],
+    }));
+    get().calculateCartPrice();
+  },
 
-    if (existingItem) {
-      // If item exists, increment quantity
-      set({
-        CartList: CartList.map(item =>
-          item.id === cartItem.id && 
-          item.prices[0].size === cartItem.prices[0].size
-            ? {
-                ...item,
-                prices: item.prices.map(price => ({
-                  ...price,
-                  quantity: price.quantity + 1
-                }))
-              }
-            : item
-        )
-      });
-    } else {
-      // If item doesn't exist, add it to cart
-      set({ CartList: [...CartList, cartItem] });
-    }
+  removeFromCart: (id: string) => {
+    set((state) => ({
+      CartList: state.CartList.filter((item) => item.id !== id),
+    }));
+    get().calculateCartPrice();
+  },
+
+  clearCart: () => {
+    set(() => ({
+      CartList: [],
+      CartPrice: 0,
+    }));
   },
 
   calculateCartPrice: () => {
-    const { CartList } = get();
-    const totalPrice = CartList.reduce((total, item) => {
-      const itemTotal = item.prices.reduce((priceTotal, price) => {
-        return priceTotal + (parseFloat(price.price) * price.quantity);
-      }, 0);
-      return total + itemTotal;
-    }, 0);
-    set({ CartPrice: totalPrice });
-  },
-
-  removeFromCart: (cartItem: CartItem) => {
-    const { CartList } = get();
-    set({
-      CartList: CartList.filter(
-        item => item.id !== cartItem.id || 
-        item.prices[0].size !== cartItem.prices[0].size
-      )
-    });
+    const total = get().CartList.reduce(
+      (sum, item) => sum + item.price * item.quantity,
+      0
+    );
+    set(() => ({
+      CartPrice: total,
+    }));
   },
 
   incrementCartItemQuantity: (id: string, size: string) => {

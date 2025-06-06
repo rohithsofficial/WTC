@@ -23,13 +23,14 @@ import { LinearGradient } from 'expo-linear-gradient';
 import CustomIcon from '../../src/components/CustomIcon';
 import { useStore } from '../../src/store/store';
 import PopUpAnimation from '../../src/components/PopUpAnimation';
-import { LoyaltyPointsDisplay} from '../../src/components/LoyaltyPointsDisplay';
+import LoyaltyPointsDisplay from '../../src/components/LoyaltyPointsDisplay';
 import { RedeemPointsInput } from '../../src/components/RedeemPointsInput';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { collection, addDoc } from "firebase/firestore";
+import { collection, addDoc, doc, updateDoc } from "firebase/firestore";
 import { db } from "../../src/firebase/config";
 import type { OrderData } from '../../src/types/interfaces';
 import type { RedemptionCalculation } from '../../src/types/loyalty';
+import { LOYALTY_CONFIG } from '../../src/types/loyalty';
 import { auth } from '../../src/firebase/config';
 import { LoyaltyService } from '../../src/services/loyaltyService';
 
@@ -75,15 +76,20 @@ const PaymentScreen = () => {
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
   
   // Loyalty points state
+  const [loadingPoints, setLoadingPoints] = useState(true);
   const [availablePoints, setAvailablePoints] = useState(0);
+  const [pointsToRedeem, setPointsToRedeem] = useState('');
   const [redemptionCalculation, setRedemptionCalculation] = useState<RedemptionCalculation>({
     pointsToRedeem: 0,
     discountAmount: 0,
-    remainingAmount: amount,
-    isValid: true
+    remainingAmount: 0,
+    isValid: false
   });
-  const [loadingPoints, setLoadingPoints] = useState(true);
-  
+  const [isFirstOrder, setIsFirstOrder] = useState(false);
+  const [isBirthday, setIsBirthday] = useState(false);
+  const [isFestival, setIsFestival] = useState(false);
+  const [orderAmount, setOrderAmount] = useState(amount);
+
   const PaymentList = [
     { name: 'Credit Card', icon: 'credit-card', isIcon: true },
     { name: 'PayPal', icon: 'paypal', isIcon: true },
@@ -92,30 +98,49 @@ const PaymentScreen = () => {
     { name: 'Cash', icon: 'cash', isIcon: false },
   ];
 
-  // Load user's loyalty points
+  // Load user data and check conditions
+  useEffect(() => {
+    const loadUserData = async () => {
+      try {
+        const user = auth.currentUser;
+        if (!user) return;
+
+        const profile = await LoyaltyService.getUserProfile(user.uid);
+        if (profile) {
+          setIsFirstOrder(profile.totalOrders === 0);
+          
+          // Check if it's user's birthday
+          if (profile.birthday) {
+            const today = new Date();
+            const userBirthday = new Date(profile.birthday);
+            setIsBirthday(
+              today.getDate() === userBirthday.getDate() &&
+              today.getMonth() === userBirthday.getMonth()
+            );
+          }
+
+          // Check if it's a festival day
+          setIsFestival(false);
+        }
+      } catch (error) {
+        console.error('Error loading user data:', error);
+      }
+    };
+
+    loadUserData();
+  }, []);
+
+  // Load loyalty points
   useEffect(() => {
     const loadLoyaltyPoints = async () => {
-      if (!auth.currentUser) {
-        setLoadingPoints(false);
-        return;
-      }
-
       try {
-        setLoadingPoints(true);
-        const points = await LoyaltyService.getUserLoyaltyPoints(auth.currentUser.uid);
+        const user = auth.currentUser;
+        if (!user) return;
+
+        const points = await LoyaltyService.getUserLoyaltyPoints(user.uid);
         setAvailablePoints(points);
-        
-        // Calculate next reward milestone
-        const nextMilestone = LoyaltyService.getNextRewardMilestone(points);
-        setRedemptionCalculation(prev => ({
-          ...prev,
-          pointsToNextReward: nextMilestone.pointsNeeded,
-          nextRewardValue: nextMilestone.rewardValue
-        }));
       } catch (error) {
         console.error('Error loading loyalty points:', error);
-        Alert.alert('Error', 'Failed to load loyalty points. Please try again.');
-        setAvailablePoints(0);
       } finally {
         setLoadingPoints(false);
       }
@@ -124,17 +149,27 @@ const PaymentScreen = () => {
     loadLoyaltyPoints();
   }, []);
 
-  // Update final amount when redemption changes
+  // Calculate redemption when points input changes
   useEffect(() => {
-    setRedemptionCalculation(prev => ({
-      ...prev,
-      remainingAmount: Math.max(0, amount - prev.discountAmount)
-    }));
-  }, [amount]);
-
-  // Handle loyalty points redemption
-  const handlePointsRedemption = (calculation: RedemptionCalculation) => {
+    const points = parseInt(pointsToRedeem) || 0;
+    const calculation = LoyaltyService.calculateRedemption(
+      points,
+      availablePoints,
+      amount
+    );
     setRedemptionCalculation(calculation);
+  }, [pointsToRedeem, availablePoints, amount]);
+
+  // Handle points redemption
+  const handlePointsRedeem = () => {
+    if (!redemptionCalculation.isValid) {
+      Alert.alert('Invalid Redemption', redemptionCalculation.errorMessage);
+      return;
+    }
+
+    // Update order amount with discount
+    setOrderAmount(redemptionCalculation.remainingAmount);
+    setPointsToRedeem('');
   };
 
   // Save order to Firestore
@@ -187,19 +222,24 @@ const PaymentScreen = () => {
 
   // Clear cart function
   const clearCart = () => {
-    console.log("Clearing cart with items:", CartList);
-    
-    if (CartList && CartList.length > 0) {
-      const cartItems = [...CartList];
-      cartItems.forEach(item => {
-        console.log("Removing item from cart:", item);
-        removeFromCart(item.id);
-      });
-    }
-    
-    // Also clear using store's clear function if available
-    if (storeClearCart) {
+    try {
+      // First remove all items from the cart list
+      if (CartList && CartList.length > 0) {
+        const itemsToRemove = [...CartList]; // Create a copy of the array
+        itemsToRemove.forEach(item => {
+          removeFromCart(item.id);
+        });
+      }
+      
+      // Then clear the cart state
       storeClearCart();
+      
+      // Finally recalculate cart price
+      calculateCartPrice();
+      
+      console.log('Cart cleared successfully');
+    } catch (error) {
+      console.error('Error clearing cart:', error);
     }
   };
 
@@ -229,9 +269,12 @@ const PaymentScreen = () => {
         paymentMethod: paymentMode,
         orderType: orderType || 'dine-in',
         tableNumber: tableNumber || '',
-        status: 'pending',
+        status: 'Order Placed',
         timestamp: new Date(),
         orderDate: new Date().toISOString().split('T')[0],
+        orderStatus: 'Order Placed',
+        paymentStatus: 'pending',
+        createdAt: new Date()
       };
 
       // Save order to Firestore
@@ -240,6 +283,15 @@ const PaymentScreen = () => {
 
       // Process loyalty points transaction
       await processLoyaltyTransaction(savedOrderId);
+
+      // Update order status to paid
+      const orderRef = doc(db, "orders", savedOrderId);
+      await updateDoc(orderRef, {
+        paymentStatus: 'paid',
+        status: 'Order Placed',
+        orderStatus: 'Order Placed',
+        updatedAt: new Date()
+      });
 
       // Clear the cart
       clearCart();
@@ -314,16 +366,38 @@ const PaymentScreen = () => {
             <>
               <LoyaltyPointsDisplay
                 availablePoints={availablePoints}
-                pointsToNextReward={redemptionCalculation.pointsToNextReward || 0}
-                nextRewardValue={redemptionCalculation.nextRewardValue || 0}
+                nextMilestone={LoyaltyService.getNextRewardMilestone(availablePoints)}
               />
-
-              {availablePoints > 0 && (
+              
+              {availablePoints >= LOYALTY_CONFIG.minRedemption && (
                 <RedeemPointsInput
                   availablePoints={availablePoints}
                   orderAmount={amount}
-                  onRedemptionChange={handlePointsRedemption}
+                  onRedemptionChange={handlePointsRedeem}
+                  disabled={isProcessingPayment}
                 />
+              )}
+
+              {/* Show bonus multipliers if applicable */}
+              {(isFirstOrder || isBirthday || isFestival) && (
+                <View style={styles.bonusContainer}>
+                  <Text style={styles.bonusTitle}>Active Bonuses:</Text>
+                  {isFirstOrder && (
+                    <Text style={styles.bonusText}>
+                      🎉 First Order: {LOYALTY_CONFIG.firstOrderMultiplier}x points
+                    </Text>
+                  )}
+                  {isBirthday && (
+                    <Text style={styles.bonusText}>
+                      🎂 Birthday Bonus: {LOYALTY_CONFIG.birthdayBonusPoints} points
+                    </Text>
+                  )}
+                  {isFestival && (
+                    <Text style={styles.bonusText}>
+                      🎊 Festival Bonus: {LOYALTY_CONFIG.festivalMultiplier}x points
+                    </Text>
+                  )}
+                </View>
               )}
             </>
           )}
@@ -429,7 +503,6 @@ const PaymentScreen = () => {
         buttonTitle={isProcessingPayment ? 'Processing...' : `Pay ₹ ${finalAmount.toFixed(2)}`}
         price={{ price: finalAmount.toString(), currency: '₹' }}
         buttonPressHandler={buttonPressHandler}
-        disabled={isProcessingPayment}
       />
     </View>
   );
@@ -559,6 +632,23 @@ const styles = StyleSheet.create({
     fontSize: FONTSIZE.size_14,
     color: COLORS.primaryLightGreyHex,
     marginTop: SPACING.space_8,
+  },
+  bonusContainer: {
+    marginTop: 10,
+    padding: 10,
+    backgroundColor: '#F8F9FA',
+    borderRadius: 8,
+  },
+  bonusTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 5,
+    color: '#2C3E50',
+  },
+  bonusText: {
+    fontSize: 14,
+    color: '#34495E',
+    marginBottom: 3,
   },
 });
 
