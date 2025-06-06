@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   Alert,
   ActivityIndicator,
+  TextInput,
 } from 'react-native';
 import {
   BORDERRADIUS,
@@ -33,10 +34,15 @@ import type { RedemptionCalculation } from '../../src/types/loyalty';
 import { LOYALTY_CONFIG } from '../../src/types/loyalty';
 import { auth } from '../../src/firebase/config';
 import { LoyaltyService } from '../../src/services/loyaltyService';
+import { useCart } from '../../src/store/CartContext';
+
+// Payment Method Types
+type PaymentModeType = 'credit-card' | 'paypal' | 'google-pay' | 'apple-pay' | 'cash';
 
 const PaymentScreen = () => {
   const router = useRouter();
   const params = useLocalSearchParams();
+  const { dispatch } = useCart();
 
   const toString = (param: string | string[] | undefined): string => {
     if (!param) return '';
@@ -70,7 +76,7 @@ const PaymentScreen = () => {
     clearCart: storeClearCart
   } = useStore();
 
-  const [paymentMode, setPaymentMode] = useState('Credit Card');
+  const [paymentMode, setPaymentMode] = useState<PaymentModeType>('credit-card');
   const [showAnimation, setShowAnimation] = useState(false);
   const [orderId, setOrderId] = useState<string | null>(null);
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
@@ -82,20 +88,27 @@ const PaymentScreen = () => {
   const [redemptionCalculation, setRedemptionCalculation] = useState<RedemptionCalculation>({
     pointsToRedeem: 0,
     discountAmount: 0,
-    remainingAmount: 0,
+    remainingAmount: amount,
     isValid: false
   });
   const [isFirstOrder, setIsFirstOrder] = useState(false);
   const [isBirthday, setIsBirthday] = useState(false);
   const [isFestival, setIsFestival] = useState(false);
-  const [orderAmount, setOrderAmount] = useState(amount);
+  const [redemptionType, setRedemptionType] = useState<'none' | 'loyalty'>('none');
+  const [nextMilestone, setNextMilestone] = useState({ pointsNeeded: 0, rewardValue: 0 });
+
+  // Calculated values based on redemption
+  const subtotalAmount = amount;
+  const discountAmount = redemptionCalculation.isValid && redemptionType === 'loyalty' ? redemptionCalculation.discountAmount : 0;
+  const finalAmount = subtotalAmount - discountAmount;
+  const pointsToEarn = LoyaltyService.calculatePointsEarned(finalAmount);
 
   const PaymentList = [
-    { name: 'Credit Card', icon: 'credit-card', isIcon: true },
-    { name: 'PayPal', icon: 'paypal', isIcon: true },
-    { name: 'Google Pay', icon: 'google', isIcon: true },
-    { name: 'Apple Pay', icon: 'apple', isIcon: true },
-    { name: 'Cash', icon: 'cash', isIcon: false },
+    { name: 'Credit Card', icon: 'credit-card', isIcon: true, value: 'credit-card' as PaymentModeType },
+    { name: 'PayPal', icon: 'paypal', isIcon: true, value: 'paypal' as PaymentModeType },
+    { name: 'Google Pay', icon: 'google', isIcon: true, value: 'google-pay' as PaymentModeType },
+    { name: 'Apple Pay', icon: 'apple', isIcon: true, value: 'apple-pay' as PaymentModeType },
+    { name: 'Cash', icon: 'cash', isIcon: false, value: 'cash' as PaymentModeType },
   ];
 
   // Load user data and check conditions
@@ -152,24 +165,55 @@ const PaymentScreen = () => {
   // Calculate redemption when points input changes
   useEffect(() => {
     const points = parseInt(pointsToRedeem) || 0;
-    const calculation = LoyaltyService.calculateRedemption(
-      points,
-      availablePoints,
-      amount
-    );
-    setRedemptionCalculation(calculation);
+    if (points > 0 && availablePoints > 0) {
+      const calculation = LoyaltyService.calculateRedemption(
+        points,
+        availablePoints,
+        amount
+      );
+      setRedemptionCalculation(calculation);
+    } else {
+      // Reset calculation if points are invalid
+      setRedemptionCalculation({
+        pointsToRedeem: 0,
+        discountAmount: 0,
+        remainingAmount: amount,
+        isValid: false,
+        errorMessage: points > availablePoints ? 'Insufficient points' : 'Enter valid points'
+      });
+    }
   }, [pointsToRedeem, availablePoints, amount]);
+
+  // Calculate next milestone when available points change
+  useEffect(() => {
+    if (availablePoints > 0) {
+      const milestone = LoyaltyService.getNextRewardMilestone(availablePoints);
+      setNextMilestone(milestone);
+    }
+  }, [availablePoints]);
 
   // Handle points redemption
   const handlePointsRedeem = () => {
-    if (!redemptionCalculation.isValid) {
-      Alert.alert('Invalid Redemption', redemptionCalculation.errorMessage);
+    if (!redemptionCalculation || !redemptionCalculation.isValid) {
+      Alert.alert('Invalid Redemption', redemptionCalculation?.errorMessage || 'Please enter valid points');
       return;
     }
 
-    // Update order amount with discount
-    setOrderAmount(redemptionCalculation.remainingAmount);
     setPointsToRedeem('');
+    setRedemptionType('loyalty');
+  };
+
+  // Reset redemption
+  const resetRedemption = () => {
+    setRedemptionType('none');
+    setPointsToRedeem('');
+    setRedemptionCalculation({
+      pointsToRedeem: 0,
+      discountAmount: 0,
+      remainingAmount: amount,
+      isValid: false,
+      errorMessage: ''
+    });
   };
 
   // Save order to Firestore
@@ -192,7 +236,7 @@ const PaymentScreen = () => {
       await LoyaltyService.processOrderCompletion(
         auth.currentUser.uid,
         orderId,
-        redemptionCalculation.remainingAmount,
+        finalAmount,
         redemptionCalculation.pointsToRedeem,
         displayName || auth.currentUser.displayName || 'User'
       );
@@ -221,25 +265,36 @@ const PaymentScreen = () => {
   }, []);
 
   // Clear cart function
-  const clearCart = () => {
+  const clearCart = async () => {
     try {
-      // First remove all items from the cart list
-      if (CartList && CartList.length > 0) {
-        const itemsToRemove = [...CartList]; // Create a copy of the array
-        itemsToRemove.forEach(item => {
-          removeFromCart(item.id);
-        });
-      }
+      // Clear the cart in React Context first
+      dispatch({ type: 'CLEAR_CART' });
       
-      // Then clear the cart state
+      // Then clear the cart state in Zustand store
       storeClearCart();
       
-      // Finally recalculate cart price
+      // Remove all items from the cart list
+      if (CartList && CartList.length > 0) {
+        const itemsToRemove = [...CartList];
+        for (const item of itemsToRemove) {
+          removeFromCart(item.id);
+        }
+      }
+      
+      // Recalculate cart price
       calculateCartPrice();
       
       console.log('Cart cleared successfully');
     } catch (error) {
       console.error('Error clearing cart:', error);
+      // Try to clear cart again with a simpler approach if the first attempt fails
+      try {
+        dispatch({ type: 'CLEAR_CART' });
+        storeClearCart();
+        console.log('Cart cleared with fallback method');
+      } catch (fallbackError) {
+        console.error('Fallback cart clearing failed:', fallbackError);
+      }
     }
   };
 
@@ -256,17 +311,17 @@ const PaymentScreen = () => {
         return;
       }
 
-      // Create order data
+      // Create order data with correct discount calculations
       const orderData: OrderData = {
         userId: userId || auth.currentUser?.uid || 'guest',
         displayName: displayName || auth.currentUser?.displayName || 'Guest',
         items: items.length > 0 ? items : CartList,
-        totalAmount: amount,
-        discountAmount: redemptionCalculation.discountAmount,
-        finalAmount: redemptionCalculation.remainingAmount,
-        pointsRedeemed: redemptionCalculation.pointsToRedeem,
-        pointsEarned: LoyaltyService.calculatePointsEarned(redemptionCalculation.remainingAmount),
-        paymentMethod: paymentMode,
+        totalAmount: subtotalAmount,
+        discountAmount: discountAmount,
+        finalAmount: finalAmount,
+        pointsRedeemed: redemptionType === 'loyalty' ? redemptionCalculation.pointsToRedeem : 0,
+        pointsEarned: pointsToEarn,
+        paymentMode: paymentMode,
         orderType: orderType || 'dine-in',
         tableNumber: tableNumber || '',
         status: 'Order Placed',
@@ -293,8 +348,8 @@ const PaymentScreen = () => {
         updatedAt: new Date()
       });
 
-      // Clear the cart
-      clearCart();
+      // Clear the cart and wait for it to complete
+      await clearCart();
 
       // Show success animation
       setShowAnimation(true);
@@ -322,8 +377,6 @@ const PaymentScreen = () => {
       setIsProcessingPayment(false);
     }
   };
-
-  const finalAmount = redemptionCalculation.remainingAmount;
 
   return (
     <View style={styles.ScreenContainer}>
@@ -357,60 +410,45 @@ const PaymentScreen = () => {
         <View style={styles.PaymentContainer}>
           <Text style={styles.PaymentHeaderText}>Loyalty Points</Text>
           
-          {loadingPoints ? (
-            <View style={styles.loadingContainer}>
-              <ActivityIndicator size="small" color={COLORS.primaryOrangeHex} />
-              <Text style={styles.loadingText}>Loading loyalty points...</Text>
-            </View>
-          ) : (
-            <>
-              <LoyaltyPointsDisplay
-                availablePoints={availablePoints}
-                nextMilestone={LoyaltyService.getNextRewardMilestone(availablePoints)}
-              />
-              
-              {availablePoints >= LOYALTY_CONFIG.minRedemption && (
-                <RedeemPointsInput
-                  availablePoints={availablePoints}
-                  orderAmount={amount}
-                  onRedemptionChange={handlePointsRedeem}
-                  disabled={isProcessingPayment}
-                />
-              )}
+          <LoyaltyPointsDisplay
+            availablePoints={availablePoints}
+            nextMilestone={nextMilestone}
+          />
 
-              {/* Show bonus multipliers if applicable */}
-              {(isFirstOrder || isBirthday || isFestival) && (
-                <View style={styles.bonusContainer}>
-                  <Text style={styles.bonusTitle}>Active Bonuses:</Text>
-                  {isFirstOrder && (
-                    <Text style={styles.bonusText}>
-                      🎉 First Order: {LOYALTY_CONFIG.firstOrderMultiplier}x points
-                    </Text>
-                  )}
-                  {isBirthday && (
-                    <Text style={styles.bonusText}>
-                      🎂 Birthday Bonus: {LOYALTY_CONFIG.birthdayBonusPoints} points
-                    </Text>
-                  )}
-                  {isFestival && (
-                    <Text style={styles.bonusText}>
-                      🎊 Festival Bonus: {LOYALTY_CONFIG.festivalMultiplier}x points
-                    </Text>
-                  )}
-                </View>
-              )}
-            </>
-          )}
+          <View style={styles.PointsInputContainer}>
+            <RedeemPointsInput
+              availablePoints={availablePoints}
+              orderAmount={amount}
+              onRedemptionChange={setRedemptionCalculation}
+              disabled={redemptionType === 'loyalty'}
+            />
+            
+            {redemptionType === 'none' && redemptionCalculation.isValid && (
+              <TouchableOpacity 
+                style={styles.RedeemButton}
+                onPress={handlePointsRedeem}>
+                <Text style={styles.RedeemButtonText}>Apply Discount</Text>
+              </TouchableOpacity>
+            )}
+
+            {redemptionType === 'loyalty' && (
+              <TouchableOpacity 
+                style={styles.ResetButton}
+                onPress={resetRedemption}>
+                <Text style={styles.ResetButtonText}>Remove Discount</Text>
+              </TouchableOpacity>
+            )}
+          </View>
         </View>
 
         {/* Payment Methods */}
         <View style={styles.PaymentContainer}>
           <Text style={styles.PaymentHeaderText}>Payment Options</Text>
           
-          <TouchableOpacity>
+          <TouchableOpacity onPress={() => setPaymentMode('credit-card')}>
             <View style={[
               styles.CreditCardContainer,
-              { borderColor: paymentMode === 'Credit Card' ? COLORS.primaryOrangeHex : COLORS.primaryGreyHex }
+              { borderColor: paymentMode === 'credit-card' ? COLORS.primaryOrangeHex : COLORS.primaryGreyHex }
             ]}>
               <Text style={styles.CreditCardTitle}>Credit Card</Text>
               <View style={styles.CreditCardBG}>
@@ -458,12 +496,12 @@ const PaymentScreen = () => {
             </View>
           </TouchableOpacity>
 
-          {PaymentList.map((data, index) => (
+          {PaymentList.slice(1).map((data, index) => (
             <TouchableOpacity
               key={index}
-              onPress={() => setPaymentMode(data.name)}>
+              onPress={() => setPaymentMode(data.value)}>
               <PaymentMethod
-                paymentMode={paymentMode}
+                paymentMode={paymentMode === data.value ? data.name : ''}
                 name={data.name}
                 icon={data.icon}
                 isIcon={data.isIcon}
@@ -478,30 +516,44 @@ const PaymentScreen = () => {
           
           <View style={styles.PriceRow}>
             <Text style={styles.PriceText}>Subtotal</Text>
-            <Text style={styles.PriceText}>₹ {amount.toFixed(2)}</Text>
+            <Text style={styles.PriceText}>₹ {subtotalAmount.toFixed(2)}</Text>
           </View>
 
-          {redemptionCalculation.discountAmount > 0 && (
+          {discountAmount > 0 && (
             <View style={styles.PriceRow}>
               <Text style={[styles.PriceText, { color: COLORS.primaryOrangeHex }]}>
                 Loyalty Discount ({redemptionCalculation.pointsToRedeem} points)
               </Text>
               <Text style={[styles.PriceText, { color: COLORS.primaryOrangeHex }]}>
-                -₹ {redemptionCalculation.discountAmount.toFixed(2)}
+                -₹ {discountAmount.toFixed(2)}
               </Text>
             </View>
           )}
 
           <View style={[styles.PriceRow, styles.TotalRow]}>
-            <Text style={styles.TotalText}>Total</Text>
+            <Text style={styles.TotalText}>Total Amount</Text>
             <Text style={styles.TotalText}>₹ {finalAmount.toFixed(2)}</Text>
+          </View>
+
+          <View style={styles.PriceRow}>
+            <Text style={[styles.PriceText, { color: COLORS.primaryGreenHex }]}>
+              Points to Earn
+            </Text>
+            <Text style={[styles.PriceText, { color: COLORS.primaryGreenHex }]}>
+              +{pointsToEarn}
+            </Text>
           </View>
         </View>
       </ScrollView>
 
       <PaymentFooter
         buttonTitle={isProcessingPayment ? 'Processing...' : `Pay ₹ ${finalAmount.toFixed(2)}`}
-        price={{ price: finalAmount.toString(), currency: '₹' }}
+        price={{ 
+          price: finalAmount.toString(), 
+          currency: '₹',
+          originalPrice: discountAmount > 0 ? subtotalAmount.toString() : undefined,
+          discount: discountAmount > 0 ? discountAmount.toString() : undefined
+        }}
         buttonPressHandler={buttonPressHandler}
       />
     </View>
@@ -514,7 +566,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.primaryBlackHex,
   },
   LottieAnimation: {
-    flex: 1,
+    height: 250,
   },
   ScrollViewFlex: {
     flexGrow: 1,
@@ -545,15 +597,45 @@ const styles = StyleSheet.create({
     fontFamily: FONTFAMILY.poppins_semibold,
     fontSize: FONTSIZE.size_18,
     color: COLORS.primaryWhiteHex,
-    marginBottom: SPACING.space_12,
+    marginBottom: SPACING.space_16,
+  },
+  PointsInputContainer: {
+    marginTop: SPACING.space_16,
+  },
+  RedeemButton: {
+    backgroundColor: COLORS.primaryOrangeHex,
+    paddingVertical: SPACING.space_12,
+    paddingHorizontal: SPACING.space_20,
+    borderRadius: BORDERRADIUS.radius_10,
+    alignItems: 'center',
+    marginTop: SPACING.space_12,
+  },
+  RedeemButtonText: {
+    fontFamily: FONTFAMILY.poppins_medium,
+    fontSize: FONTSIZE.size_16,
+    color: COLORS.primaryWhiteHex,
+  },
+  ResetButton: {
+    backgroundColor: COLORS.secondaryRedHex,
+    paddingVertical: SPACING.space_12,
+    paddingHorizontal: SPACING.space_20,
+    borderRadius: BORDERRADIUS.radius_10,
+    alignItems: 'center',
+    marginTop: SPACING.space_12,
+  },
+  ResetButtonText: {
+    fontFamily: FONTFAMILY.poppins_medium,
+    fontSize: FONTSIZE.size_16,
+    color: COLORS.primaryWhiteHex,
   },
   CreditCardContainer: {
     padding: SPACING.space_10,
+    gap: SPACING.space_10,
     borderRadius: BORDERRADIUS.radius_15,
     borderWidth: 3,
   },
   CreditCardTitle: {
-    fontFamily: FONTFAMILY.poppins_medium,
+    fontFamily: FONTFAMILY.poppins_semibold,
     fontSize: FONTSIZE.size_14,
     color: COLORS.primaryWhiteHex,
     marginLeft: SPACING.space_10,
@@ -561,13 +643,12 @@ const styles = StyleSheet.create({
   CreditCardBG: {
     backgroundColor: COLORS.primaryGreyHex,
     borderRadius: BORDERRADIUS.radius_25,
-    margin: SPACING.space_10,
   },
   LinearGradientStyle: {
     borderRadius: BORDERRADIUS.radius_25,
-    padding: SPACING.space_15,
-    justifyContent: 'space-between',
-    height: 180,
+    gap: SPACING.space_36,
+    paddingHorizontal: SPACING.space_15,
+    paddingVertical: SPACING.space_10,
   },
   CreditCardRow: {
     flexDirection: 'row',
@@ -577,6 +658,7 @@ const styles = StyleSheet.create({
   CreditCardNumberContainer: {
     flexDirection: 'row',
     gap: SPACING.space_10,
+    alignItems: 'center',
   },
   CreditCardNumber: {
     fontFamily: FONTFAMILY.poppins_semibold,
@@ -586,9 +668,6 @@ const styles = StyleSheet.create({
   },
   CreditCardNameContainer: {
     alignItems: 'flex-start',
-  },
-  CreditCardDateContainer: {
-    alignItems: 'flex-end',
   },
   CreditCardNameSubtitle: {
     fontFamily: FONTFAMILY.poppins_regular,
@@ -600,11 +679,14 @@ const styles = StyleSheet.create({
     fontSize: FONTSIZE.size_18,
     color: COLORS.primaryWhiteHex,
   },
+  CreditCardDateContainer: {
+    alignItems: 'flex-end',
+  },
   PriceRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginVertical: SPACING.space_4,
+    paddingVertical: SPACING.space_8,
   },
   PriceText: {
     fontFamily: FONTFAMILY.poppins_medium,
@@ -614,41 +696,13 @@ const styles = StyleSheet.create({
   TotalRow: {
     borderTopWidth: 1,
     borderTopColor: COLORS.primaryDarkGreyHex,
-    paddingTop: SPACING.space_8,
+    paddingTop: SPACING.space_12,
     marginTop: SPACING.space_8,
   },
   TotalText: {
     fontFamily: FONTFAMILY.poppins_semibold,
     fontSize: FONTSIZE.size_16,
     color: COLORS.primaryWhiteHex,
-  },
-  loadingContainer: {
-    padding: SPACING.space_20,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  loadingText: {
-    fontFamily: FONTFAMILY.poppins_regular,
-    fontSize: FONTSIZE.size_14,
-    color: COLORS.primaryLightGreyHex,
-    marginTop: SPACING.space_8,
-  },
-  bonusContainer: {
-    marginTop: 10,
-    padding: 10,
-    backgroundColor: '#F8F9FA',
-    borderRadius: 8,
-  },
-  bonusTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 5,
-    color: '#2C3E50',
-  },
-  bonusText: {
-    fontSize: 14,
-    color: '#34495E',
-    marginBottom: 3,
   },
 });
 

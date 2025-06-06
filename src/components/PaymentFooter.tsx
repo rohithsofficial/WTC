@@ -11,6 +11,8 @@ import {
 interface PriceProps {
   price: string;
   currency: string;
+  originalPrice?: string;
+  discount?: string;
 }
 
 interface PaymentFooterProps {
@@ -28,9 +30,23 @@ const PaymentFooter: React.FC<PaymentFooterProps> = ({
     <View style={styles.PriceFooter}>
       <View style={styles.PriceContainer}>
         <Text style={styles.PriceTitle}>Price</Text>
-        <Text style={styles.PriceText}>
-          {price.currency} <Text style={styles.Price}>{price.price}</Text>
-        </Text>
+        {price.originalPrice && price.discount ? (
+          <View style={styles.DiscountedPriceContainer}>
+            <Text style={styles.OriginalPrice}>
+              {price.currency} {price.originalPrice}
+            </Text>
+            <Text style={styles.PriceText}>
+              {price.currency} <Text style={styles.Price}>{price.price}</Text>
+            </Text>
+            <Text style={styles.DiscountText}>
+              -{price.currency} {price.discount} off
+            </Text>
+          </View>
+        ) : (
+          <Text style={styles.PriceText}>
+            {price.currency} <Text style={styles.Price}>{price.price}</Text>
+          </Text>
+        )}
       </View>
       <TouchableOpacity
         style={styles.PayButton}
@@ -65,6 +81,20 @@ const styles = StyleSheet.create({
   },
   Price: {
     color: COLORS.primaryWhiteHex,
+  },
+  DiscountedPriceContainer: {
+    alignItems: 'center',
+  },
+  OriginalPrice: {
+    fontFamily: FONTFAMILY.poppins_regular,
+    fontSize: FONTSIZE.size_14,
+    color: COLORS.secondaryLightGreyHex,
+    textDecorationLine: 'line-through',
+  },
+  DiscountText: {
+    fontFamily: FONTFAMILY.poppins_medium,
+    fontSize: FONTSIZE.size_12,
+    color: COLORS.primaryGreenHex,
   },
   PayButton: {
     backgroundColor: COLORS.primaryOrangeHex,
