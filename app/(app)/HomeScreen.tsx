@@ -529,7 +529,7 @@ const HomeScreen = () => {
                   <View style={styles.searchResultInfo}>
                     <Text style={styles.searchResultName}>{product.name}</Text>
                     <Text style={styles.searchResultPrice}>
-                      ₹{product.prices[0]}
+                      ₹{product.prices[0].price}
                     </Text>
                   </View>
                 </TouchableOpacity>

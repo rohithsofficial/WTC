@@ -65,6 +65,7 @@ export interface RedemptionCalculation {
   errorMessage?: string;
   pointsToNextReward?: number;
   nextRewardValue?: number;
+  maxDiscountAmount?: number;
 }
 
 export interface TierDiscountCalculation {

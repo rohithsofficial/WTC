@@ -16,28 +16,9 @@ import { useRouter } from 'expo-router';
 import { COLORS, FONTFAMILY, FONTSIZE, SPACING, BORDERRADIUS } from '../../src/theme/theme';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useStore } from '../../src/store/store';
+import { Product } from '../../src/types/interfaces';
 
 const { width } = Dimensions.get('window');
-
-// Product interface for better type safety
-interface Product {
-  id: string;
-  name: string;
-  description?: string;
-  imagelink_square: string;
-  prices: Array<{ 
-    size: string;
-    price: string;
-    currency: string;
-  }>;
-  average_rating?: number;
-  ratings_count?: number;
-  roasted?: string;
-  ingredients?: string;
-  special_ingredient?: string;
-  type?: string;
-  index?: number;
-}
 
 const FavoritesScreen = () => {
   const router = useRouter();
@@ -69,7 +50,6 @@ const FavoritesScreen = () => {
       pathname: `/products/[id]`,
       params: { 
         id: item.id,
-        index: item.index || 0,
         type: item.type || 'Coffee'
       }
     });

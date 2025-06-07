@@ -13,7 +13,11 @@ export interface Category {
 export interface Product {
   id: string;
   name: string;
-  prices: number[];
+  prices: Array<{ 
+    size: string;
+    price: string;
+    currency: string;
+  }>;
   imagelink_square: string;
   special_ingredient: string;
   type: string;

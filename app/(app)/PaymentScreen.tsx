@@ -27,7 +27,7 @@ import PopUpAnimation from '../../src/components/PopUpAnimation';
 import LoyaltyPointsDisplay from '../../src/components/LoyaltyPointsDisplay';
 import { RedeemPointsInput } from '../../src/components/RedeemPointsInput';
 import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
-import { collection, addDoc, doc, updateDoc } from "firebase/firestore";
+import { collection, addDoc, doc, updateDoc, getDoc } from "firebase/firestore";
 import { db } from "../../src/firebase/config";
 import type { OrderData } from '../../src/types/interfaces';
 import type { RedemptionCalculation, TierDiscountCalculation, MembershipTier } from '../../src/types/loyalty';
@@ -176,14 +176,30 @@ const PaymentScreen = () => {
           const user = auth.currentUser;
           if (!user) return;
 
-          const points = await LoyaltyService.getUserLoyaltyPoints(user.uid);
-          setAvailablePoints(points);
+          // Get points from users collection
+          const userDocRef = doc(db, 'users', user.uid);
+          const userDoc = await getDoc(userDocRef);
           
-          // Also update next milestone
-          const milestone = LoyaltyService.getNextRewardMilestone(points);
-          setNextMilestone(milestone);
+          if (userDoc.exists()) {
+            const userData = userDoc.data();
+            const points = userData.loyaltyPoints || 0;
+            const tier = userData.membershipTier || 'Bronze';
+            
+            setAvailablePoints(points);
+            setMembershipTier(tier as MembershipTier);
+            
+            // Update next milestone
+            const milestone = LoyaltyService.getNextRewardMilestone(points);
+            setNextMilestone(milestone);
+          } else {
+            console.error('User profile not found');
+            setAvailablePoints(0);
+            setMembershipTier('Bronze');
+          }
         } catch (error) {
           console.error('Error loading loyalty points:', error);
+          setAvailablePoints(0);
+          setMembershipTier('Bronze');
         } finally {
           setLoadingPoints(false);
         }

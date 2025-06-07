@@ -17,8 +17,14 @@ const LoyaltyPointsDisplay: React.FC<LoyaltyPointsDisplayProps> = ({
   availablePoints,
   nextMilestone,
 }) => {
-  const currentTier = LoyaltyService.getUserTier(availablePoints);
-  const nextTier = LoyaltyService.getNextTier(availablePoints);
+  // Get current tier based on points
+  const currentTier = LOYALTY_CONFIG.tiers.find(tier => 
+    availablePoints >= tier.minPoints && 
+    (tier.maxPoints ? availablePoints < tier.maxPoints : true)
+  ) || LOYALTY_CONFIG.tiers[0];
+
+  // Get next tier
+  const nextTier = LOYALTY_CONFIG.tiers.find(tier => tier.minPoints > availablePoints);
 
   // Calculate progress percentage between current tier and next tier, capped at 100%
   const progressPercentage = nextTier
@@ -34,12 +40,9 @@ const LoyaltyPointsDisplay: React.FC<LoyaltyPointsDisplayProps> = ({
     <View style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.title}>Loyalty Points</Text>
-
-        {/* Show next tier name if available, else current tier */}
-          <View style={[styles.tierBadge, { backgroundColor: currentTier.color }]}>
-      <Text style={styles.tierText}>{currentTier.name}</Text>
-    </View>
-
+        <View style={[styles.tierBadge, { backgroundColor: currentTier.color }]}>
+          <Text style={styles.tierText}>{currentTier.name}</Text>
+        </View>
       </View>
 
       <View style={styles.pointsContainer}>

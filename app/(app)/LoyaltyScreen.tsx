@@ -13,9 +13,10 @@ import { COLORS, FONTFAMILY, FONTSIZE, SPACING, BORDERRADIUS } from '../../src/t
 import GradientBGIcon from '../../src/components/GradientBGIcon';
 import LoyaltyPointsDisplay from '../../src/components/LoyaltyPointsDisplay';
 import { LoyaltyService } from '../../src/services/loyaltyService';
-import { auth } from '../../src/firebase/config';
+import { auth, db } from '../../src/firebase/config';
 import type { LoyaltyTransaction } from '../../src/types/loyalty';
 import { MaterialIcons } from '@expo/vector-icons';
+import { doc, getDoc } from 'firebase/firestore';
 
 const LoyaltyScreen = () => {
   const router = useRouter();
@@ -34,31 +35,39 @@ const LoyaltyScreen = () => {
     try {
       setLoading(true);
       
-      // Get current points
-      const currentPoints = await LoyaltyService.getUserLoyaltyPoints(auth.currentUser.uid);
-      setPoints(currentPoints);
+      // Get current points from users collection
+      const userDocRef = doc(db, 'users', auth.currentUser.uid);
+      const userDoc = await getDoc(userDocRef);
+      
+      if (userDoc.exists()) {
+        const userData = userDoc.data();
+        const currentPoints = userData.loyaltyPoints || 0;
+        setPoints(currentPoints);
 
-      // Get next milestone
-      const milestone = LoyaltyService.getNextRewardMilestone(currentPoints);
-      setNextMilestone(milestone);
+        // Get next milestone
+        const milestone = LoyaltyService.getNextRewardMilestone(currentPoints);
+        setNextMilestone(milestone);
 
-      // Get transaction history
-      try {
-        const history = await LoyaltyService.getLoyaltyHistory(auth.currentUser.uid);
-        setTransactions(history);
-      } catch (error: any) {
-        console.error('Error getting loyalty history:', error);
-        if (error.message?.includes('index is currently building')) {
-          // Show a temporary message while the index is building
-          setTransactions([]);
-          Alert.alert(
-            'Loading Transactions',
-            'Your loyalty history is being prepared. Please check back in a few minutes.',
-            [{ text: 'OK' }]
-          );
-        } else {
-          Alert.alert('Error', 'Failed to load transaction history');
+        // Get transaction history
+        try {
+          const history = await LoyaltyService.getLoyaltyHistory(auth.currentUser.uid);
+          setTransactions(history);
+        } catch (error: any) {
+          console.error('Error getting loyalty history:', error);
+          if (error.message?.includes('index is currently building')) {
+            // Show a temporary message while the index is building
+            setTransactions([]);
+            Alert.alert(
+              'Loading Transactions',
+              'Your loyalty history is being prepared. Please check back in a few minutes.',
+              [{ text: 'OK' }]
+            );
+          } else {
+            Alert.alert('Error', 'Failed to load transaction history');
+          }
         }
+      } else {
+        Alert.alert('Error', 'User profile not found');
       }
     } catch (error) {
       console.error('Error loading loyalty data:', error);
