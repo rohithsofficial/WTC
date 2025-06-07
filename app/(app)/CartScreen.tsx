@@ -102,7 +102,7 @@ const handleRemoveItem = (id: string, size: string) => {
             <View style={styles.emptyCart}>
               <FontAwesome name="shopping-cart" size={64} color="#ccc" />
               <Text style={styles.emptyText}>Your cart is empty</Text>
-              <TouchableOpacity style={styles.continueShoppingButton} onPress={() => router.push('/HomeScreen')}>
+              <TouchableOpacity style={styles.continueShoppingButton} onPress={() => router.push('/MenuScreen')}>
                 <Text style={styles.continueShoppingText}>Continue Shopping</Text>
               </TouchableOpacity>
             </View>

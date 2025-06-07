@@ -26,11 +26,11 @@ import { useStore } from '../../src/store/store';
 import PopUpAnimation from '../../src/components/PopUpAnimation';
 import LoyaltyPointsDisplay from '../../src/components/LoyaltyPointsDisplay';
 import { RedeemPointsInput } from '../../src/components/RedeemPointsInput';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { collection, addDoc, doc, updateDoc } from "firebase/firestore";
 import { db } from "../../src/firebase/config";
 import type { OrderData } from '../../src/types/interfaces';
-import type { RedemptionCalculation } from '../../src/types/loyalty';
+import type { RedemptionCalculation, TierDiscountCalculation, MembershipTier } from '../../src/types/loyalty';
 import { LOYALTY_CONFIG } from '../../src/types/loyalty';
 import { auth } from '../../src/firebase/config';
 import { LoyaltyService } from '../../src/services/loyaltyService';
@@ -38,6 +38,7 @@ import { useCart } from '../../src/store/CartContext';
 
 // Payment Method Types
 type PaymentModeType = 'credit-card' | 'paypal' | 'google-pay' | 'apple-pay' | 'cash';
+type DiscountType = 'none' | 'loyalty' | 'tier';
 
 const PaymentScreen = () => {
   const router = useRouter();
@@ -84,6 +85,7 @@ const PaymentScreen = () => {
   // Loyalty points state
   const [loadingPoints, setLoadingPoints] = useState(true);
   const [availablePoints, setAvailablePoints] = useState(0);
+  const [membershipTier, setMembershipTier] = useState<MembershipTier>('Bronze');
   const [pointsToRedeem, setPointsToRedeem] = useState('');
   const [redemptionCalculation, setRedemptionCalculation] = useState<RedemptionCalculation>({
     pointsToRedeem: 0,
@@ -91,15 +93,36 @@ const PaymentScreen = () => {
     remainingAmount: amount,
     isValid: false
   });
+  const [tierDiscountCalculation, setTierDiscountCalculation] = useState<TierDiscountCalculation>({
+    discountAmount: 0,
+    discountType: 'none',
+    maxDiscountLimit: 0,
+    isEligible: false
+  });
   const [isFirstOrder, setIsFirstOrder] = useState(false);
   const [isBirthday, setIsBirthday] = useState(false);
   const [isFestival, setIsFestival] = useState(false);
-  const [redemptionType, setRedemptionType] = useState<'none' | 'loyalty'>('none');
+  const [discountType, setDiscountType] = useState<DiscountType>('none');
   const [nextMilestone, setNextMilestone] = useState({ pointsNeeded: 0, rewardValue: 0 });
+  const [bestDiscount, setBestDiscount] = useState<{
+    tierDiscount: TierDiscountCalculation;
+    pointsRedemption: RedemptionCalculation;
+    recommendedOption: 'tier' | 'points' | 'none';
+  } | null>(null);
 
-  // Calculated values based on redemption
+  // Calculated values based on selected discount
   const subtotalAmount = amount;
-  const discountAmount = redemptionCalculation.isValid && redemptionType === 'loyalty' ? redemptionCalculation.discountAmount : 0;
+  let discountAmount = 0;
+  let pointsUsed = 0;
+
+  if (discountType === 'loyalty' && redemptionCalculation.isValid) {
+    discountAmount = redemptionCalculation.discountAmount;
+    pointsUsed = redemptionCalculation.pointsToRedeem;
+  } else if (discountType === 'tier' && tierDiscountCalculation.isEligible) {
+    discountAmount = tierDiscountCalculation.discountAmount;
+    pointsUsed = 0; // Tier discounts don't consume points
+  }
+
   const finalAmount = subtotalAmount - discountAmount;
   const pointsToEarn = LoyaltyService.calculatePointsEarned(finalAmount);
 
@@ -121,6 +144,7 @@ const PaymentScreen = () => {
         const profile = await LoyaltyService.getUserProfile(user.uid);
         if (profile) {
           setIsFirstOrder(profile.totalOrders === 0);
+          setMembershipTier(profile.membershipTier);
           
           // Check if it's user's birthday
           if (profile.birthday) {
@@ -132,7 +156,7 @@ const PaymentScreen = () => {
             );
           }
 
-          // Check if it's a festival day
+          // Check if it's a festival day (you can implement your festival logic here)
           setIsFestival(false);
         }
       } catch (error) {
@@ -143,24 +167,42 @@ const PaymentScreen = () => {
     loadUserData();
   }, []);
 
-  // Load loyalty points
+  // Load loyalty points with useFocusEffect
+  useFocusEffect(
+    React.useCallback(() => {
+      const loadLoyaltyPoints = async () => {
+        try {
+          const user = auth.currentUser;
+          if (!user) return;
+
+          const points = await LoyaltyService.getUserLoyaltyPoints(user.uid);
+          setAvailablePoints(points);
+          
+          // Also update next milestone
+          const milestone = LoyaltyService.getNextRewardMilestone(points);
+          setNextMilestone(milestone);
+        } catch (error) {
+          console.error('Error loading loyalty points:', error);
+        } finally {
+          setLoadingPoints(false);
+        }
+      };
+
+      loadLoyaltyPoints();
+    }, [])
+  );
+
+  // Calculate tier discount when points or membership tier changes
   useEffect(() => {
-    const loadLoyaltyPoints = async () => {
-      try {
-        const user = auth.currentUser;
-        if (!user) return;
-
-        const points = await LoyaltyService.getUserLoyaltyPoints(user.uid);
-        setAvailablePoints(points);
-      } catch (error) {
-        console.error('Error loading loyalty points:', error);
-      } finally {
-        setLoadingPoints(false);
-      }
-    };
-
-    loadLoyaltyPoints();
-  }, []);
+    if (availablePoints >= 0 && membershipTier && amount > 0) {
+      const tierDiscount = LoyaltyService.calculateTierDiscount(
+        amount,
+        membershipTier,
+        availablePoints
+      );
+      setTierDiscountCalculation(tierDiscount);
+    }
+  }, [availablePoints, membershipTier, amount]);
 
   // Calculate redemption when points input changes
   useEffect(() => {
@@ -184,6 +226,19 @@ const PaymentScreen = () => {
     }
   }, [pointsToRedeem, availablePoints, amount]);
 
+  // Calculate best discount option
+  useEffect(() => {
+    if (availablePoints >= 0 && membershipTier) {
+      const bestOption = LoyaltyService.getBestAvailableDiscount(
+        amount,
+        membershipTier,
+        availablePoints,
+        parseInt(pointsToRedeem) || 0
+      );
+      setBestDiscount(bestOption);
+    }
+  }, [amount, membershipTier, availablePoints, pointsToRedeem]);
+
   // Calculate next milestone when available points change
   useEffect(() => {
     if (availablePoints > 0) {
@@ -199,13 +254,22 @@ const PaymentScreen = () => {
       return;
     }
 
-    setPointsToRedeem('');
-    setRedemptionType('loyalty');
+    setDiscountType('loyalty');
   };
 
-  // Reset redemption
-  const resetRedemption = () => {
-    setRedemptionType('none');
+  // Handle tier discount application
+  const handleTierDiscount = () => {
+    if (!tierDiscountCalculation.isEligible) {
+      Alert.alert('Not Eligible', tierDiscountCalculation.reasonNotEligible || 'You are not eligible for tier discount');
+      return;
+    }
+
+    setDiscountType('tier');
+  };
+
+  // Reset all discounts
+  const resetDiscounts = () => {
+    setDiscountType('none');
     setPointsToRedeem('');
     setRedemptionCalculation({
       pointsToRedeem: 0,
@@ -214,6 +278,17 @@ const PaymentScreen = () => {
       isValid: false,
       errorMessage: ''
     });
+  };
+
+  // Apply best discount automatically
+  const applyBestDiscount = () => {
+    if (!bestDiscount) return;
+
+    if (bestDiscount.recommendedOption === 'tier') {
+      setDiscountType('tier');
+    } else if (bestDiscount.recommendedOption === 'points') {
+      setDiscountType('loyalty');
+    }
   };
 
   // Save order to Firestore
@@ -236,9 +311,13 @@ const PaymentScreen = () => {
       await LoyaltyService.processOrderCompletion(
         auth.currentUser.uid,
         orderId,
-        finalAmount,
-        redemptionCalculation.pointsToRedeem,
-        displayName || auth.currentUser.displayName || 'User'
+        subtotalAmount,
+        discountType === 'loyalty' ? pointsUsed : 0,
+        discountType === 'tier' ? discountAmount : 0,
+        displayName || auth.currentUser.displayName || 'User',
+        isFirstOrder,
+        isBirthday,
+        isFestival
       );
     } catch (error) {
       console.error('Error processing loyalty transaction:', error);
@@ -305,9 +384,14 @@ const PaymentScreen = () => {
     setIsProcessingPayment(true);
     
     try {
-      // Validate redemption
-      if (redemptionCalculation.pointsToRedeem > availablePoints) {
+      // Validate selected discount
+      if (discountType === 'loyalty' && pointsUsed > availablePoints) {
         Alert.alert('Error', 'Insufficient loyalty points');
+        return;
+      }
+
+      if (discountType === 'tier' && !tierDiscountCalculation.isEligible) {
+        Alert.alert('Error', 'Not eligible for tier discount');
         return;
       }
 
@@ -319,8 +403,9 @@ const PaymentScreen = () => {
         totalAmount: subtotalAmount,
         discountAmount: discountAmount,
         finalAmount: finalAmount,
-        pointsRedeemed: redemptionType === 'loyalty' ? redemptionCalculation.pointsToRedeem : 0,
+        pointsRedeemed: discountType === 'loyalty' ? pointsUsed : 0,
         pointsEarned: pointsToEarn,
+        paymentMethod: paymentMode,
         paymentMode: paymentMode,
         orderType: orderType || 'dine-in',
         tableNumber: tableNumber || '',
@@ -378,6 +463,12 @@ const PaymentScreen = () => {
     }
   };
 
+  // Get tier color for styling
+  const getTierColor = (tier: MembershipTier) => {
+    const tierConfig = LOYALTY_CONFIG.tiers.find(t => t.name === tier);
+    return tierConfig?.color || COLORS.primaryGreyHex;
+  };
+
   return (
     <View style={styles.ScreenContainer}>
       <StatusBar backgroundColor={COLORS.primaryBlackHex} />
@@ -408,34 +499,150 @@ const PaymentScreen = () => {
 
         {/* Loyalty Points Section */}
         <View style={styles.PaymentContainer}>
-          <Text style={styles.PaymentHeaderText}>Loyalty Points</Text>
+          <Text style={styles.PaymentHeaderText}>Loyalty & Rewards</Text>
           
-          <LoyaltyPointsDisplay
+          {/* <LoyaltyPointsDisplay
             availablePoints={availablePoints}
             nextMilestone={nextMilestone}
-          />
+          /> */}
 
-          <View style={styles.PointsInputContainer}>
-            <RedeemPointsInput
-              availablePoints={availablePoints}
-              orderAmount={amount}
-              onRedemptionChange={setRedemptionCalculation}
-              disabled={redemptionType === 'loyalty'}
-            />
+          {/* Membership Tier Display */}
+          {/* <View style={[styles.TierContainer, { borderColor: getTierColor(membershipTier) }]}>
+            <View style={styles.TierHeader}>
+              <Text style={[styles.TierTitle, { color: getTierColor(membershipTier) }]}>
+                {membershipTier} Member
+              </Text>
+              <View style={[styles.TierBadge, { backgroundColor: getTierColor(membershipTier) }]}>
+                <Text style={styles.TierBadgeText}>{membershipTier.toUpperCase()}</Text>
+              </View>
+            </View> */}
             
-            {redemptionType === 'none' && redemptionCalculation.isValid && (
-              <TouchableOpacity 
-                style={styles.RedeemButton}
-                onPress={handlePointsRedeem}>
-                <Text style={styles.RedeemButtonText}>Apply Discount</Text>
+            {/* Tier Benefits */}
+            {/* <View style={styles.TierBenefits}>
+              {LOYALTY_CONFIG.tiers.find(t => t.name === membershipTier)?.benefits.map((benefit, index) => (
+                <Text key={index} style={styles.TierBenefitText}>• {benefit}</Text>
+              ))}
+            </View>
+          </View> */}
+
+          {/* Discount Options */}
+          <View style={styles.DiscountOptionsContainer}>
+            <Text style={styles.DiscountOptionsTitle}>Choose Your Discount</Text>
+            
+            {/* Best Discount Recommendation */}
+            {bestDiscount && bestDiscount.recommendedOption !== 'none' && discountType === 'none' && (
+              <TouchableOpacity style={styles.BestDiscountContainer} onPress={applyBestDiscount}>
+                <View style={styles.BestDiscountHeader}>
+                  <Text style={styles.BestDiscountTitle}>💡 Recommended</Text>
+                  <Text style={styles.BestDiscountAmount}>
+                    Save ₹{bestDiscount.recommendedOption === 'tier' ? 
+                      bestDiscount.tierDiscount.discountAmount.toFixed(2) : 
+                      bestDiscount.pointsRedemption.discountAmount.toFixed(2)}
+                  </Text>
+                </View>
+                <Text style={styles.BestDiscountDescription}>
+                  {bestDiscount.recommendedOption === 'tier' ? 
+                    `Use your ${membershipTier} tier discount` : 
+                    `Redeem ${bestDiscount.pointsRedemption.pointsToRedeem} loyalty points`}
+                </Text>
               </TouchableOpacity>
             )}
 
-            {redemptionType === 'loyalty' && (
+            {/* Tier Discount Option */}
+            <View style={[
+              styles.DiscountOption, 
+              { borderColor: discountType === 'tier' ? COLORS.primaryOrangeHex : COLORS.primaryGreyHex }
+            ]}>
+              <View style={styles.DiscountOptionHeader}>
+                <Text style={styles.DiscountOptionTitle}>
+                  {membershipTier} Tier Discount
+                </Text>
+                <Text style={[
+                  styles.DiscountOptionAmount,
+                  { color: tierDiscountCalculation.isEligible ? COLORS.primaryGreenHex : COLORS.primaryRedHex }
+                ]}>
+                  {tierDiscountCalculation.isEligible ? 
+                    `₹${tierDiscountCalculation.discountAmount.toFixed(2)}` : 
+                    'Not Eligible'}
+                </Text>
+              </View>
+              
+              {tierDiscountCalculation.isEligible ? (
+                <View>
+                  <Text style={styles.DiscountOptionDescription}>
+                    {tierDiscountCalculation.savingsMessage}
+                  </Text>
+                  {discountType !== 'tier' ? (
+                    <TouchableOpacity 
+                      style={styles.ApplyDiscountButton}
+                      onPress={handleTierDiscount}>
+                      <Text style={styles.ApplyDiscountButtonText}>Apply Tier Discount</Text>
+                    </TouchableOpacity>
+                  ) : (
+                    <View style={styles.AppliedDiscountContainer}>
+                      <Text style={styles.AppliedDiscountText}>✓ Tier Discount Applied</Text>
+                    </View>
+                  )}
+                </View>
+              ) : (
+                <Text style={styles.DiscountOptionError}>
+                  {tierDiscountCalculation.reasonNotEligible}
+                </Text>
+              )}
+            </View>
+
+            {/* Points Redemption Option */}
+            <View style={[
+              styles.DiscountOption, 
+              { borderColor: discountType === 'loyalty' ? COLORS.primaryOrangeHex : COLORS.primaryGreyHex }
+            ]}>
+              <View style={styles.DiscountOptionHeader}>
+                <Text style={styles.DiscountOptionTitle}>Redeem Loyalty Points</Text>
+                <Text style={styles.DiscountOptionAmount}>
+                  {availablePoints} points available
+                </Text>
+              </View>
+
+              {discountType !== 'loyalty' ? (
+                <View style={styles.PointsInputContainer}>
+                  <RedeemPointsInput
+                    availablePoints={availablePoints}
+                    orderAmount={amount}
+                    onRedemptionChange={setRedemptionCalculation}
+                    disabled={false}
+                  />
+                  
+                  {redemptionCalculation.isValid && (
+                    <TouchableOpacity 
+                      style={styles.ApplyDiscountButton}
+                      onPress={handlePointsRedeem}>
+                      <Text style={styles.ApplyDiscountButtonText}>
+                        Apply Points (₹{redemptionCalculation.discountAmount.toFixed(2)} off)
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+
+                  {redemptionCalculation.errorMessage && (
+                    <Text style={styles.DiscountOptionError}>
+                      {redemptionCalculation.errorMessage}
+                    </Text>
+                  )}
+                </View>
+              ) : (
+                <View style={styles.AppliedDiscountContainer}>
+                  <Text style={styles.AppliedDiscountText}>
+                    ✓ {pointsUsed} points redeemed for ₹{discountAmount.toFixed(2)} discount
+                  </Text>
+                </View>
+              )}
+            </View>
+
+            {/* Reset Discounts */}
+            {discountType !== 'none' && (
               <TouchableOpacity 
                 style={styles.ResetButton}
-                onPress={resetRedemption}>
-                <Text style={styles.ResetButtonText}>Remove Discount</Text>
+                onPress={resetDiscounts}>
+                <Text style={styles.ResetButtonText}>Remove All Discounts</Text>
               </TouchableOpacity>
             )}
           </View>
@@ -522,7 +729,9 @@ const PaymentScreen = () => {
           {discountAmount > 0 && (
             <View style={styles.PriceRow}>
               <Text style={[styles.PriceText, { color: COLORS.primaryOrangeHex }]}>
-                Loyalty Discount ({redemptionCalculation.pointsToRedeem} points)
+                {discountType === 'tier' ? 
+                  `${membershipTier} Tier Discount` : 
+                  `Loyalty Discount (${pointsUsed} points)`}
               </Text>
               <Text style={[styles.PriceText, { color: COLORS.primaryOrangeHex }]}>
                 -₹ {discountAmount.toFixed(2)}
@@ -559,7 +768,6 @@ const PaymentScreen = () => {
     </View>
   );
 };
-
 const styles = StyleSheet.create({
   ScreenContainer: {
     flex: 1,
@@ -616,7 +824,7 @@ const styles = StyleSheet.create({
     color: COLORS.primaryWhiteHex,
   },
   ResetButton: {
-    backgroundColor: COLORS.secondaryRedHex,
+    backgroundColor: COLORS.primaryRedHex,
     paddingVertical: SPACING.space_12,
     paddingHorizontal: SPACING.space_20,
     borderRadius: BORDERRADIUS.radius_10,
@@ -624,8 +832,8 @@ const styles = StyleSheet.create({
     marginTop: SPACING.space_12,
   },
   ResetButtonText: {
-    fontFamily: FONTFAMILY.poppins_medium,
-    fontSize: FONTSIZE.size_16,
+    fontFamily: FONTFAMILY.poppins_semibold,
+    fontSize: FONTSIZE.size_14,
     color: COLORS.primaryWhiteHex,
   },
   CreditCardContainer: {
@@ -703,6 +911,146 @@ const styles = StyleSheet.create({
     fontFamily: FONTFAMILY.poppins_semibold,
     fontSize: FONTSIZE.size_16,
     color: COLORS.primaryWhiteHex,
+  },
+  // Tier Styles
+  TierContainer: {
+    backgroundColor: COLORS.primaryDarkGreyHex,
+    borderRadius: BORDERRADIUS.radius_15,
+    padding: SPACING.space_15,
+    marginTop: SPACING.space_15,
+    borderWidth: 2,
+  },
+  TierHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: SPACING.space_10,
+  },
+  TierTitle: {
+    fontFamily: FONTFAMILY.poppins_semibold,
+    fontSize: FONTSIZE.size_18,
+  },
+  TierBadge: {
+    paddingHorizontal: SPACING.space_10,
+    paddingVertical: SPACING.space_4,
+    borderRadius: BORDERRADIUS.radius_8,
+  },
+  TierBadgeText: {
+    fontFamily: FONTFAMILY.poppins_medium,
+    fontSize: FONTSIZE.size_12,
+    color: COLORS.primaryWhiteHex,
+  },
+  TierBenefits: {
+    marginTop: SPACING.space_10,
+  },
+  TierBenefitText: {
+    fontFamily: FONTFAMILY.poppins_regular,
+    fontSize: FONTSIZE.size_14,
+    color: COLORS.primaryLightGreyHex,
+    marginBottom: SPACING.space_4,
+  },
+
+  // Discount Options Styles
+  DiscountOptionsContainer: {
+    marginTop: SPACING.space_15,
+  },
+  DiscountOptionsTitle: {
+    fontFamily: FONTFAMILY.poppins_semibold,
+    fontSize: FONTSIZE.size_16,
+    color: COLORS.primaryWhiteHex,
+    marginBottom: SPACING.space_10,
+  },
+  BestDiscountContainer: {
+    backgroundColor: COLORS.primaryDarkGreyHex,
+    borderRadius: BORDERRADIUS.radius_15,
+    padding: SPACING.space_15,
+    marginBottom: SPACING.space_15,
+    borderWidth: 1,
+    borderColor: COLORS.primaryOrangeHex,
+  },
+  BestDiscountHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: SPACING.space_8,
+  },
+  BestDiscountTitle: {
+    fontFamily: FONTFAMILY.poppins_semibold,
+    fontSize: FONTSIZE.size_16,
+    color: COLORS.primaryOrangeHex,
+  },
+  BestDiscountAmount: {
+    fontFamily: FONTFAMILY.poppins_semibold,
+    fontSize: FONTSIZE.size_16,
+    color: COLORS.primaryGreenHex,
+  },
+  BestDiscountDescription: {
+    fontFamily: FONTFAMILY.poppins_regular,
+    fontSize: FONTSIZE.size_14,
+    color: COLORS.primaryLightGreyHex,
+  },
+
+  // Discount Option Styles
+  DiscountOption: {
+    backgroundColor: COLORS.primaryDarkGreyHex,
+    borderRadius: BORDERRADIUS.radius_15,
+    padding: SPACING.space_15,
+    marginBottom: SPACING.space_15,
+    borderWidth: 2,
+  },
+  DiscountOptionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: SPACING.space_10,
+  },
+  DiscountOptionTitle: {
+    fontFamily: FONTFAMILY.poppins_semibold,
+    fontSize: FONTSIZE.size_16,
+    color: COLORS.primaryWhiteHex,
+  },
+  DiscountOptionAmount: {
+    fontFamily: FONTFAMILY.poppins_semibold,
+    fontSize: FONTSIZE.size_16,
+  },
+  DiscountOptionDescription: {
+    fontFamily: FONTFAMILY.poppins_regular,
+    fontSize: FONTSIZE.size_14,
+    color: COLORS.primaryLightGreyHex,
+    marginBottom: SPACING.space_10,
+  },
+  DiscountOptionError: {
+    fontFamily: FONTFAMILY.poppins_regular,
+    fontSize: FONTSIZE.size_14,
+    color: COLORS.primaryRedHex,
+  },
+
+  // Apply Discount Button Styles
+  ApplyDiscountButton: {
+    backgroundColor: COLORS.primaryOrangeHex,
+    paddingVertical: SPACING.space_12,
+    paddingHorizontal: SPACING.space_20,
+    borderRadius: BORDERRADIUS.radius_10,
+    alignItems: 'center',
+  },
+  ApplyDiscountButtonText: {
+    fontFamily: FONTFAMILY.poppins_semibold,
+    fontSize: FONTSIZE.size_14,
+    color: COLORS.primaryWhiteHex,
+  },
+
+  // Applied Discount Styles
+  AppliedDiscountContainer: {
+    backgroundColor: COLORS.primaryGreenHex + '20', // 20 is for opacity
+    padding: SPACING.space_12,
+    borderRadius: BORDERRADIUS.radius_10,
+    marginTop: SPACING.space_10,
+  },
+  AppliedDiscountText: {
+    fontFamily: FONTFAMILY.poppins_medium,
+    fontSize: FONTSIZE.size_14,
+    color: COLORS.primaryGreenHex,
+    textAlign: 'center',
   },
 });
 

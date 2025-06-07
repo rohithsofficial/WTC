@@ -18,23 +18,28 @@ const LoyaltyPointsDisplay: React.FC<LoyaltyPointsDisplayProps> = ({
   nextMilestone,
 }) => {
   const currentTier = LoyaltyService.getUserTier(availablePoints);
-  
-  // Fix progress calculation to prevent NaN
-  const progressPercentage = currentTier.minPoints === 0 
-    ? 100 
-    : Math.min(
-        ((availablePoints - currentTier.minPoints) / 
-        (LOYALTY_CONFIG.tiers.find(t => t.minPoints > currentTier.minPoints)?.minPoints || currentTier.minPoints * 2)) * 100,
+  const nextTier = LoyaltyService.getNextTier(availablePoints);
+
+  // Calculate progress percentage between current tier and next tier, capped at 100%
+  const progressPercentage = nextTier
+    ? Math.min(
+        ((availablePoints - currentTier.minPoints) /
+          (nextTier.minPoints - currentTier.minPoints)) *
+          100,
         100
-      );
+      )
+    : 100;
 
   return (
     <View style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.title}>Loyalty Points</Text>
-        <View style={[styles.tierBadge, { backgroundColor: currentTier.color }]}>
-          <Text style={styles.tierText}>{currentTier.name}</Text>
-        </View>
+
+        {/* Show next tier name if available, else current tier */}
+          <View style={[styles.tierBadge, { backgroundColor: currentTier.color }]}>
+      <Text style={styles.tierText}>{currentTier.name}</Text>
+    </View>
+
       </View>
 
       <View style={styles.pointsContainer}>
@@ -43,17 +48,23 @@ const LoyaltyPointsDisplay: React.FC<LoyaltyPointsDisplayProps> = ({
       </View>
 
       <View style={styles.progressContainer}>
-        <View style={styles.progressBar}>
-          <View
-            style={[
-              styles.progressFill,
-              { width: `${progressPercentage}%`, backgroundColor: currentTier.color },
-            ]}
-          />
-        </View>
-        <Text style={styles.progressText}>
-          {progressPercentage.toFixed(0)}% to {currentTier.name}
-        </Text>
+        {nextTier ? (
+          <>
+            <View style={styles.progressBar}>
+              <View
+                style={[
+                  styles.progressFill,
+                  { width: `${progressPercentage}%`, backgroundColor: currentTier.color },
+                ]}
+              />
+            </View>
+            <Text style={styles.progressText}>
+              {progressPercentage.toFixed(0)}% to {nextTier.name}
+            </Text>
+          </>
+        ) : (
+          <Text style={styles.progressText}>You're in the final tier 🎉</Text>
+        )}
       </View>
 
       <View style={styles.milestoneContainer}>
@@ -67,7 +78,9 @@ const LoyaltyPointsDisplay: React.FC<LoyaltyPointsDisplayProps> = ({
         <Text style={styles.benefitsTitle}>Current Tier Benefits:</Text>
         <Text style={styles.benefitText}>• {currentTier.pointMultiplier}x points on all purchases</Text>
         {currentTier.benefits.map((benefit: string, index: number) => (
-          <Text key={index} style={styles.benefitText}>• {benefit}</Text>
+          <Text key={index} style={styles.benefitText}>
+            • {benefit}
+          </Text>
         ))}
       </View>
     </View>

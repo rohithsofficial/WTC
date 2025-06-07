@@ -403,27 +403,27 @@ const OrderStatusScreen = () => {
     </View>
   );
 
-  const renderCountdownTimer = () => (
-    <View style={styles.timerSection}>
-      <CountdownCircleTimer
-        isPlaying
-        duration={estimatedTime * 60}
-        colors={['#FF6B35', '#F7931E']}
-        colorsTime={[estimatedTime * 30, estimatedTime * 30]}
-        size={120}
-        strokeWidth={8}
-      >
-        {({ remainingTime }) => (
-          <View style={styles.timerContent}>
-            <Text style={styles.timerText}>
-              {Math.ceil(remainingTime / 60)}
-            </Text>
-            <Text style={styles.timerLabel}>minutes</Text>
-          </View>
-        )}
-      </CountdownCircleTimer>
-    </View>
-  );
+  // const renderCountdownTimer = () => (
+  //   <View style={styles.timerSection}>
+  //     <CountdownCircleTimer
+  //       isPlaying
+  //       duration={estimatedTime * 60}
+  //       colors={['#FF6B35', '#F7931E']}
+  //       colorsTime={[estimatedTime * 30, estimatedTime * 30]}
+  //       size={120}
+  //       strokeWidth={8}
+  //     >
+  //       {({ remainingTime }) => (
+  //         <View style={styles.timerContent}>
+  //           <Text style={styles.timerText}>
+  //             {Math.ceil(remainingTime / 60)}
+  //           </Text>
+  //           <Text style={styles.timerLabel}>minutes</Text>
+  //         </View>
+  //       )}
+  //     </CountdownCircleTimer>
+  //   </View>
+  // );
 
   const renderQRCode = () => (
     <View style={styles.qrSection}>
@@ -563,7 +563,7 @@ const OrderStatusScreen = () => {
 
         {/* Main Content */}
         {renderOrderProgress()}
-        {renderCountdownTimer()}
+        {/* {renderCountdownTimer()} */}
         {renderQRCode()}
         {renderBaristaNotes()}
         {renderOrderSummary()}
