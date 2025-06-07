@@ -1,31 +1,29 @@
 // src/types/loyalty.ts
 import { Timestamp } from 'firebase/firestore';
 
+export type MembershipTier = 'Bronze' | 'Silver' | 'Gold' | 'Platinum';
+
+export interface LoyaltyUser {
+  uid: string;
+  displayName: string;
+  email?: string;
+  phone?: string;
+  loyaltyPoints: number;
+  membershipTier: MembershipTier;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
+
 export interface LoyaltyTransaction {
   id: string;
   userId: string;
   orderId?: string;
   points: number;
-  type: 'earned' | 'redeemed' | 'adjusted' | 'expired' | 'bonus' | 'tier_discount';
+  type: 'earned' | 'redeemed' | 'adjusted' | 'bonus' | 'tier_discount';
   description: string;
   timestamp: Timestamp;
   createdBy?: string;
-  multiplier?: number; // For bonus points
-}
-
-export interface AppUser {
-  id: string;
-  displayName: string;
-  email: string;
-  loyaltyPoints: number;
-  totalOrders?: number;
-  totalSpent?: number;
-  membershipTier: MembershipTier;
-  lastPointsEarned?: Timestamp;
-  pointsExpiryDate?: Timestamp;
-  createdAt: string;
-  updatedAt: string;
-  birthday?: string;
+  multiplier?: number;
 }
 
 export interface LoyaltyConfig {
@@ -43,10 +41,6 @@ export interface LoyaltyConfig {
   // Tier Rules
   tiers: TierConfig[];
   
-  // Expiry Rules
-  pointsValidityMonths: number;
-  expiryNotificationDays: number;
-  
   // Bonus Rules
   birthdayBonusPoints: number;
   firstOrderMultiplier: number;
@@ -60,9 +54,8 @@ export interface TierConfig {
   perks: string[];
   color: string;
   benefits: string[];
+  maxDiscountPerBill: number;
 }
-
-export type MembershipTier = 'Bronze' | 'Silver' | 'Gold' | 'Platinum';
 
 export interface RedemptionCalculation {
   pointsToRedeem: number;
@@ -74,7 +67,6 @@ export interface RedemptionCalculation {
   nextRewardValue?: number;
 }
 
-// NEW: Interface for tier-based discount calculations
 export interface TierDiscountCalculation {
   discountAmount: number;
   discountType: 'flat' | 'percentage' | 'combo' | 'none';
@@ -108,7 +100,8 @@ export const LOYALTY_CONFIG: LoyaltyConfig = {
       benefits: [
         'Earn 1x points on all purchases',
         'Flat ₹10 or 2% discount (max ₹20) when you have 100+ points'
-      ]
+      ],
+      maxDiscountPerBill: 20
     },
     {
       name: 'Silver',
@@ -119,8 +112,9 @@ export const LOYALTY_CONFIG: LoyaltyConfig = {
       benefits: [
         'Earn 1.2x points on all purchases',
         'Birthday bonus points',
-        '5% discount on all orders (max ₹50)'
-      ]
+        '5% discount on all orders (max ₹75)'
+      ],
+      maxDiscountPerBill: 75
     },
     {
       name: 'Gold',
@@ -132,8 +126,9 @@ export const LOYALTY_CONFIG: LoyaltyConfig = {
         'Earn 1.5x points on all purchases',
         'Priority order processing',
         'Birthday bonus points',
-        '10% discount on all orders (max ₹100)'
-      ]
+        '10% discount on all orders (max ₹150)'
+      ],
+      maxDiscountPerBill: 150
     },
     {
       name: 'Platinum',
@@ -147,13 +142,10 @@ export const LOYALTY_CONFIG: LoyaltyConfig = {
         'Exclusive member discounts',
         'Birthday bonus points',
         '15% + ₹50 combo discount on all orders (max ₹200)'
-      ]
+      ],
+      maxDiscountPerBill: 200
     }
   ],
-  
-  // Expiry Rules
-  pointsValidityMonths: 12,
-  expiryNotificationDays: 30,
   
   // Bonus Rules
   birthdayBonusPoints: 100,

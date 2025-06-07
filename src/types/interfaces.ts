@@ -60,7 +60,7 @@ export interface OrderData {
   orderDate: string;
   orderStatus: string;
   paymentStatus: string;
-  createdAt: Date;
+  createdAt: Date | Timestamp;
   updatedAt?: Date;
 }
 
@@ -126,7 +126,7 @@ export interface OrderData {
   paymentMode: string;
   paymentStatus: string;
   orderDate: string;
-  createdAt: Date | FirebaseFirestore.Timestamp;
+  createdAt: Date | Timestamp;
 }
 
 export interface Offer {

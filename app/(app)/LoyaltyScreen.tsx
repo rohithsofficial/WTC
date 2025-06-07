@@ -15,6 +15,7 @@ import LoyaltyPointsDisplay from '../../src/components/LoyaltyPointsDisplay';
 import { LoyaltyService } from '../../src/services/loyaltyService';
 import { auth } from '../../src/firebase/config';
 import type { LoyaltyTransaction } from '../../src/types/loyalty';
+import { MaterialIcons } from '@expo/vector-icons';
 
 const LoyaltyScreen = () => {
   const router = useRouter();
@@ -98,7 +99,9 @@ const LoyaltyScreen = () => {
             />
           </TouchableOpacity>
           <Text style={styles.HeaderText}>Loyalty Points</Text>
-          <View style={styles.EmptyView} />
+          <TouchableOpacity onPress={() => router.push('/LoyaltyQRCodeScreen')}>
+            <MaterialIcons name="qr-code" size={24} color={COLORS.primaryWhiteHex} />
+          </TouchableOpacity>
         </View>
 
         {/* Points Display */}
@@ -106,6 +109,15 @@ const LoyaltyScreen = () => {
           availablePoints={points}
           nextMilestone={nextMilestone}
         />
+
+        {/* QR Code Button */}
+        <TouchableOpacity 
+          style={styles.qrButton}
+          onPress={() => router.push('LoyaltyQRCodeScreen')}
+        >
+          <MaterialIcons name="qr-code" size={24} color={COLORS.primaryWhiteHex} />
+          <Text style={styles.qrButtonText}>Show My QR Code</Text>
+        </TouchableOpacity>
 
         {/* Transaction History */}
         <View style={styles.TransactionContainer}>
@@ -221,6 +233,21 @@ const styles = StyleSheet.create({
   TransactionPoints: {
     fontFamily: FONTFAMILY.poppins_semibold,
     fontSize: FONTSIZE.size_16,
+  },
+  qrButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.primaryOrangeHex,
+    padding: SPACING.space_15,
+    margin: SPACING.space_15,
+    borderRadius: BORDERRADIUS.radius_15,
+  },
+  qrButtonText: {
+    fontFamily: FONTFAMILY.poppins_medium,
+    fontSize: FONTSIZE.size_16,
+    color: COLORS.primaryWhiteHex,
+    marginLeft: SPACING.space_10,
   },
 });
 

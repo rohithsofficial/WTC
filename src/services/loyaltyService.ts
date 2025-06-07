@@ -11,18 +11,20 @@ import {
   orderBy, 
   writeBatch, 
   runTransaction,
-  Timestamp 
+  Timestamp,
+  setDoc
 } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import { 
   LoyaltyTransaction, 
-  AppUser, 
+  LoyaltyUser, 
   LOYALTY_CONFIG, 
   RedemptionCalculation,
   MembershipTier,
   TierConfig,
   TierDiscountCalculation
 } from '../types/loyalty';
+import { auth } from '../firebase/config';
 
 export class LoyaltyService {
   
@@ -178,13 +180,6 @@ export class LoyaltyService {
   return nextTier || null;
 }
 
-  // Calculate points expiry date
-  static calculateExpiryDate(): Timestamp {
-    const date = new Date();
-    date.setMonth(date.getMonth() + LOYALTY_CONFIG.pointsValidityMonths);
-    return Timestamp.fromDate(date);
-  }
-
   // Validate and calculate redemption (existing logic)
   static calculateRedemption(
     pointsToRedeem: number, 
@@ -253,7 +248,7 @@ export class LoyaltyService {
       const userSnap = await getDoc(userRef);
       
       if (userSnap.exists()) {
-        const userData = userSnap.data() as AppUser;
+        const userData = userSnap.data() as LoyaltyUser;
         return userData.loyaltyPoints || 0;
       }
       return 0;
@@ -269,7 +264,7 @@ export class LoyaltyService {
     orderId: string,
     orderAmount: number,
     pointsRedeemed: number = 0,
-    tierDiscountUsed: number = 0, // NEW: Track tier discount usage
+    tierDiscountUsed: number = 0,
     displayName: string = 'User',
     isFirstOrder: boolean = false,
     isBirthday: boolean = false,
@@ -281,16 +276,20 @@ export class LoyaltyService {
         const userSnap = await transaction.get(userRef);
         
         let currentPoints = 0;
-        let totalOrders = 0;
-        let totalSpent = 0;
         let membershipTier: MembershipTier = 'Bronze';
+        let displayNameFromDb = displayName || 'User';
+        let emailFromDb = '';
+        let createdAt: Timestamp = Timestamp.now();
+        let updatedAt: Timestamp = Timestamp.now();
 
         if (userSnap.exists()) {
-          const userData = userSnap.data() as AppUser;
+          const userData = userSnap.data() as LoyaltyUser;
           currentPoints = userData.loyaltyPoints || 0;
-          totalOrders = userData.totalOrders || 0;
-          totalSpent = userData.totalSpent || 0;
           membershipTier = userData.membershipTier || 'Bronze';
+          displayNameFromDb = userData.displayName || displayName || 'User';
+          emailFromDb = userData.email || '';
+          createdAt = userData.createdAt || Timestamp.now();
+          updatedAt = userData.updatedAt || Timestamp.now();
         }
 
         // Calculate points multiplier based on conditions
@@ -299,9 +298,9 @@ export class LoyaltyService {
         if (isFestival) multiplier *= LOYALTY_CONFIG.festivalMultiplier;
 
         // Calculate points earned (on the amount after all discounts)
-        const amountAfterDiscounts = orderAmount - pointsRedeemed * LOYALTY_CONFIG.redemptionRate - tierDiscountUsed;
-        console.log(amountAfterDiscounts);
+        const amountAfterDiscounts = Math.max(0, orderAmount - pointsRedeemed * LOYALTY_CONFIG.redemptionRate - tierDiscountUsed);
         const pointsEarned = this.calculatePointsEarned(amountAfterDiscounts, multiplier);
+        
         // Add birthday bonus if applicable
         const birthdayBonus = isBirthday ? LOYALTY_CONFIG.birthdayBonusPoints : 0;
         
@@ -312,30 +311,24 @@ export class LoyaltyService {
         const newTier = this.getUserTier(newBalance).name;
         
         // Update user document
-        const userUpdateData: Partial<AppUser> = {
+        const userUpdateData: Partial<LoyaltyUser> = {
           loyaltyPoints: newBalance,
           membershipTier: newTier,
-          totalOrders: totalOrders + 1,
-          totalSpent: totalSpent + orderAmount,
-          lastPointsEarned: Timestamp.now(),
-          pointsExpiryDate: this.calculateExpiryDate(),
-          updatedAt: new Date().toISOString()
+          displayName: displayNameFromDb,
+          email: emailFromDb,
+          updatedAt: Timestamp.now()
         };
 
         if (!userSnap.exists()) {
           // Create new user if doesn't exist
-          const newUser: AppUser = {
-            id: userId,
-            displayName,
-            email: '', // You might want to get this from auth
+          const newUser: LoyaltyUser = {
+            uid: userId,
+            displayName: displayNameFromDb,
+            email: emailFromDb,
             loyaltyPoints: newBalance,
             membershipTier: newTier,
-            totalOrders: 1,
-            totalSpent: orderAmount,
-            lastPointsEarned: Timestamp.now(),
-            pointsExpiryDate: this.calculateExpiryDate(),
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString()
+            createdAt: Timestamp.now(),
+            updatedAt: Timestamp.now()
           };
           transaction.set(userRef, newUser);
         } else {
@@ -446,13 +439,34 @@ export class LoyaltyService {
   }
 
   // Get user's complete profile
-  static async getUserProfile(userId: string): Promise<AppUser | null> {
+  static async getUserProfile(userId: string): Promise<LoyaltyUser | null> {
     try {
       const userRef = doc(db, 'users', userId);
       const userSnap = await getDoc(userRef);
       
       if (userSnap.exists()) {
-        return { id: userSnap.id, ...userSnap.data() } as AppUser;
+        const userData = userSnap.data();
+        if (userData) {
+          return userData as LoyaltyUser;
+        }
+      } else {
+        // Create new loyalty profile if it doesn't exist
+        const authUser = auth.currentUser;
+        if (!authUser) return null;
+
+        const newUser: LoyaltyUser = {
+          uid: userId,
+          displayName: authUser.displayName || 'New User',
+          email: authUser.email || '',
+          phone: authUser.phoneNumber || '',
+          loyaltyPoints: 0,
+          membershipTier: 'Bronze',
+          createdAt: Timestamp.now(),
+          updatedAt: Timestamp.now()
+        };
+
+        await setDoc(userRef, newUser);
+        return newUser;
       }
       return null;
     } catch (error) {
@@ -515,33 +529,5 @@ export class LoyaltyService {
       pointsNeeded: Math.max(pointsNeeded, 0),
       progressPercentage
     };
-  }
-
-  // Check for expiring points
-  static async checkExpiringPoints(userId: string): Promise<{ points: number; daysUntilExpiry: number } | null> {
-    try {
-      const userRef = doc(db, 'users', userId);
-      const userSnap = await getDoc(userRef);
-      
-      if (userSnap.exists()) {
-        const userData = userSnap.data() as AppUser;
-        if (userData.pointsExpiryDate) {
-          const expiryDate = userData.pointsExpiryDate.toDate();
-          const now = new Date();
-          const daysUntilExpiry = Math.ceil((expiryDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-          
-          if (daysUntilExpiry <= LOYALTY_CONFIG.expiryNotificationDays) {
-            return {
-              points: userData.loyaltyPoints,
-              daysUntilExpiry
-            };
-          }
-        }
-      }
-      return null;
-    } catch (error) {
-      console.error('Error checking expiring points:', error);
-      return null;
-    }
   }
 }

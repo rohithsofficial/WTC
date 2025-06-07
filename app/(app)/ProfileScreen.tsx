@@ -7,10 +7,13 @@ import {
   Image,
   ScrollView,
   ActivityIndicator,
+  SafeAreaView,
+  StatusBar,
 } from 'react-native';
 import { Stack, router } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { auth, db } from '../../src/firebase/config';
-import { FontAwesome } from '@expo/vector-icons';
+import { FontAwesome, Ionicons } from '@expo/vector-icons';
 import {
   COLORS,
   FONTFAMILY,
@@ -23,6 +26,7 @@ import { doc, getDoc, onSnapshot } from 'firebase/firestore';
 import StyledAlert from '../../src/components/StyledAlert';
 
 const ProfileScreen = () => {
+  const insets = useSafeAreaInsets();
   const [user, setUser] = useState<any>(null);
   const [userData, setUserData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -33,56 +37,55 @@ const ProfileScreen = () => {
     type: 'info' as 'success' | 'error' | 'info',
   });
 
-useEffect(() => {
-  let unsubscribeSnapshot: (() => void) | null = null;
+  useEffect(() => {
+    let unsubscribeSnapshot: (() => void) | null = null;
 
-  const unsubscribeAuth = onAuthStateChanged(auth, async (currentUser) => {
-    setUser(currentUser);
-    setLoading(true);
+    const unsubscribeAuth = onAuthStateChanged(auth, async (currentUser) => {
+      setUser(currentUser);
+      setLoading(true);
 
-    if (currentUser) {
-      const userDocRef = doc(db, 'users', currentUser.uid);
+      if (currentUser) {
+        const userDocRef = doc(db, 'users', currentUser.uid);
 
-      try {
-        const userDoc = await getDoc(userDocRef);
-        if (userDoc.exists()) {
-          unsubscribeSnapshot = onSnapshot(
-            userDocRef,
-            (doc) => {
-              if (doc.exists()) {
-                setUserData(doc.data());
-              } else {
-                setUserData(null);
+        try {
+          const userDoc = await getDoc(userDocRef);
+          if (userDoc.exists()) {
+            unsubscribeSnapshot = onSnapshot(
+              userDocRef,
+              (doc) => {
+                if (doc.exists()) {
+                  setUserData(doc.data());
+                } else {
+                  setUserData(null);
+                }
+                setLoading(false);
+              },
+              (error) => {
+                console.error('Error fetching user data:', error);
+                showAlert('Error', 'Failed to load user data', 'error');
+                setLoading(false);
               }
-              setLoading(false);
-            },
-            (error) => {
-              console.error('Error fetching user data:', error);
-              showAlert('Error', 'Failed to load user data', 'error');
-              setLoading(false);
-            }
-          );
-        } else {
-          setUserData(null);
+            );
+          } else {
+            setUserData(null);
+            setLoading(false);
+          }
+        } catch (error) {
+          console.error('Error getting user doc:', error);
+          showAlert('Error', 'Something went wrong', 'error');
           setLoading(false);
         }
-      } catch (error) {
-        console.error('Error getting user doc:', error);
-        showAlert('Error', 'Something went wrong', 'error');
+      } else {
+        setUserData(null);
         setLoading(false);
       }
-    } else {
-      setUserData(null);
-      setLoading(false);
-    }
-  });
+    });
 
-  return () => {
-    unsubscribeAuth();
-    if (unsubscribeSnapshot) unsubscribeSnapshot();
-  };
-}, []);
-
+    return () => {
+      unsubscribeAuth();
+      if (unsubscribeSnapshot) unsubscribeSnapshot();
+    };
+  }, []);
 
   const showAlert = (title: string, message: string, type: 'success' | 'error' | 'info' = 'info') => {
     setAlert({
@@ -118,28 +121,144 @@ useEffect(() => {
     router.push('/(app)/EditProfileScreen');
   };
 
-  const menuItems = [
-    { title: 'My Orders', icon: 'shopping-bag' as const, onPress: () => router.push('/(app)/OrderScreen') },
-    { title: 'Loyalty Points', icon: 'star' as const, onPress: () => router.push('/(app)/LoyaltyScreen') },
-    { title: 'Payment Methods', icon: 'credit-card' as const, onPress: () => router.push('/(app)/PaymentScreen') },
-    { title: 'Favorites', icon: 'heart' as const, onPress: () => router.push('/(app)/FavoritesScreen') },
-    { title: 'Addresses', icon: 'map-marker' as const, onPress: () => router.push('/(app)/AddressScreen') },
-    { title: 'Notifications Setting', icon: 'bell' as const, onPress: () => router.push('/(app)/NotificationSettings') },
-    { title: 'Notifications', icon: 'bell' as const, onPress: () => router.push('/(app)/NotificationScreen') },
-    { title: 'Explore Cafe', icon: 'coffee' as const, onPress: () => router.push('/(app)/explore') },
-    { title: 'Help & Support', icon: 'question-circle' as const, onPress: () => router.push('/(app)/SupportScreen') }, 
+  const handleOptionPress = (screen: string) => {
+    router.push(screen as any);
+  };
+
+  // Staff functions
+  const openStaffQRScanner = () => {
+    router.push('/StaffQRScannerScreen');
+  };
+  
+  const openStaffLoyaltyScanner = () => {
+    router.push('/StaffLoyaltyScannerScreen');
+  };
+  
+  const openStaffRedemption = () => {
+    router.push('/StaffRedemptionScreen');
+  };
+
+  // Enhanced profile options combining both screens
+  const profileOptions = [
+    {
+      id: 'loyalty-qr',
+      title: 'My Loyalty Card',
+      subtitle: 'Show QR code to earn points',
+      icon: 'qr-code',
+      screen: '/(app)/LoyaltyScreen',
+      highlighted: true,
+      category: 'loyalty'
+    },
+    {
+      id: 'loyalty-history',
+      title: 'Points History',
+      subtitle: 'View your transaction history',
+      icon: 'time',
+      screen: '/(app)/LoyaltyScreen',
+      category: 'loyalty'
+    },
+    {
+      id: 'rewards',
+      title: 'Available Rewards',
+      subtitle: 'Redeem your points',
+      icon: 'gift',
+      screen: '/(app)/RewardsScreen',
+      category: 'loyalty'
+    },
+    {
+      id: 'orders',
+      title: 'My Orders',
+      subtitle: 'View order history',
+      icon: 'receipt',
+      screen: '/(app)/OrderScreen',
+      category: 'account'
+    },
+    {
+      id: 'favorites',
+      title: 'Favorites',
+      subtitle: 'Your saved items',
+      icon: 'heart',
+      screen: '/(app)/FavoritesScreen',
+      category: 'account'
+    },
+    {
+      id: 'payment',
+      title: 'Payment Methods',
+      subtitle: 'Manage payment options',
+      icon: 'card',
+      screen: '/(app)/PaymentScreen',
+      category: 'account'
+    },
+    {
+      id: 'addresses',
+      title: 'Addresses',
+      subtitle: 'Delivery locations',
+      icon: 'location',
+      screen: '/(app)/AddressScreen',
+      category: 'account'
+    },
+    {
+      id: 'notifications',
+      title: 'Notifications',
+      subtitle: 'View messages',
+      icon: 'notifications',
+      screen: '/(app)/NotificationScreen',
+      category: 'settings'
+    },
+    {
+      id: 'notification-settings',
+      title: 'Notification Settings',
+      subtitle: 'Manage preferences',
+      icon: 'settings',
+      screen: '/(app)/NotificationSettings',
+      category: 'settings'
+    },
+    {
+      id: 'explore',
+      title: 'Explore Cafe',
+      subtitle: 'Discover menu items',
+      icon: 'cafe',
+      screen: '/(app)/explore',
+      category: 'discover'
+    },
+    {
+      id: 'help',
+      title: 'Help & Support',
+      subtitle: 'Get assistance',
+      icon: 'help-circle',
+      screen: '/(app)/SupportScreen',
+      category: 'support'
+    },
   ];
+
+  // Staff menu items
+  const staffMenuItems = [
+    { title: 'Staff QR Scanner', icon: 'qr-code', onPress: openStaffQRScanner },
+    { title: 'Staff Loyalty Scanner', icon: 'star', onPress: openStaffLoyaltyScanner },
+    { title: 'Staff Redemption', icon: 'gift', onPress: openStaffRedemption },
+  ];
+
+  // Check if user is staff
+  const isStaff = userData?.role === 'staff' || userData?.isStaff === true;
+
+  // Get loyalty options for quick access
+  const loyaltyOptions = profileOptions.filter(option => option.category === 'loyalty');
+  const accountOptions = profileOptions.filter(option => option.category === 'account');
+  const settingsOptions = profileOptions.filter(option => option.category === 'settings');
+  const otherOptions = profileOptions.filter(option => !['loyalty', 'account', 'settings'].includes(option.category));
 
   if (loading) {
     return (
-      <View style={styles.loadingContainer}>
+      <SafeAreaView style={styles.loadingContainer}>
+        <StatusBar barStyle="light-content" backgroundColor={COLORS.primaryBlackHex} />
         <ActivityIndicator size="large" color={COLORS.primaryOrangeHex} />
-      </View>
+      </SafeAreaView>
     );
   }
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container}>
+      <StatusBar barStyle="light-content" backgroundColor={COLORS.primaryBlackHex} />
       <Stack.Screen options={{ title: 'Profile', headerShown: false }} />
 
       <StyledAlert
@@ -150,83 +269,256 @@ useEffect(() => {
         onClose={hideAlert}
       />
 
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Profile</Text>
-      </View>
-
-      <ScrollView style={styles.scrollView}>
-        <View style={styles.profileSection}>
+      <ScrollView 
+        style={styles.scrollView}
+        contentContainerStyle={{ paddingBottom: insets.bottom + 20 }}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Profile Header */}
+        <View style={styles.profileHeader}>
           <View style={styles.profileImageContainer}>
-            <Image
-              source={
-                user?.photoURL
-                  ? { uri: user.photoURL }
-                  : require('../../assets/icon.png')
-              }
-              style={styles.profileImage}
-            />
+            {user?.photoURL ? (
+              <Image
+                source={{ uri: user.photoURL }}
+                style={styles.profileImage}
+              />
+            ) : (
+              <Ionicons 
+                name="person-circle" 
+                size={100} 
+                color={COLORS.primaryOrangeHex} 
+              />
+            )}
             {user && (
-              <TouchableOpacity style={styles.editImageButton}>
-                <FontAwesome name="camera" size={16} color={COLORS.primaryWhiteHex} />
+              <TouchableOpacity style={styles.editImageButton} onPress={handleEditProfile}>
+                <Ionicons name="camera" size={16} color={COLORS.primaryWhiteHex} />
               </TouchableOpacity>
             )}
           </View>
-          <Text style={styles.userName}>{userData?.displayName || 'Guest'}</Text>
-          <Text style={styles.userEmail}>{userData?.phoneNumber || 'Not logged in'}</Text>
+          <Text style={styles.userName}>
+            {userData?.displayName || user?.displayName || user?.email || 'Guest'}
+          </Text>
+          <Text style={styles.userEmail}>
+            {userData?.phoneNumber || user?.email || 'Not logged in'}
+          </Text>
 
           {user && (
             <TouchableOpacity style={styles.editProfileButton} onPress={handleEditProfile}>
-              <FontAwesome name="edit" size={16} color={COLORS.primaryWhiteHex} />
+              <Ionicons name="create" size={16} color={COLORS.primaryWhiteHex} />
               <Text style={styles.editProfileText}>Edit Profile</Text>
             </TouchableOpacity>
           )}
         </View>
 
-        <View style={styles.menuSection}>
-          {menuItems.map((item, index) => (
-            <TouchableOpacity key={index} style={styles.menuItem} onPress={item.onPress}>
-              <View style={styles.menuItemLeft}>
-                <FontAwesome name={item.icon} size={20} color={COLORS.primaryOrangeHex} />
-                <Text style={styles.menuItemText}>{item.title}</Text>
+        {/* Quick Stats */}
+        {user && (
+          <View style={styles.statsContainer}>
+            <View style={styles.statItem}>
+              <Text style={styles.statValue}>{userData?.loyaltyPoints || '0'}</Text>
+              <Text style={styles.statLabel}>Points</Text>
+            </View>
+            <View style={styles.statDivider} />
+            <View style={styles.statItem}>
+              <Text style={styles.statValue}>{userData?.loyaltyTier || 'Bronze'}</Text>
+              <Text style={styles.statLabel}>Tier</Text>
+            </View>
+            <View style={styles.statDivider} />
+            <View style={styles.statItem}>
+              <Text style={styles.statValue}>{userData?.totalOrders || '0'}</Text>
+              <Text style={styles.statLabel}>Orders</Text>
+            </View>
+          </View>
+        )}
+
+        {/* Quick QR Access */}
+        {user && (
+          <TouchableOpacity
+            style={styles.quickQRButton}
+            onPress={() => handleOptionPress('/(app)/LoyaltyScreen')}
+          >
+            <Ionicons name="qr-code" size={24} color={COLORS.primaryWhiteHex} />
+            <Text style={styles.quickQRText}>Show Loyalty QR Code</Text>
+          </TouchableOpacity>
+        )}
+
+        {/* Loyalty Section */}
+        {user && loyaltyOptions.length > 0 && (
+          <View style={styles.sectionContainer}>
+            <Text style={styles.sectionTitle}>Loyalty & Rewards</Text>
+            {loyaltyOptions.map((option) => (
+              <TouchableOpacity
+                key={option.id}
+                style={[
+                  styles.optionItem,
+                  option.highlighted && styles.highlightedOption
+                ]}
+                onPress={() => handleOptionPress(option.screen)}
+              >
+                <View style={styles.optionLeft}>
+                  <View style={[
+                    styles.optionIcon,
+                    option.highlighted && styles.highlightedIcon
+                  ]}>
+                    <Ionicons
+                      name={option.icon as any}
+                      size={24}
+                      color={option.highlighted ? COLORS.primaryWhiteHex : COLORS.primaryOrangeHex}
+                    />
+                  </View>
+                  <View style={styles.optionText}>
+                    <Text style={[
+                      styles.optionTitle,
+                      option.highlighted && styles.highlightedTitle
+                    ]}>
+                      {option.title}
+                    </Text>
+                    <Text style={[
+                      styles.optionSubtitle,
+                      option.highlighted && styles.highlightedSubtitle
+                    ]}>
+                      {option.subtitle}
+                    </Text>
+                  </View>
+                </View>
+                <Ionicons
+                  name="chevron-forward"
+                  size={20}
+                  color={option.highlighted ? COLORS.primaryWhiteHex : COLORS.primaryLightGreyHex}
+                />
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
+
+        {/* Account Section */}
+        {user && accountOptions.length > 0 && (
+          <View style={styles.sectionContainer}>
+            <Text style={styles.sectionTitle}>Account</Text>
+            {accountOptions.map((option) => (
+              <TouchableOpacity
+                key={option.id}
+                style={styles.optionItem}
+                onPress={() => handleOptionPress(option.screen)}
+              >
+                <View style={styles.optionLeft}>
+                  <View style={styles.optionIcon}>
+                    <Ionicons
+                      name={option.icon as any}
+                      size={24}
+                      color={COLORS.primaryOrangeHex}
+                    />
+                  </View>
+                  <View style={styles.optionText}>
+                    <Text style={styles.optionTitle}>{option.title}</Text>
+                    <Text style={styles.optionSubtitle}>{option.subtitle}</Text>
+                  </View>
+                </View>
+                <Ionicons
+                  name="chevron-forward"
+                  size={20}
+                  color={COLORS.primaryLightGreyHex}
+                />
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
+
+        {/* Settings & Other */}
+        <View style={styles.sectionContainer}>
+          <Text style={styles.sectionTitle}>Settings & More</Text>
+          {[...settingsOptions, ...otherOptions].map((option) => (
+            <TouchableOpacity
+              key={option.id}
+              style={styles.optionItem}
+              onPress={() => handleOptionPress(option.screen)}
+            >
+              <View style={styles.optionLeft}>
+                <View style={styles.optionIcon}>
+                  <Ionicons
+                    name={option.icon as any}
+                    size={24}
+                    color={COLORS.primaryOrangeHex}
+                  />
+                </View>
+                <View style={styles.optionText}>
+                  <Text style={styles.optionTitle}>{option.title}</Text>
+                  <Text style={styles.optionSubtitle}>{option.subtitle}</Text>
+                </View>
               </View>
-              <FontAwesome name="chevron-right" size={16} color={COLORS.primaryGreyHex} />
+              <Ionicons
+                name="chevron-forward"
+                size={20}
+                color={COLORS.primaryLightGreyHex}
+              />
             </TouchableOpacity>
           ))}
         </View>
 
+        {/* Staff Section */}
+        {isStaff && (
+          <View style={styles.staffSection}>
+            <Text style={styles.staffSectionTitle}>Staff Tools</Text>
+            {staffMenuItems.map((item, index) => (
+              <TouchableOpacity 
+                key={`staff-${index}`} 
+                style={styles.staffMenuItem} 
+                onPress={item.onPress}
+              >
+                <View style={styles.staffMenuItemLeft}>
+                  <Ionicons name={item.icon as any} size={20} color={COLORS.primaryWhiteHex} />
+                  <Text style={styles.staffMenuItemText}>{item.title}</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={16} color={COLORS.primaryWhiteHex} />
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
+
+        {/* Sign Out/Login Button */}
         <TouchableOpacity
           style={styles.signOutButton}
           onPress={user ? handleSignOut : handleLogin}
         >
-          <FontAwesome
-            name={user ? 'sign-out' : 'sign-in'}
+          <Ionicons
+            name={user ? 'log-out' : 'log-in'}
             size={20}
             color={COLORS.primaryWhiteHex}
           />
           <Text style={styles.signOutText}>{user ? 'Sign Out' : 'Login'}</Text>
         </TouchableOpacity>
       </ScrollView>
-    </View>
+    </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.primaryWhiteHex },
-  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  header: { padding: SPACING.space_24, paddingTop: SPACING.space_36 },
-  headerTitle: {
-    fontFamily: FONTFAMILY.poppins_semibold,
-    fontSize: FONTSIZE.size_24,
-    color: COLORS.primaryBlackHex,
+  container: {
+    flex: 1,
+    backgroundColor: COLORS.primaryBlackHex,
   },
-  scrollView: { flex: 1 },
-  profileSection: {
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
     alignItems: 'center',
-    padding: SPACING.space_24,
+    backgroundColor: COLORS.primaryBlackHex,
   },
-  profileImageContainer: { position: 'relative', marginBottom: SPACING.space_16 },
+  scrollView: {
+    flex: 1,
+  },
+  profileHeader: {
+    alignItems: 'center',
+    padding: SPACING.space_20,
+    paddingTop: SPACING.space_30,
+  },
+  profileImageContainer: {
+    position: 'relative',
+    marginBottom: SPACING.space_15,
+  },
   profileImage: {
-    width: 100, height: 100, borderRadius: 50, backgroundColor: COLORS.primaryGreyHex,
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    backgroundColor: COLORS.primaryGreyHex,
   },
   editImageButton: {
     position: 'absolute',
@@ -239,18 +531,18 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 2,
-    borderColor: COLORS.primaryWhiteHex,
+    borderColor: COLORS.primaryBlackHex,
   },
   userName: {
+    color: COLORS.primaryWhiteHex,
+    fontSize: FONTSIZE.size_24,
     fontFamily: FONTFAMILY.poppins_semibold,
-    fontSize: FONTSIZE.size_20,
-    color: COLORS.primaryBlackHex,
     marginBottom: SPACING.space_4,
   },
   userEmail: {
+    color: COLORS.primaryLightGreyHex,
+    fontSize: FONTSIZE.size_16,
     fontFamily: FONTFAMILY.poppins_regular,
-    fontSize: FONTSIZE.size_14,
-    color: COLORS.primaryGreyHex,
     marginBottom: SPACING.space_16,
   },
   editProfileButton: {
@@ -267,28 +559,141 @@ const styles = StyleSheet.create({
     fontSize: FONTSIZE.size_14,
     color: COLORS.primaryWhiteHex,
   },
-  menuSection: {
-    backgroundColor: COLORS.primaryWhiteHex,
-    marginTop: SPACING.space_16,
-    paddingHorizontal: SPACING.space_24,
+  statsContainer: {
+    flexDirection: 'row',
+    backgroundColor: COLORS.primaryDarkGreyHex,
+    margin: SPACING.space_20,
+    padding: SPACING.space_20,
+    borderRadius: SPACING.space_15,
+    justifyContent: 'space-around',
   },
-  menuItem: {
+  statItem: {
+    alignItems: 'center',
+    flex: 1,
+  },
+  statValue: {
+    color: COLORS.primaryOrangeHex,
+    fontSize: FONTSIZE.size_20,
+    fontFamily: FONTFAMILY.poppins_semibold,
+    marginBottom: SPACING.space_4,
+  },
+  statLabel: {
+    color: COLORS.primaryWhiteHex,
+    fontSize: FONTSIZE.size_14,
+    fontFamily: FONTFAMILY.poppins_regular,
+  },
+  statDivider: {
+    width: 1,
+    backgroundColor: COLORS.primaryGreyHex,
+    marginHorizontal: SPACING.space_10,
+  },
+  quickQRButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.primaryOrangeHex,
+    margin: SPACING.space_20,
+    padding: SPACING.space_15,
+    borderRadius: SPACING.space_15,
+    marginTop: SPACING.space_10,
+  },
+  quickQRText: {
+    color: COLORS.primaryWhiteHex,
+    fontSize: FONTSIZE.size_16,
+    fontFamily: FONTFAMILY.poppins_semibold,
+    marginLeft: SPACING.space_10,
+  },
+  sectionContainer: {
+    margin: SPACING.space_20,
+  },
+  sectionTitle: {
+    color: COLORS.primaryWhiteHex,
+    fontSize: FONTSIZE.size_18,
+    fontFamily: FONTFAMILY.poppins_semibold,
+    marginBottom: SPACING.space_15,
+    paddingLeft: SPACING.space_4,
+  },
+  optionItem: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: SPACING.space_16,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.primaryGreyHex + '20',
+    backgroundColor: COLORS.primaryDarkGreyHex,
+    padding: SPACING.space_15,
+    borderRadius: SPACING.space_10,
+    marginBottom: SPACING.space_10,
   },
-  menuItemLeft: {
+  highlightedOption: {
+    backgroundColor: COLORS.primaryOrangeHex,
+  },
+  optionLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  optionIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: COLORS.primaryBlackHex,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: SPACING.space_15,
+  },
+  highlightedIcon: {
+    backgroundColor: COLORS.primaryWhiteHex,
+  },
+  optionText: {
+    flex: 1,
+  },
+  optionTitle: {
+    color: COLORS.primaryWhiteHex,
+    fontSize: FONTSIZE.size_16,
+    fontFamily: FONTFAMILY.poppins_medium,
+    marginBottom: SPACING.space_2,
+  },
+  highlightedTitle: {
+    color: COLORS.primaryWhiteHex,
+  },
+  optionSubtitle: {
+    color: COLORS.primaryLightGreyHex,
+    fontSize: FONTSIZE.size_14,
+    fontFamily: FONTFAMILY.poppins_regular,
+  },
+  highlightedSubtitle: {
+    color: COLORS.primaryWhiteHex,
+    opacity: 0.8,
+  },
+  staffSection: {
+    backgroundColor: COLORS.primaryOrangeHex,
+    marginHorizontal: SPACING.space_20,
+    marginBottom: SPACING.space_20,
+    borderRadius: BORDERRADIUS.radius_15,
+    padding: SPACING.space_16,
+  },
+  staffSectionTitle: {
+    fontFamily: FONTFAMILY.poppins_semibold,
+    fontSize: FONTSIZE.size_18,
+    color: COLORS.primaryWhiteHex,
+    marginBottom: SPACING.space_12,
+    textAlign: 'center',
+  },
+  staffMenuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: SPACING.space_12,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.primaryWhiteHex + '30',
+  },
+  staffMenuItemLeft: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.space_16,
   },
-  menuItemText: {
-    fontFamily: FONTFAMILY.poppins_regular,
+  staffMenuItemText: {
+    fontFamily: FONTFAMILY.poppins_medium,
     fontSize: FONTSIZE.size_16,
-    color: COLORS.primaryBlackHex,
+    color: COLORS.primaryWhiteHex,
   },
   signOutButton: {
     flexDirection: 'row',
@@ -296,9 +701,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: COLORS.primaryOrangeHex,
     paddingVertical: SPACING.space_16,
-    marginHorizontal: SPACING.space_24,
+    marginHorizontal: SPACING.space_20,
     borderRadius: BORDERRADIUS.radius_15,
-    marginTop: SPACING.space_24,
+    marginBottom: SPACING.space_20,
     gap: SPACING.space_12,
   },
   signOutText: {

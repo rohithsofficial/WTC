@@ -1,3 +1,4 @@
+// app/(app)/_layout.tsx (App Layout with Hidden Staff Screens)
 import React from 'react';
 import { Tabs } from 'expo-router';
 import { COLORS, FONTFAMILY } from '../../src/theme/theme';
@@ -25,6 +26,7 @@ const AppLayout = () => {
         tabBarInactiveTintColor: COLORS.primaryGreyHex,
       }}
     >
+      {/* Visible Tab Screens */}
       <Tabs.Screen
         name="HomeScreen"
         options={{
@@ -80,7 +82,28 @@ const AppLayout = () => {
         }}
       />
 
-      {/* Hidden Screens */}
+      {/* Hidden Screens - Staff and Other Screens */}
+      <Tabs.Screen 
+        name="StaffQRScannerScreen" 
+        options={{ 
+          href: null,
+          headerShown: false,
+        }} 
+      />
+      <Tabs.Screen 
+        name="StaffLoyaltyScannerScreen" 
+        options={{ 
+          href: null,
+          headerShown: false,
+        }} 
+      />
+      <Tabs.Screen 
+        name="StaffRedemptionScreen" 
+        options={{ 
+          href: null,
+          headerShown: false,
+        }} 
+      />
       <Tabs.Screen name="styles" options={{ href: null }} />
       <Tabs.Screen name="ProductsScreen" options={{ href: null }} />
       <Tabs.Screen name="OrderStatusScreen" options={{ href: null }} />
@@ -94,9 +117,10 @@ const AppLayout = () => {
       <Tabs.Screen name="EditProfileScreen" options={{ href: null }} />
       <Tabs.Screen name="NotificationScreen" options={{ href: null }} />
       <Tabs.Screen name="explore" options={{ href: null }} />
-       <Tabs.Screen name="HomeScreen1" options={{ href: null }} />
-        <Tabs.Screen name="OffersScreen" options={{ href: null }} />
-         <Tabs.Screen name="PaymentScreen" options={{ href: null }} />
+      <Tabs.Screen name="HomeScreen1" options={{ href: null }} />
+      <Tabs.Screen name="OffersScreen" options={{ href: null }} />
+      <Tabs.Screen name="PaymentScreen" options={{ href: null }} />
+      <Tabs.Screen name="LoyaltyQRCodeScreen" options={{ href: null }} />
     </Tabs>
   );
 };
