@@ -1,4 +1,4 @@
-// src/services/loyaltyService.ts
+// src/services/loyaltyService.ts\import React, { useState, useEffect } from "react";
 import { 
   doc, 
   getDoc, 
@@ -117,7 +117,7 @@ class LoyaltyServiceClass {
   }
 
   async createUserProfile(
-    userData: Omit<LoyaltyUser, 'loyaltyPoints' | 'membershipTier' | 'createdAt' | 'updatedAt'>,
+    userData: Omit<LoyaltyUser, 'loyaltyPoints' | 'membershipTier' | 'createdAt' | 'updatedAt' | 'totalOrders'> & { totalOrders?: number },
     initialPoints: number = 0
   ): Promise<LoyaltyUser> {
     try {
@@ -127,7 +127,8 @@ class LoyaltyServiceClass {
         loyaltyPoints: initialPoints,
         membershipTier: this.determineMembershipTier(initialPoints),
         createdAt: Timestamp.now(),
-        updatedAt: Timestamp.now()
+        updatedAt: Timestamp.now(),
+        totalOrders: userData.totalOrders || 0
       };
       
       await setDoc(userRef, userProfile);
@@ -626,12 +627,16 @@ class LoyaltyServiceClass {
         
         // Calculate points from transaction history
         for (const transaction of transactions) {
-          if (transaction.type === 'earned') {
-            totalPoints += transaction.points;
-          } else if (transaction.type === 'redeemed' || transaction.type === 'tier_discount') {
-            totalPoints -= transaction.points;
+          if (transaction.type === 'earned' || transaction.type === 'bonus') {
+            totalPoints += Math.abs(transaction.points);
+          } else if (transaction.type === 'redeemed') {
+            totalPoints -= Math.abs(transaction.points);
           }
+          // Don't subtract points for tier_discount transactions as they're already accounted for
         }
+
+        // Ensure points are never negative
+        totalPoints = Math.max(0, totalPoints);
 
         // Create a new user profile with calculated points
         const userData = {
@@ -646,7 +651,8 @@ class LoyaltyServiceClass {
         const newProfile = await this.createUserProfile(userData, totalPoints);
         return newProfile.loyaltyPoints;
       }
-      return userProfile.loyaltyPoints;
+      // Ensure existing profile points are never negative
+      return Math.max(0, userProfile.loyaltyPoints);
     } catch (error) {
       console.error('Error getting user loyalty points:', error);
       throw new Error('Failed to get user loyalty points');
@@ -722,7 +728,7 @@ class LoyaltyServiceClass {
       }
 
       const userData = userDoc.data() as LoyaltyUser;
-      const currentPoints = userData.loyaltyPoints || 0;
+      const currentPoints = Math.max(0, userData.loyaltyPoints || 0);
       const membershipTier = userData.membershipTier || 'Bronze';
 
       // Calculate points earned
@@ -739,8 +745,11 @@ class LoyaltyServiceClass {
         pointsEarned *= LOYALTY_CONFIG.festivalMultiplier;
       }
 
-      // Calculate final points
-      const finalPoints = currentPoints + pointsEarned - pointsRedeemed;
+      // Ensure points earned is never negative
+      pointsEarned = Math.max(0, pointsEarned);
+
+      // Calculate final points, ensuring it never goes negative
+      const finalPoints = Math.max(0, currentPoints + pointsEarned - pointsRedeemed);
 
       // Update user's points
       await updateDoc(doc(db, 'loyaltyUsers', userData.uid), {

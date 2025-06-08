@@ -46,7 +46,7 @@ const LoyaltyPointsDisplay: React.FC<LoyaltyPointsDisplayProps> = ({
       </View>
 
       <View style={styles.pointsContainer}>
-        <Text style={styles.pointsValue}>{availablePoints}</Text>
+        <Text style={styles.pointsValue}>{Math.max(0, availablePoints).toLocaleString()}</Text>
         <Text style={styles.pointsLabel}>Available Points</Text>
       </View>
 
@@ -57,12 +57,12 @@ const LoyaltyPointsDisplay: React.FC<LoyaltyPointsDisplayProps> = ({
               <View
                 style={[
                   styles.progressFill,
-                  { width: `${progressPercentage}%`, backgroundColor: currentTier.color },
+                  { width: `${Math.min(100, Math.max(0, progressPercentage))}%`, backgroundColor: currentTier.color },
                 ]}
               />
             </View>
             <Text style={styles.progressText}>
-              {progressPercentage.toFixed(0)}% to {nextTier.name}
+              {Math.min(100, Math.max(0, progressPercentage)).toFixed(0)}% to {nextTier.name}
             </Text>
           </>
         ) : (

@@ -12,6 +12,8 @@ export interface LoyaltyUser {
   membershipTier: MembershipTier;
   createdAt: Timestamp;
   updatedAt: Timestamp;
+  totalOrders: number;
+  birthday?: string;
 }
 
 export interface LoyaltyTransaction {
