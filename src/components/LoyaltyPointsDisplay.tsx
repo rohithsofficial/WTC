@@ -1,35 +1,85 @@
 // src/components/LoyaltyPointsDisplay.tsx
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { LOYALTY_CONFIG } from '../types/loyalty';
-import { LoyaltyService } from '../services/loyaltyService';
+import { LOYALTY_CONFIG ,MembershipTier } from '../types/loyalty';
+import { doc, getDoc } from 'firebase/firestore';
 import { COLORS } from '../theme/theme';
+import { db ,auth } from "../firebase/config";
 
 interface LoyaltyPointsDisplayProps {
-  availablePoints: number;
-  nextMilestone: {
-    pointsNeeded: number;
-    rewardValue: number;
+  initialPoints: number;
+  nextMilestone?: {
+  pointsNeeded: number;
+  rewardValue: number;
+  initialPoints?: number;
+  initialTier?: MembershipTier;
   };
 }
 
-const LoyaltyPointsDisplay: React.FC<LoyaltyPointsDisplayProps> = ({
-  availablePoints,
-  nextMilestone,
-}) => {
-  // Get current tier based on points
-  const currentTier = LOYALTY_CONFIG.tiers.find(tier => 
-    availablePoints >= tier.minPoints && 
-    (tier.maxPoints ? availablePoints < tier.maxPoints : true)
-  ) || LOYALTY_CONFIG.tiers[0];
 
+const LoyaltyPointsDisplay: React.FC<LoyaltyPointsDisplayProps> = () => {
+  // Get current tier based on points
+  const [initialPoints, setAvailablePoints] = useState<number>(0);
+const [membershipTier, setMembershipTier] = useState<MembershipTier>('Bronze');
+
+  useEffect(() => {
+    const fetchLoyaltyData = async () => {
+      const userId = auth.currentUser?.uid; // get logged-in user's id
+      if (!userId) return;
+
+      const docRef = doc(db, 'users', userId);
+      const docSnap = await getDoc(docRef);
+
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        setAvailablePoints(data.loyaltyPoints ?? 0);
+        setMembershipTier(data.membershipTier ?? 'Bronze');
+      }
+    };
+
+    fetchLoyaltyData();
+  }, []);
+
+  const currentTier =
+    LOYALTY_CONFIG.tiers
+      .filter((tier) => initialPoints >= tier.minPoints)
+      .sort((a, b) => b.minPoints - a.minPoints)[0] || LOYALTY_CONFIG.tiers[0];
   // Get next tier
-  const nextTier = LOYALTY_CONFIG.tiers.find(tier => tier.minPoints > availablePoints);
+  const nextTier = LOYALTY_CONFIG.tiers.find(tier => tier.minPoints > initialPoints);
+
+  // Calculate next reward milestone
+  const calculateNextReward = () => {
+    const { minRedemption, redemptionRate } = LOYALTY_CONFIG;
+    
+    // If user has less than minimum redemption points
+    if (initialPoints < minRedemption) {
+      return {
+        pointsNeeded: minRedemption - initialPoints,
+        rewardValue: Math.floor(minRedemption * redemptionRate)
+      };
+    }
+    
+    // Calculate next reward increment (e.g., every 100 points = ₹10)
+    const rewardIncrement = Math.ceil(minRedemption); // 100 points
+    const rewardValue = Math.floor(rewardIncrement * redemptionRate); // ₹10
+    
+    // Find next milestone
+    const currentRewardLevel = Math.floor(initialPoints / rewardIncrement);
+    const nextRewardLevel = currentRewardLevel + 1;
+    const nextMilestonePoints = nextRewardLevel * rewardIncrement;
+    
+    return {
+      pointsNeeded: nextMilestonePoints - initialPoints,
+      rewardValue: Math.floor(nextMilestonePoints * redemptionRate)
+    };
+  };
+
+  const nextMilestone = calculateNextReward();
 
   // Calculate progress percentage between current tier and next tier, capped at 100%
   const progressPercentage = nextTier
     ? Math.min(
-        ((availablePoints - currentTier.minPoints) /
+        ((initialPoints - currentTier.minPoints) /
           (nextTier.minPoints - currentTier.minPoints)) *
           100,
         100
@@ -46,7 +96,7 @@ const LoyaltyPointsDisplay: React.FC<LoyaltyPointsDisplayProps> = ({
       </View>
 
       <View style={styles.pointsContainer}>
-        <Text style={styles.pointsValue}>{Math.max(0, availablePoints).toLocaleString()}</Text>
+        <Text style={styles.pointsValue}>{Math.max(0, initialPoints).toLocaleString()}</Text>
         <Text style={styles.pointsLabel}>Available Points</Text>
       </View>
 
@@ -73,8 +123,13 @@ const LoyaltyPointsDisplay: React.FC<LoyaltyPointsDisplayProps> = ({
       <View style={styles.milestoneContainer}>
         <Text style={styles.milestoneTitle}>Next Reward</Text>
         <Text style={styles.milestoneText}>
-          {nextMilestone.pointsNeeded} points needed for ₹{nextMilestone.rewardValue} off
+          {nextMilestone.pointsNeeded} points needed for ₹{nextMilestone.rewardValue} reward
         </Text>
+        {initialPoints >= LOYALTY_CONFIG.minRedemption && (
+          <Text style={styles.currentRewardText}>
+            Current: ₹{Math.floor(initialPoints * LOYALTY_CONFIG.redemptionRate)} available to redeem
+          </Text>
+        )}
       </View>
 
       <View style={styles.tierBenefits}>
@@ -171,6 +226,12 @@ const styles = StyleSheet.create({
   milestoneText: {
     fontSize: 14,
     color: COLORS.primaryGreyHex,
+  },
+  currentRewardText: {
+    fontSize: 12,
+    color: COLORS.primaryGreyHex,
+    marginTop: 4,
+    fontStyle: 'italic',
   },
   tierBenefits: {
     borderTopWidth: 1,

@@ -1,5 +1,5 @@
 import React from 'react';
-import {StyleSheet} from 'react-native';
+import {StyleSheet, View, Text} from 'react-native';
 import {createBottomTabNavigator} from '@react-navigation/bottom-tabs';
 import {COLORS} from '../theme/theme';
 import { BlurView } from 'expo-blur';
@@ -8,10 +8,14 @@ import FavoritesScreen from '../../app/(app)/FavoritesScreen';
 import CartScreen from '../../app/(app)/CartScreen';
 import OrderHistoryScreen from '../../app/(app)/OrderHistoryScreen';
 import CustomIcon from '../components/CustomIcon';
+import { useCart } from '../store/CartContext';
 
 const Tab = createBottomTabNavigator();
 
 const TabNavigator = () => {
+  const { state } = useCart();
+  const cartItemCount = state.items.reduce((total, item) => total + item.quantity, 0);
+
   return (
     <Tab.Navigator
       screenOptions={{
@@ -46,13 +50,20 @@ const TabNavigator = () => {
         component={CartScreen}
         options={{
           tabBarIcon: ({focused, color, size}) => (
-            <CustomIcon
-              name="cart"
-              size={25}
-              color={
-                focused ? COLORS.primaryOrangeHex : COLORS.primaryLightGreyHex
-              }
-            />
+            <View>
+              <CustomIcon
+                name="cart"
+                size={25}
+                color={
+                  focused ? COLORS.primaryOrangeHex : COLORS.primaryLightGreyHex
+                }
+              />
+              {cartItemCount > 0 && (
+                <View style={styles.badge}>
+                  <Text style={styles.badgeText}>{cartItemCount}</Text>
+                </View>
+              )}
+            </View>
           ),
         }}></Tab.Screen>
       <Tab.Screen
@@ -102,6 +113,23 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
+  },
+  badge: {
+    position: 'absolute',
+    top: -8,
+    right: -8,
+    backgroundColor: COLORS.primaryOrangeHex,
+    borderRadius: 10,
+    minWidth: 20,
+    height: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 4,
+  },
+  badgeText: {
+    color: COLORS.primaryWhiteHex,
+    fontSize: 12,
+    fontWeight: 'bold',
   },
 });
 

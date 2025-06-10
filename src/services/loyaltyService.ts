@@ -1,4 +1,5 @@
-// src/services/loyaltyService.ts\import React, { useState, useEffect } from "react";
+// src/services/loyaltyService.ts
+import React, { useState, useEffect } from "react";
 import { 
   doc, 
   getDoc, 
@@ -54,14 +55,6 @@ interface RedemptionTransaction {
   notes?: string;
 }
 
-interface TierRequirement {
-  minPoints: number;
-  discountPercentage: number;
-  maxDiscount: number;
-  bonusDiscount?: number;
-  earningMultiplier: number;
-}
-
 interface PointsTransaction {
   userId: string;
   points: number;
@@ -73,33 +66,10 @@ interface PointsTransaction {
 }
 
 class LoyaltyServiceClass {
-  private readonly TIER_REQUIREMENTS: Record<MembershipTier, TierRequirement> = {
-    Bronze: {
-      minPoints: 0,
-      discountPercentage: 2,
-      maxDiscount: 20,
-      earningMultiplier: 1
-    },
-    Silver: {
-      minPoints: 500,
-      discountPercentage: 5,
-      maxDiscount: 75,
-      earningMultiplier: 1.2
-    },
-    Gold: {
-      minPoints: 1000,
-      discountPercentage: 10,
-      maxDiscount: 150,
-      earningMultiplier: 1.5
-    },
-    Platinum: {
-      minPoints: 2000,
-      discountPercentage: 15,
-      maxDiscount: 200,
-      bonusDiscount: 50,
-      earningMultiplier: 2
-    }
-  };
+  // Get tier configuration from LOYALTY_CONFIG instead of hardcoded values
+  getTierConfig(tier: MembershipTier): TierConfig | undefined {
+    return LOYALTY_CONFIG.tiers.find(t => t.name === tier);
+  }
 
   async getUserProfile(userId: string): Promise<LoyaltyUser | null> {
     try {
@@ -257,7 +227,7 @@ class LoyaltyServiceClass {
         throw new Error('User profile not found');
       }
 
-      const tierConfig = LOYALTY_CONFIG.tiers.find(t => t.name === userProfile.membershipTier);
+      const tierConfig = this.getTierConfig(userProfile.membershipTier);
       const multiplier = tierConfig?.pointMultiplier || 1;
       const pointsEarned = this.calculatePointsEarned(orderAmount, multiplier);
       
@@ -307,10 +277,16 @@ class LoyaltyServiceClass {
   }
 
   private determineMembershipTier(points: number): MembershipTier {
-    if (points >= 2000) return 'Platinum';
-    if (points >= 1000) return 'Gold';
-    if (points >= 500) return 'Silver';
-    return 'Bronze';
+    // Use LOYALTY_CONFIG instead of hardcoded values
+    const sortedTiers = [...LOYALTY_CONFIG.tiers].sort((a, b) => b.minPoints - a.minPoints);
+    
+    for (const tier of sortedTiers) {
+      if (points >= tier.minPoints) {
+        return tier.name;
+      }
+    }
+    
+    return 'Bronze'; // Default fallback
   }
 
   async getRedemptionHistory(userId: string, limitCount = 10): Promise<RedemptionTransaction[]> {
@@ -354,7 +330,7 @@ class LoyaltyServiceClass {
   }
 
   getTierBenefits(tier: MembershipTier): string {
-    const tierConfig = LOYALTY_CONFIG.tiers.find(t => t.name === tier);
+    const tierConfig = this.getTierConfig(tier);
     if (!tierConfig) return 'No benefits available';
 
     return tierConfig.benefits.join('\n');
@@ -369,20 +345,20 @@ class LoyaltyServiceClass {
     }
 
     const nextTier = tiers[currentIndex + 1];
-    const nextTierConfig = LOYALTY_CONFIG.tiers.find(t => t.name === nextTier);
+    const nextTierConfig = this.getTierConfig(nextTier);
     
     if (!nextTierConfig) {
       return { nextTier: null, pointsNeeded: 0 };
     }
 
-    const pointsNeeded = globalMath.max(0, nextTierConfig.minPoints - currentPoints);
+    const pointsNeeded = Math.max(0, nextTierConfig.minPoints - currentPoints);
     return { nextTier, pointsNeeded };
   }
 
   getNextRewardMilestone(currentPoints: number): { pointsNeeded: number; rewardValue: number } {
-    // Calculate the next milestone for rewards (every 100 points = ₹10 reward)
-    const rewardInterval = 100;
-    const rewardValue = 10;
+    // Calculate the next milestone for rewards based on LOYALTY_CONFIG
+    const rewardInterval = globalMath.ceil(1 / LOYALTY_CONFIG.redemptionRate); // 100 points for ₹10
+    const rewardValue = globalMath.floor(rewardInterval * LOYALTY_CONFIG.redemptionRate);
     
     const nextMilestone = globalMath.ceil(currentPoints / rewardInterval) * rewardInterval;
     const pointsNeeded = nextMilestone - currentPoints;
@@ -460,7 +436,7 @@ class LoyaltyServiceClass {
     return globalMath.floor(points * LOYALTY_CONFIG.redemptionRate);
   }
 
-  // Calculate tier-based discount
+  // Calculate tier-based discount - FIXED to follow loyalty.ts rules
   calculateTierDiscount(
     orderAmount: number, 
     membershipTier: MembershipTier, 
@@ -477,7 +453,7 @@ class LoyaltyServiceClass {
       };
     }
 
-    const tierConfig = LOYALTY_CONFIG.tiers.find(tier => tier.name === membershipTier);
+    const tierConfig = this.getTierConfig(membershipTier);
     if (!tierConfig) {
       return {
         discountAmount: 0,
@@ -493,19 +469,19 @@ class LoyaltyServiceClass {
     let discountType: 'flat' | 'percentage' | 'combo' | 'none' = 'none';
     let pointsRequired = 0;
 
-    // Set points required based on tier
+    // Set minimum points required based on tier (consistent with loyalty.ts rules)
     switch (membershipTier) {
       case 'Bronze':
-        pointsRequired = 50; // Minimal points usage for Bronze
+        pointsRequired = 0; // Bronze needs 100+ points as per benefits description
         break;
       case 'Silver':
-        pointsRequired = 100; // Moderate points usage for Silver
+        pointsRequired = 500; // Silver needs minimum points for tier discount
         break;
       case 'Gold':
-        pointsRequired = 150; // Higher points usage for Gold
+        pointsRequired = 1000; // Gold needs minimum points for tier discount
         break;
       case 'Platinum':
-        pointsRequired = 200; // Highest points usage for Platinum
+        pointsRequired = 2000; // Platinum needs minimum points for tier discount
         break;
     }
 
@@ -520,33 +496,33 @@ class LoyaltyServiceClass {
       };
     }
 
-    // Calculate discount based on tier
+    // Calculate discount based on tier benefits as defined in loyalty.ts
     switch (membershipTier) {
       case 'Bronze':
-        // Bronze: Flat ₹10 or 2% discount (whichever is lower), max ₹20
-        const flatDiscount = 10;
+        // Bronze: Flat ₹20 or 2% discount (max ₹20) - as per benefits
+        const flatDiscount = 20;
         const percentageDiscount = globalMath.floor(orderAmount * 0.02);
         discount = globalMath.min(flatDiscount, percentageDiscount, maxCap);
         discountType = flatDiscount <= percentageDiscount ? 'flat' : 'percentage';
         break;
 
       case 'Silver':
-        // Silver: 5% discount, max ₹75
+        // Silver: 5% discount (max ₹75) - as per benefits
         discount = globalMath.min(globalMath.floor(orderAmount * 0.05), maxCap);
         discountType = 'percentage';
         break;
 
       case 'Gold':
-        // Gold: 10% discount, max ₹150
+        // Gold: 10% discount (max ₹150) - as per benefits
         discount = globalMath.min(globalMath.floor(orderAmount * 0.10), maxCap);
         discountType = 'percentage';
         break;
 
       case 'Platinum':
-        // Platinum: 15% discount + ₹50 bonus, max ₹200
+        // Platinum: 15% + ₹50 combo discount (max ₹200) - as per benefits
         const baseDiscount = globalMath.floor(orderAmount * 0.15);
-        const bonusDiscount = this.TIER_REQUIREMENTS.Platinum.bonusDiscount || 0;
-        discount = globalMath.min(baseDiscount + bonusDiscount, maxCap);
+        // const bonusDiscount = 50; // Fixed ₹50 bonus as per benefits
+        discount = globalMath.min(baseDiscount, maxCap);
         discountType = 'combo';
         break;
     }
@@ -561,7 +537,7 @@ class LoyaltyServiceClass {
     };
   }
 
-  // Calculate redemption
+  // Calculate redemption using LOYALTY_CONFIG values
   calculateRedemption(
     pointsToRedeem: number,
     availablePoints: number,
@@ -598,10 +574,10 @@ class LoyaltyServiceClass {
       };
     }
 
-    // Calculate discount amount
+    // Calculate discount amount using LOYALTY_CONFIG
     const discountAmount = globalMath.floor(pointsToRedeem * LOYALTY_CONFIG.redemptionRate);
     
-    // Apply maximum discount limits
+    // Apply maximum discount limits from LOYALTY_CONFIG
     const maxDiscount = globalMath.floor(orderAmount * LOYALTY_CONFIG.maxRedemptionPercentage);
     const finalDiscount = globalMath.min(discountAmount, maxDiscount, LOYALTY_CONFIG.maxRedemptionAmount);
     
@@ -707,7 +683,7 @@ class LoyaltyServiceClass {
     };
   }
 
-  // Process order completion
+  // Process order completion with proper multipliers from LOYALTY_CONFIG
   async processOrderCompletion(
     userId: string,
     orderId: string,
@@ -731,18 +707,22 @@ class LoyaltyServiceClass {
       const currentPoints = Math.max(0, userData.loyaltyPoints || 0);
       const membershipTier = userData.membershipTier || 'Bronze';
 
-      // Calculate points earned
-      let pointsEarned = this.calculatePointsEarned(orderAmount);
+      // Get tier config for multiplier
+      const tierConfig = this.getTierConfig(membershipTier);
+      const baseTierMultiplier = tierConfig?.pointMultiplier || 1;
+
+      // Calculate points earned with base tier multiplier
+      let pointsEarned = this.calculatePointsEarned(orderAmount, baseTierMultiplier);
       
-      // Apply multipliers
+      // Apply bonus multipliers from LOYALTY_CONFIG
       if (isFirstOrder) {
-        pointsEarned *= LOYALTY_CONFIG.firstOrderMultiplier;
+        pointsEarned = globalMath.floor(pointsEarned * LOYALTY_CONFIG.firstOrderMultiplier);
       }
       if (isBirthday) {
         pointsEarned += LOYALTY_CONFIG.birthdayBonusPoints;
       }
       if (isFestival) {
-        pointsEarned *= LOYALTY_CONFIG.festivalMultiplier;
+        pointsEarned = globalMath.floor(pointsEarned * LOYALTY_CONFIG.festivalMultiplier);
       }
 
       // Ensure points earned is never negative
@@ -751,9 +731,11 @@ class LoyaltyServiceClass {
       // Calculate final points, ensuring it never goes negative
       const finalPoints = Math.max(0, currentPoints + pointsEarned - pointsRedeemed);
 
-      // Update user's points
+      // Update user's points and tier
+      const newTier = this.determineMembershipTier(finalPoints);
       await updateDoc(doc(db, 'loyaltyUsers', userData.uid), {
         loyaltyPoints: finalPoints,
+        membershipTier: newTier,
         updatedAt: Timestamp.now()
       });
 
@@ -762,7 +744,7 @@ class LoyaltyServiceClass {
         userId,
         points: pointsEarned - pointsRedeemed,
         type: pointsRedeemed > 0 ? 'redeemed' : 'earned',
-        description: `Order #${orderId}`,
+        description: `Purchase of ₹${orderAmount.toFixed(2)} Earned ${pointsEarned} points`,
         timestamp: Timestamp.now(),
         orderId
       };
@@ -784,9 +766,123 @@ class LoyaltyServiceClass {
 
         await addDoc(collection(db, 'redemptionTransactions'), redemptionTransaction);
       }
+
+      // Check for tier upgrade
+      if (newTier !== membershipTier) {
+        const tierUpgradeTransaction: Omit<LoyaltyTransaction, 'id'> = {
+          userId,
+          points: 0,
+          type: 'bonus',
+          description: `Tier upgraded to ${newTier}!`,
+          timestamp: Timestamp.now()
+        };
+        
+        await addDoc(collection(db, 'loyaltyTransactions'), tierUpgradeTransaction);
+      }
     } catch (error) {
       console.error('Error processing order completion:', error);
       throw new Error('Failed to process order completion');
+    }
+  }
+
+  // Process staff transaction (complete loyalty flow like online purchase)
+  async processStaffTransaction(
+    userId: string,
+    orderAmount: number,
+    discountApplied: number,
+    pointsUsed: number,
+    pointsEarned: number,
+    membershipTier: MembershipTier
+  ): Promise<void> {
+    try {
+      // Use transaction for atomicity
+      await runTransaction(db, async (transaction) => {
+        // Update user's points in users collection
+        const userDocRef = doc(db, 'users', userId);
+        const userDoc = await transaction.get(userDocRef);
+        
+        if (!userDoc.exists()) {
+          throw new Error('User document not found');
+        }
+
+        const currentUserData = userDoc.data();
+        const currentPoints = currentUserData.loyaltyPoints || 0;
+        
+        // Calculate new points balance (subtract used points, add earned points)
+        const newPointsBalance = Math.max(0, currentPoints - pointsUsed + pointsEarned);
+        const newTier = this.determineMembershipTier(newPointsBalance);
+        
+        // Update user's loyalty points and tier in users collection
+        transaction.update(userDocRef, {
+          loyaltyPoints: newPointsBalance,
+          membershipTier: newTier,
+          updatedAt: Timestamp.now(),
+          totalOrders: (currentUserData.totalOrders || 0) + 1
+        });
+
+        // Create redemption transaction record (if discount was applied)
+        if (discountApplied > 0) {
+          const redemptionTransactionRef = doc(collection(db, 'redemptionTransactions'));
+          const redemptionTransactionData: Omit<RedemptionTransaction, 'id'> = {
+            userId: userId,
+            orderAmount,
+            discountApplied,
+            pointsUsed,
+            membershipTier,
+            timestamp: Timestamp.now(),
+            status: 'completed',
+            staffId: 'staff_transaction'
+          };
+          
+          transaction.set(redemptionTransactionRef, redemptionTransactionData);
+        }
+
+        // Create loyalty transaction for points used (if any)
+        if (pointsUsed > 0) {
+          const pointsUsedTransactionRef = doc(collection(db, 'loyaltyTransactions'));
+          const pointsUsedTransactionData: Omit<LoyaltyTransaction, 'id'> = {
+            userId: userId,
+            points: -pointsUsed,
+            type: 'tier_discount',
+            description: `Staff transaction - Tier discount applied (₹${discountApplied})`,
+            timestamp: Timestamp.now()
+          };
+          
+          transaction.set(pointsUsedTransactionRef, pointsUsedTransactionData);
+        }
+
+        // Create loyalty transaction for points earned (if any)
+        if (pointsEarned > 0) {
+          const pointsEarnedTransactionRef = doc(collection(db, 'loyaltyTransactions'));
+          const pointsEarnedTransactionData: Omit<LoyaltyTransaction, 'id'> = {
+            userId: userId,
+            points: pointsEarned,
+            type: 'earned',
+            description: `Staff transaction - Points earned from purchase (₹${(orderAmount - discountApplied).toFixed(2)})`,
+            timestamp: Timestamp.now(),
+            multiplier: this.getTierConfig(membershipTier)?.pointMultiplier || 1
+          };
+          
+          transaction.set(pointsEarnedTransactionRef, pointsEarnedTransactionData);
+        }
+
+        // Check for tier upgrade and add bonus transaction
+        if (newTier !== membershipTier) {
+          const tierUpgradeTransactionRef = doc(collection(db, 'loyaltyTransactions'));
+          const tierUpgradeTransactionData: Omit<LoyaltyTransaction, 'id'> = {
+            userId: userId,
+            points: 0,
+            type: 'bonus',
+            description: `Congratulations! You've been upgraded to ${newTier} tier!`,
+            timestamp: Timestamp.now()
+          };
+          
+          transaction.set(tierUpgradeTransactionRef, tierUpgradeTransactionData);
+        }
+      });
+    } catch (error: any) {
+      console.error('Error processing staff transaction:', error);
+      throw new Error(error.message || 'Failed to process staff transaction');
     }
   }
 }

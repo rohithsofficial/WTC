@@ -27,12 +27,11 @@ import PopUpAnimation from '../../src/components/PopUpAnimation';
 import LoyaltyPointsDisplay from '../../src/components/LoyaltyPointsDisplay';
 import { RedeemPointsInput } from '../../src/components/RedeemPointsInput';
 import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
-import { collection, addDoc, doc, updateDoc, getDoc } from "firebase/firestore";
-import { db } from "../../src/firebase/config";
+import { collection, addDoc, doc, updateDoc, getDoc, arrayUnion, setDoc, Timestamp, runTransaction } from "firebase/firestore";
+import { db ,auth } from "../../src/firebase/config";
 import type { OrderData } from '../../src/types/interfaces';
-import type { RedemptionCalculation, TierDiscountCalculation, MembershipTier } from '../../src/types/loyalty';
+import type { RedemptionCalculation, TierDiscountCalculation, MembershipTier} from '../../src/types/loyalty';
 import { LOYALTY_CONFIG } from '../../src/types/loyalty';
-import { auth } from '../../src/firebase/config';
 import { LoyaltyService } from '../../src/services/loyaltyService';
 import { useCart } from '../../src/store/CartContext';
 
@@ -362,9 +361,117 @@ const PaymentScreen = () => {
 
   // Process loyalty points transaction
   const processLoyaltyTransaction = async (orderId: string) => {
-    if (!auth.currentUser) return;
+    if (!auth.currentUser) {
+      console.error('No authenticated user found');
+      return;
+    }
 
     try {
+      // First check if user exists in users collection
+      const userDocRef = doc(db, 'users', auth.currentUser.uid);
+      const userDoc = await getDoc(userDocRef);
+      
+      if (!userDoc.exists()) {
+        // Create user document if it doesn't exist
+        await setDoc(userDocRef, {
+          uid: auth.currentUser.uid,
+          displayName: auth.currentUser.displayName || 'User',
+          email: auth.currentUser.email,
+          loyaltyPoints: 0,
+          membershipTier: 'Bronze',
+          totalSpent: 0,
+          orderCount: 0,
+          transactions: [],
+          createdAt: new Date(),
+          updatedAt: new Date()
+        });
+      }
+
+      // Get user data (either existing or newly created)
+      const userData = (await getDoc(userDocRef)).data();
+      if (!userData) {
+        throw new Error('Failed to get user data');
+      }
+
+      const currentPoints = Math.max(0, userData.loyaltyPoints || 0);
+      const pointsEarned = pointsToEarn;
+      const pointsRedeemed = discountType === 'loyalty' ? pointsUsed : 0;
+      const finalPoints = Math.max(0, currentPoints + pointsEarned - pointsRedeemed);
+
+      // Create transaction description
+      let transactionDescription = `Purchase of ₹${finalAmount.toFixed(2)}`;
+      if (pointsEarned > 0) {
+        transactionDescription += ` - Earned ${pointsEarned} points`;
+      }
+      if (pointsRedeemed > 0) {
+        transactionDescription += ` - Redeemed ${pointsRedeemed} points`;
+      }
+      if (discountType === 'tier') {
+        transactionDescription += ` - Applied ${userData.membershipTier || 'Bronze'} tier discount`;
+      }
+
+      // Use a transaction to ensure atomic updates
+      await runTransaction(db, async (transaction) => {
+        // Update user document
+        transaction.update(userDocRef, {
+          loyaltyPoints: finalPoints,
+          lastTransactionDate: new Date(),
+          totalSpent: (userData.totalSpent || 0) + finalAmount,
+          orderCount: (userData.orderCount || 0) + 1,
+          transactions: arrayUnion({
+            orderId,
+            date: new Date(),
+            amount: finalAmount,
+            pointsEarned,
+            pointsRedeemed,
+            type: 'purchase',
+            description: transactionDescription
+          })
+        });
+
+        // Create loyalty transaction record
+        const loyaltyTransactionRef = doc(collection(db, 'loyaltyTransactions'));
+        const loyaltyTransactionData = {
+          userId: auth.currentUser.uid,
+          points: pointsEarned - pointsRedeemed,
+          type: pointsEarned > pointsRedeemed ? 'earned' : 'redeemed',
+          description: transactionDescription,
+          timestamp: Timestamp.now(),
+          orderId,
+          multiplier: userData.membershipTier === 'Platinum' ? 2 : 1
+        };
+        
+        transaction.set(loyaltyTransactionRef, loyaltyTransactionData);
+
+        // Check and update membership tier if needed
+        const newTier = LOYALTY_CONFIG.tiers.reduce((highestTier, currentTier) => {
+          if (finalPoints >= currentTier.minPoints) {
+            return currentTier.name;
+          }
+          return highestTier;
+        }, 'Bronze' as MembershipTier);
+
+        if (newTier !== userData.membershipTier) {
+          transaction.update(userDocRef, {
+            membershipTier: newTier,
+            tierUpgradeDate: new Date()
+          });
+        }
+      });
+
+      // Update local state after successful database update
+      setAvailablePoints(finalPoints);
+      
+      // Get the updated user data to check for tier changes
+      const updatedUserDoc = await getDoc(userDocRef);
+      if (updatedUserDoc.exists()) {
+        const updatedUserData = updatedUserDoc.data();
+        if (updatedUserData.membershipTier !== membershipTier) {
+          setMembershipTier(updatedUserData.membershipTier);
+        }
+      }
+
+      // Process order completion after points are updated
       await LoyaltyService.processOrderCompletion(
         auth.currentUser.uid,
         orderId,
@@ -376,9 +483,34 @@ const PaymentScreen = () => {
         isBirthday,
         isFestival
       );
+
     } catch (error) {
       console.error('Error processing loyalty transaction:', error);
-      // Don't throw here as the order was already placed successfully
+      Alert.alert(
+        'Points Update Failed',
+        'There was an error updating your loyalty points. Please contact support.',
+        [
+          {
+            text: 'OK',
+            onPress: () => {
+              // Still proceed with order completion even if points update fails
+              if (auth.currentUser) {
+                LoyaltyService.processOrderCompletion(
+                  auth.currentUser.uid,
+                  orderId,
+                  subtotalAmount,
+                  discountType === 'loyalty' ? pointsUsed : 0,
+                  discountType === 'tier' ? discountAmount : 0,
+                  displayName || auth.currentUser.displayName || 'User',
+                  isFirstOrder,
+                  isBirthday,
+                  isFestival
+                ).catch(console.error);
+              }
+            }
+          }
+        ]
+      );
     }
   };
 
@@ -865,6 +997,10 @@ const PaymentScreen = () => {
     </View>
   );
 };
+
+
+
+
 const styles = StyleSheet.create({
   ScreenContainer: {
     flex: 1,
@@ -1176,6 +1312,28 @@ const styles = StyleSheet.create({
     width: 1,
     backgroundColor: COLORS.primaryGreyHex,
     marginHorizontal: SPACING.space_10,
+  },
+  LoadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  LoadingText: {
+    fontFamily: FONTFAMILY.poppins_medium,
+    fontSize: FONTSIZE.size_16,
+    color: COLORS.primaryWhiteHex,
+    marginTop: SPACING.space_15,
+  },
+  DebugContainer: {
+    backgroundColor: COLORS.primaryDarkGreyHex,
+    padding: SPACING.space_10,
+    borderRadius: BORDERRADIUS.radius_10,
+    marginTop: SPACING.space_10,
+  },
+  DebugText: {
+    fontFamily: FONTFAMILY.poppins_regular,
+    fontSize: FONTSIZE.size_12,
+    color: COLORS.primaryLightGreyHex,
   },
 });
 

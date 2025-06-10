@@ -324,7 +324,7 @@ const ProfileScreen = () => {
             </View>
             <View style={styles.statDivider} />
             <View style={styles.statItem}>
-              <Text style={styles.statValue}>{userData?.totalOrders || '0'}</Text>
+              <Text style={styles.statValue}>{userData?.orderCount || '0'}</Text>
               <Text style={styles.statLabel}>Orders</Text>
             </View>
           </View>

@@ -3,25 +3,15 @@ import React from 'react';
 import { Tabs } from 'expo-router';
 import { COLORS, FONTFAMILY } from '../../src/theme/theme';
 import { MaterialIcons } from '@expo/vector-icons';
+import { StyleSheet } from 'react-native';
 
 const AppLayout = () => {
   return (
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarStyle: {
-          backgroundColor: COLORS.primaryWhiteHex,
-          borderTopWidth: 1,
-          borderTopColor: '#E5E5E5',
-          height: 60,
-          elevation: 0,
-          shadowOpacity: 0,
-        },
-        tabBarLabelStyle: {
-          fontFamily: FONTFAMILY.poppins_medium,
-          fontSize: 12,
-          marginBottom: 8,
-        },
+        tabBarStyle: styles.tabBar,
+        tabBarLabelStyle: styles.tabBarLabel,
         tabBarActiveTintColor: COLORS.primaryOrangeHex,
         tabBarInactiveTintColor: COLORS.primaryGreyHex,
       }}
@@ -124,5 +114,21 @@ const AppLayout = () => {
     </Tabs>
   );
 };
+
+const styles = StyleSheet.create({
+  tabBar: {
+    backgroundColor: COLORS.primaryWhiteHex,
+    borderTopWidth: 1,
+    borderTopColor: '#E5E5E5',
+    height: 60,
+    elevation: 0,
+    shadowOpacity: 0,
+  },
+  tabBarLabel: {
+    fontFamily: FONTFAMILY.poppins_medium,
+    fontSize: 12,
+    marginBottom: 8,
+  },
+});
 
 export default AppLayout;

@@ -63,6 +63,7 @@ export default function ProductDetails() {
       quantity: quantity,
     };
     dispatch({ type: 'ADD_TO_CART', payload: cartItem });
+    setQuantity(1);
     setShowSuccess(true);
     setTimeout(() => setShowSuccess(false), 2000);
   };

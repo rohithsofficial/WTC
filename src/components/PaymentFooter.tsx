@@ -17,14 +17,16 @@ interface PriceProps {
 
 interface PaymentFooterProps {
   price: PriceProps;
-  buttonPressHandler: any;
+  buttonPressHandler: () => void;
   buttonTitle: string;
+  disabled?: boolean;
 }
 
 const PaymentFooter: React.FC<PaymentFooterProps> = ({
   price,
   buttonPressHandler,
   buttonTitle,
+  disabled = false,
 }) => {
   return (
     <View style={styles.PriceFooter}>
@@ -49,8 +51,9 @@ const PaymentFooter: React.FC<PaymentFooterProps> = ({
         )}
       </View>
       <TouchableOpacity
-        style={styles.PayButton}
-        onPress={() => buttonPressHandler()}>
+        style={[styles.PayButton, disabled && styles.disabledButton]}
+        onPress={() => buttonPressHandler()}
+        disabled={disabled}>
         <Text style={styles.ButtonText}>{buttonTitle}</Text>
       </TouchableOpacity>
     </View>
@@ -108,6 +111,9 @@ const styles = StyleSheet.create({
     fontFamily: FONTFAMILY.poppins_semibold,
     fontSize: FONTSIZE.size_18,
     color: COLORS.primaryWhiteHex,
+  },
+  disabledButton: {
+    opacity: 0.5,
   },
 });
 

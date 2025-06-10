@@ -22,7 +22,8 @@ type CartAction =
   | { type: 'REMOVE_FROM_CART'; payload: { id: string; size: string } }
   | { type: 'INCREMENT_QUANTITY'; payload: { id: string; size: string } }
   | { type: 'DECREMENT_QUANTITY'; payload: { id: string; size: string } }
-  | { type: 'CLEAR_CART' };
+  | { type: 'CLEAR_CART' }
+  | { type: 'REFRESH_CART' };
 
 const initialState: CartState = {
   items: [],
@@ -40,18 +41,18 @@ const cartReducer = (state: CartState, action: CartAction): CartState => {
         const updatedItems = [...state.items];
         updatedItems[existingItemIndex] = {
           ...updatedItems[existingItemIndex],
-          quantity: updatedItems[existingItemIndex].quantity + 1,
+          quantity: updatedItems[existingItemIndex].quantity + action.payload.quantity,
         };
         return {
           items: updatedItems,
-          total: updatedItems.reduce((sum, item) => sum + parseFloat(item.price) * item.quantity, 0),
+          total: calculateTotal(updatedItems),
         };
       }
 
-      const newItems = [...state.items, { ...action.payload, quantity: 1 }];
+      const newItems = [...state.items, action.payload];
       return {
         items: newItems,
-        total: newItems.reduce((sum, item) => sum + parseFloat(item.price) * item.quantity, 0),
+        total: calculateTotal(newItems),
       };
     }
 
@@ -61,7 +62,7 @@ const cartReducer = (state: CartState, action: CartAction): CartState => {
       );
       return {
         items: filteredItems,
-        total: filteredItems.reduce((sum, item) => sum + parseFloat(item.price) * item.quantity, 0),
+        total: calculateTotal(filteredItems),
       };
     }
 
@@ -73,28 +74,45 @@ const cartReducer = (state: CartState, action: CartAction): CartState => {
       );
       return {
         items: updatedItems,
-        total: updatedItems.reduce((sum, item) => sum + parseFloat(item.price) * item.quantity, 0),
+        total: calculateTotal(updatedItems),
       };
     }
 
     case 'DECREMENT_QUANTITY': {
       const updatedItems = state.items.map(item =>
         item.id === action.payload.id && item.size === action.payload.size
-          ? { ...item, quantity: Math.max(0, item.quantity - 1) }
+          ? { ...item, quantity: Math.max(1, item.quantity - 1) }
           : item
-      ).filter(item => item.quantity > 0);
+      );
       return {
         items: updatedItems,
-        total: updatedItems.reduce((sum, item) => sum + parseFloat(item.price) * item.quantity, 0),
+        total: calculateTotal(updatedItems),
       };
     }
 
     case 'CLEAR_CART':
-      return initialState;
+      return {
+        items: [],
+        total: 0,
+      };
+
+    case 'REFRESH_CART':
+      return {
+        ...state,
+        total: calculateTotal(state.items),
+      };
 
     default:
       return state;
   }
+};
+
+// Helper function to calculate total
+const calculateTotal = (items: CartItem[]): number => {
+  return items.reduce((sum, item) => {
+    const price = parseFloat(item.price);
+    return sum + (price * item.quantity);
+  }, 0);
 };
 
 interface CartContextType {

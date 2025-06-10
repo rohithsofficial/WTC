@@ -196,19 +196,19 @@ const StaffQRScannerScreen = () => {
   }
 
   return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
-          <MaterialIcons name="arrow-back" size={24} color={COLORS.primaryBlackHex} />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Staff QR Scanner</Text>
-        {(showAmountInput || redemptionResult) && (
-          <TouchableOpacity style={styles.resetButton} onPress={resetScanner}>
-            <MaterialIcons name="refresh" size={24} color={COLORS.primaryOrangeHex} />
-          </TouchableOpacity>
-        )}
-      </View>
-
+   <SafeAreaView style={styles.container}>
+         <View style={styles.header}>
+           <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+             <MaterialIcons name="arrow-back" size={24} color={COLORS.primaryBlackHex} />
+           </TouchableOpacity>
+           <Text style={styles.headerTitle}>Staff QR Scanner</Text>
+           {(showAmountInput || redemptionResult) && (
+             <TouchableOpacity style={styles.resetButton} onPress={resetScanner}>
+               <MaterialIcons name="refresh" size={24} color={COLORS.primaryOrangeHex} />
+             </TouchableOpacity>
+           )}
+         </View>
+         
       {!showAmountInput && !redemptionResult && (
         <View style={styles.cameraContainer}>
           <CameraView
