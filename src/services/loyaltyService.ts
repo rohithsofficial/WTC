@@ -1,5 +1,4 @@
 // src/services/loyaltyService.ts
-import React, { useState, useEffect } from "react";
 import { 
   doc, 
   getDoc, 
@@ -14,31 +13,143 @@ import {
   writeBatch,
   runTransaction,
   setDoc,
-  limit
+  limit,
+  onSnapshot,
+  Unsubscribe
 } from 'firebase/firestore';
 import { db, auth } from '../firebase/config';
 import type { 
   LoyaltyUser, 
-  MembershipTier,
-  LoyaltyTransaction,
-  TierConfig,
-  RedemptionCalculation,
-  TierDiscountCalculation,
   LoyaltyConfig
 } from '../types/loyalty';
 import { LOYALTY_CONFIG } from '../types/loyalty';
 
-// Ensure we're using the global Math object
-const globalMath = Math;
+// Interfaces
+export interface UserLoyaltyProfile {
+  userId: string;
+  userName: string;
+  availablePoints: number;
+  totalOrders: number;
+  totalSpent: number;
+  isFirstTimeUser: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface LoyaltyTransaction {
+  userId: string;
+  type: 'earned' | 'redeemed' | 'bonus';
+  points: number;
+  description: string;
+  timestamp: Timestamp;
+  orderId?: string;
+}
+
+// NEW: Comprehensive Loyalty Transaction Interface
+export interface ComprehensiveLoyaltyTransaction {
+  id?: string;
+  userId: string;
+  userName: string;
+  orderId: string;
+  
+  // User Details
+  userDetails: {
+    phoneNumber?: string;
+    email?: string;
+    isFirstTimeUser: boolean;
+    totalOrdersBeforeThis: number;
+    totalSpentBeforeThis: number;
+  };
+  
+  // Order Details
+  orderDetails: {
+    originalAmount: number;
+    discountType: 'flat_percentage' | 'first_time' | 'points' | 'none';
+    discountAmount: number;
+    finalAmount: number;
+    items: any[];
+    orderType: string;
+    tableNumber?: string;
+    baristaNotes?: string;
+  };
+  
+  // Loyalty Points Details
+  loyaltyDetails: {
+    pointsBeforeTransaction: number;
+    pointsEarned: number;
+    pointsRedeemed: number;
+    pointsAfterTransaction: number;
+    earningRate: number;
+  };
+  
+  // Transaction Details
+  transactionDetails: {
+    timestamp: Timestamp;
+    paymentMode: string;
+    status: 'pending' | 'completed' | 'failed' | 'cancelled';
+    staffId?: string;
+    notes?: string;
+  };
+  
+  // Audit Trail
+  auditTrail: {
+    createdAt: Timestamp;
+    updatedAt: Timestamp;
+    createdBy: string;
+    updatedBy?: string;
+  };
+}
+
+export interface RedemptionCalculation {
+  pointsToRedeem: number;
+  discountAmount: number;
+  remainingAmount: number;
+  isValid: boolean;
+}
+
+export interface DiscountCalculation {
+  discountAmount: number;
+  discountType: 'flat_percentage' | 'first_time' | 'none';
+  isEligible: boolean;
+}
+
+export interface OrderBreakdown {
+  originalAmount: number;
+  discountApplied: number;
+  pointsUsed: number;
+  finalAmount: number;
+  pointsEarned: number;
+  discountType: 'flat_percentage' | 'first_time' | 'points' | 'none';
+}
+
+export interface DiscountRecommendation {
+  type: 'points' | 'flat_percentage' | 'first_time' | 'none';
+  description: string;
+  savings: number;
+}
+
+export interface ValidationResult {
+  isValid: boolean;
+  errorMessage?: string;
+}
+
+export interface LoyaltyResult {
+  pointsEarned: number;
+  pointsUsed: number;
+  newBalance: number;
+}
 
 interface RedemptionResult {
   userName: string;
-  membershipTier: string;
   orderAmount: number;
   discountApplied: number;
   pointsUsed: number;
   remainingPoints: number;
+  finalAmount: number;
+  pointsEarned: number;
+  discountType: 'flat_percentage' | 'points' | 'first_time';
   error?: string;
+  isFirstTimeUser?: boolean;
 }
 
 interface RedemptionTransaction {
@@ -47,7 +158,9 @@ interface RedemptionTransaction {
   orderAmount: number;
   discountApplied: number;
   pointsUsed: number;
-  membershipTier: MembershipTier;
+  finalAmount: number;
+  pointsEarned: number;
+  discountType: 'flat_percentage' | 'points' | 'first_time';
   timestamp: Timestamp;
   status: 'pending' | 'completed' | 'failed' | 'cancelled';
   orderId?: string;
@@ -58,21 +171,165 @@ interface RedemptionTransaction {
 interface PointsTransaction {
   userId: string;
   points: number;
-  type: 'earned' | 'redeemed' | 'adjusted' | 'bonus' | 'tier_discount';
+  type: 'earned' | 'redeemed' | 'adjusted' | 'bonus';
   description: string;
   timestamp: Timestamp;
   createdBy?: string;
-  multiplier?: number;
 }
 
-class LoyaltyServiceClass {
-  // Get tier configuration from LOYALTY_CONFIG instead of hardcoded values
-  getTierConfig(tier: MembershipTier): TierConfig | undefined {
-    return LOYALTY_CONFIG.tiers.find(t => t.name === tier);
+interface UserStats {
+  totalOrders: number;
+  totalSpent: number;
+  totalSaved: number;
+  totalPointsEarned: number;
+  totalPointsRedeemed: number;
+  currentPoints: number;
+}
+
+interface OrderData {
+  id: string;
+  orderId: string;
+  userId: string;
+  items: any[];
+  totalAmount: number;
+  originalAmount: number;
+  orderStatus: string;
+  orderType: string;
+  tableNumber: string | null;
+  paymentMode: string;
+  paymentStatus: string;
+  description: string;
+  createdAt: Timestamp;
+  baristaNotes: string | null;
+  isRewardEarned: boolean;
+  rating: null;
+  mood: null;
+  discountType: string;
+  pointsUsed: number;
+  discountValue: number;
+  finalAmountPaid: number;
+  loyaltyDetails: {
+    pointsBeforeOrder: number;
+    pointsEarned: number;
+    pointsRedeemed: number;
+    pointsAfterOrder: number;
+    discountApplied: {
+      type: string;
+      amount: number;
+      description: string;
+    };
+    amountDetails: {
+      originalAmount: number;
+      discountAmount: number;
+      finalAmount: number;
+    };
+  };
+}
+
+interface UserTransaction {
+  id: string;
+  userId: string;
+  originalAmount: number;
+  discountType: string;
+  pointsUsed: number;
+  discountValue: number;
+  finalAmountPaid: number;
+  pointsEarned: number;
+  timestamp: Timestamp;
+  description: string;
+  items?: any[];
+  orderType?: string;
+  tableNumber?: string;
+  baristaNotes?: string;
+  loyaltyDetails?: any;
+}
+
+export class LoyaltyServiceClass {
+  private readonly POINTS_EARNING_RATE = 0.1; // 0.1 points per ₹1
+  private readonly FLAT_DISCOUNT_PERCENTAGE = 10; // 10% flat discount
+  private readonly FIRST_TIME_DISCOUNT = 100; // ₹100 off for first-time users
+  private readonly MIN_ORDER_AMOUNT = 100; // Minimum order amount for discounts
+
+  // Add realtime listener for loyalty points
+  subscribeToLoyaltyPoints(
+    userId: string,
+    callback: (points: number) => void
+  ): Unsubscribe {
+    if (!userId) {
+      console.warn('subscribeToLoyaltyPoints: userId is required');
+      return () => {};
+    }
+
+    const userRef = doc(db, 'users', userId);
+    
+    return onSnapshot(userRef, 
+      (doc) => {
+        if (doc.exists()) {
+          const userData = doc.data();
+          const points = userData.loyaltyPoints || 0;
+          callback(points);
+        } else {
+          callback(0);
+        }
+      }, 
+      (error) => {
+        console.error('Error in loyalty points subscription:', error);
+        callback(0);
+      },
+      () => {
+        console.log('Loyalty points listener completed');
+      }
+    );
   }
 
+  // Add realtime listener for user profile
+  subscribeToUserProfile(
+    userId: string,
+    callback: (profile: UserLoyaltyProfile | null) => void
+  ): Unsubscribe {
+    if (!userId) {
+      console.warn('subscribeToUserProfile: userId is required');
+      return () => {};
+    }
+
+    const userRef = doc(db, 'users', userId);
+    
+    return onSnapshot(userRef, 
+      (doc) => {
+        if (doc.exists()) {
+          const userData = doc.data();
+          const profile: UserLoyaltyProfile = {
+            userName: userData.displayName || 'Guest',
+            userId: userData.userId || userId,
+            availablePoints: userData.loyaltyPoints || 0,
+            totalOrders: userData.totalOrders || 0,
+            totalSpent: userData.totalSpent || 0,
+            isFirstTimeUser: userData.isFirstTimeUser ?? true,
+            createdAt: userData.createdAt instanceof Timestamp ? userData.createdAt.toDate() : new Date(),
+            updatedAt: userData.updatedAt instanceof Timestamp ? userData.updatedAt.toDate() : new Date()
+          };
+          callback(profile);
+        } else {
+          callback(null);
+        }
+      }, 
+      (error) => {
+        console.error('Error in user profile subscription:', error);
+        callback(null);
+      },
+      () => {
+        console.log('User profile listener completed');
+      }
+    );
+  }
+
+  // Get user profile from loyaltyUsers collection
   async getUserProfile(userId: string): Promise<LoyaltyUser | null> {
     try {
+      if (!userId?.trim()) {
+        throw new Error('User ID is required');
+      }
+
       const userRef = doc(db, 'loyaltyUsers', userId);
       const userDoc = await getDoc(userRef);
       
@@ -86,19 +343,71 @@ class LoyaltyServiceClass {
     }
   }
 
+  // Get complete user loyalty profile with current points
+  async getUserLoyaltyProfile(userId: string): Promise<UserLoyaltyProfile | null> {
+    try {
+      const userRef = doc(db, 'users', userId);
+      const userDoc = await getDoc(userRef);
+
+      if (userDoc.exists()) {
+        const userData = userDoc.data();
+        return {
+          userId: userData.userId || userId,
+          userName: userData.displayName || userData.userName || 'Guest',
+          availablePoints: userData.loyaltyPoints || 0,
+          totalOrders: userData.totalOrders || 0,
+          totalSpent: userData.totalSpent || 0,
+          isFirstTimeUser: userData.isFirstTimeUser ?? true,
+          createdAt: userData.createdAt instanceof Timestamp ? userData.createdAt.toDate() : new Date(),
+          updatedAt: userData.updatedAt instanceof Timestamp ? userData.updatedAt.toDate() : new Date()
+        };
+      }
+
+      // If user doesn't exist, create a new profile
+      const newProfile: UserLoyaltyProfile = {
+        userId: userId,
+        userName: 'Guest',
+        availablePoints: 0,
+        totalOrders: 0,
+        totalSpent: 0,
+        isFirstTimeUser: true,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      };
+
+      // Create the profile in the database
+      await setDoc(userRef, {
+        ...newProfile,
+        loyaltyPoints: 0,
+        totalSpent: 0,
+        createdAt: Timestamp.now(),
+        updatedAt: Timestamp.now()
+      });
+
+      return newProfile;
+    } catch (error) {
+      console.error('Error fetching user profile:', error);
+      throw new Error('Failed to fetch user profile');
+    }
+  }
+
+  // Create new user profile in loyaltyUsers collection
   async createUserProfile(
-    userData: Omit<LoyaltyUser, 'loyaltyPoints' | 'membershipTier' | 'createdAt' | 'updatedAt' | 'totalOrders'> & { totalOrders?: number },
+    userData: Omit<LoyaltyUser, 'loyaltyPoints' | 'createdAt' | 'updatedAt' | 'totalOrders'> & { totalOrders?: number },
     initialPoints: number = 0
   ): Promise<LoyaltyUser> {
     try {
+      if (!userData.uid?.trim()) {
+        throw new Error('User UID is required');
+      }
+
       const userRef = doc(db, 'loyaltyUsers', userData.uid);
       const userProfile: LoyaltyUser = {
         ...userData,
-        loyaltyPoints: initialPoints,
-        membershipTier: this.determineMembershipTier(initialPoints),
+        loyaltyPoints: Math.max(0, initialPoints),
         createdAt: Timestamp.now(),
         updatedAt: Timestamp.now(),
-        totalOrders: userData.totalOrders || 0
+        totalOrders: Math.max(0, userData.totalOrders || 0)
       };
       
       await setDoc(userRef, userProfile);
@@ -109,784 +418,871 @@ class LoyaltyServiceClass {
     }
   }
 
-  async redeemPoints(userId: string, orderAmount: number): Promise<RedemptionResult> {
+  // Update user profile in loyaltyUsers collection
+  async updateUserLoyaltyProfile(userId: string, updates: Partial<UserLoyaltyProfile>): Promise<void> {
     try {
-      // Validate inputs
-      if (!userId || orderAmount <= 0) {
-        throw new Error('Invalid user ID or order amount');
-      }
+      const userRef = doc(db, 'users', userId);
+      await updateDoc(userRef, {
+        ...updates,
+        updatedAt: Timestamp.now()
+      });
+    } catch (error) {
+      console.error('Error updating user profile:', error);
+      throw new Error('Failed to update user profile');
+    }
+  }
 
-      // Get user profile from users collection
-      const userDocRef = doc(db, 'users', userId);
-      const userDoc = await getDoc(userDocRef);
-      
+  // Calculate points redemption
+  calculateRedemption(availablePoints: number, orderAmount: number, pointsToRedeem: number): RedemptionCalculation {
+    const maxRedeemablePoints = Math.min(availablePoints, orderAmount);
+    const actualPointsToRedeem = Math.min(pointsToRedeem, maxRedeemablePoints);
+    
+    return {
+      pointsToRedeem: actualPointsToRedeem,
+      discountAmount: actualPointsToRedeem,
+      remainingAmount: orderAmount - actualPointsToRedeem,
+      isValid: actualPointsToRedeem > 0 && actualPointsToRedeem <= availablePoints
+    };
+  }
+
+  // Calculate flat percentage discount
+  calculateFlatDiscount(orderAmount: number): DiscountCalculation {
+    const isEligible = orderAmount >= this.MIN_ORDER_AMOUNT;
+    const discountAmount = isEligible ? (orderAmount * this.FLAT_DISCOUNT_PERCENTAGE) / 100 : 0;
+    
+    return {
+      discountAmount,
+      discountType: 'flat_percentage',
+      isEligible
+    };
+  }
+
+  // Calculate first time user discount
+  calculateFirstTimeDiscount(orderAmount: number): DiscountCalculation {
+    const discountAmount = Math.min(this.FIRST_TIME_DISCOUNT, orderAmount);
+    
+    return {
+      discountAmount,
+      discountType: 'first_time',
+      isEligible: true
+    };
+  }
+
+  // FIXED: Calculate order breakdown with proper first-time user handling
+ calculateOrderBreakdown(
+  orderAmount: number,
+  discountType: 'flat_percentage' | 'first_time' | 'points' | 'none',
+  pointsToRedeem: number = 0,
+  isFirstTimeUser: boolean = false
+): OrderBreakdown {
+  let discountApplied = 0;
+  let pointsUsed = 0;
+  let finalAmount = orderAmount;
+  let actualDiscountType = discountType;
+
+  // Apply discounts based on type
+  if (discountType === 'first_time' && isFirstTimeUser) {
+    const firstTimeDiscount = this.calculateFirstTimeDiscount(orderAmount);
+    discountApplied = firstTimeDiscount.discountAmount;
+    finalAmount = orderAmount - discountApplied;
+    actualDiscountType = 'first_time';
+  } else if (discountType === 'points' && pointsToRedeem > 0) {
+    pointsUsed = pointsToRedeem;
+    discountApplied = pointsToRedeem;
+    finalAmount = orderAmount - pointsToRedeem;
+    actualDiscountType = 'points';
+  } else if (discountType === 'flat_percentage' && orderAmount >= this.MIN_ORDER_AMOUNT) {
+    const flatDiscount = this.calculateFlatDiscount(orderAmount);
+    discountApplied = flatDiscount.discountAmount;
+    finalAmount = orderAmount - discountApplied;
+    actualDiscountType = 'flat_percentage';
+  } else {
+    // No discount applied
+    actualDiscountType = 'none';
+  }
+
+  // FIXED: Calculate points earned based on finalAmount for ALL discount types
+  // Points are always earned on the amount customer actually pays
+  const pointsEarned = Math.round(finalAmount * this.POINTS_EARNING_RATE);
+
+  return {
+    originalAmount: orderAmount,
+    discountApplied,
+    pointsUsed,
+    finalAmount,
+    pointsEarned,
+    discountType: actualDiscountType
+  };
+}
+
+  // FIXED: Get best discount recommendation with proper first-time user priority
+  getBestDiscountRecommendation(
+    orderAmount: number,
+    availablePoints: number,
+    isFirstTimeUser: boolean
+  ): DiscountRecommendation {
+    // First-time users get priority for their discount
+    if (isFirstTimeUser) {
+      const firstTimeDiscount = Math.min(this.FIRST_TIME_DISCOUNT, orderAmount);
+      return {
+        type: 'first_time',
+        description: `Get ₹${firstTimeDiscount} off as a first-time user!`,
+        savings: firstTimeDiscount
+      };
+    }
+
+    const flatDiscount = this.calculateFlatDiscount(orderAmount);
+    const pointsDiscount = Math.min(availablePoints, orderAmount);
+
+    if (pointsDiscount > flatDiscount.discountAmount && pointsDiscount > 0) {
+      return {
+        type: 'points',
+        description: `Use ${pointsDiscount} points to save ₹${pointsDiscount}`,
+        savings: pointsDiscount
+      };
+    }
+
+    if (flatDiscount.isEligible) {
+      return {
+        type: 'flat_percentage',
+        description: `Get 10% off (₹${flatDiscount.discountAmount})`,
+        savings: flatDiscount.discountAmount
+      };
+    }
+
+    return {
+      type: 'none',
+      description: 'No discounts available',
+      savings: 0
+    };
+  }
+
+  // FIXED: Validate discount selection with proper first-time user validation
+  validateDiscountSelection(
+    discountType: 'flat_percentage' | 'first_time' | 'points' | 'none',
+    pointsToRedeem: number,
+    availablePoints: number,
+    orderAmount: number,
+    isFirstTimeUser: boolean
+  ): ValidationResult {
+    if (discountType === 'first_time') {
+      if (!isFirstTimeUser) {
+        return {
+          isValid: false,
+          errorMessage: 'First-time discount is only available for new users'
+        };
+      }
+      return { isValid: true };
+    }
+
+    if (discountType === 'points') {
+      if (pointsToRedeem <= 0) {
+        return {
+          isValid: false,
+          errorMessage: 'Please select points to redeem'
+        };
+      }
+      if (pointsToRedeem > availablePoints) {
+        return {
+          isValid: false,
+          errorMessage: 'Not enough points available'
+        };
+      }
+      if (pointsToRedeem > orderAmount) {
+        return {
+          isValid: false,
+          errorMessage: 'Cannot redeem more points than order amount'
+        };
+      }
+    }
+
+    if (discountType === 'flat_percentage' && orderAmount < this.MIN_ORDER_AMOUNT) {
+      return {
+        isValid: false,
+        errorMessage: `Order must be at least ₹${this.MIN_ORDER_AMOUNT} for flat discount`
+      };
+    }
+
+    return { isValid: true };
+  }
+
+  // FIXED: Process order with proper first-time user handling
+ async processOrder(
+  userId: string,
+  orderAmount: number,
+  finalAmount: number,
+  discountType: 'flat_percentage' | 'first_time' | 'points' | 'none',
+  pointsUsed: number = 0,
+  currentIsFirstTimeUser: boolean = false
+): Promise<{ pointsEarned: number; newBalance: number }> {
+  try {
+    return await runTransaction(db, async (transaction) => {
+      const userRef = doc(db, 'users', userId);
+      const userDoc = await transaction.get(userRef);
+
       if (!userDoc.exists()) {
         throw new Error('User profile not found');
       }
 
       const userData = userDoc.data();
       const currentPoints = userData.loyaltyPoints || 0;
-      const membershipTier = userData.membershipTier || 'Bronze';
-      const userName = userData.displayName || 'Customer';
+      const totalOrders = userData.totalOrders || 0;
+      const totalSpent = userData.totalSpent || 0;
 
-      const tierDiscount = this.calculateTierDiscount(
-        orderAmount,
-        membershipTier,
-        currentPoints
+      // FIXED: Calculate points earned based on final amount after discount
+      // This ensures points are earned on what customer actually pays
+      const pointsEarned = Math.round(finalAmount * this.POINTS_EARNING_RATE);
+
+      // FIXED: Calculate new balance correctly
+      // For flat_percentage and no discount: no points redeemed, only earned
+      // For points discount: points redeemed and earned
+      // For first_time: no points redeemed, only earned
+      const newBalance = currentPoints + pointsEarned - pointsUsed;
+
+      const updateData = {
+        loyaltyPoints: newBalance,
+        totalOrders: totalOrders + 1,
+        totalSpent: totalSpent + finalAmount,
+        isFirstTimeUser: false,
+        updatedAt: Timestamp.now()
+      };
+
+      transaction.update(userRef, updateData);
+
+      return { pointsEarned, newBalance };
+    });
+  } catch (error) {
+    console.error('Error processing order:', error);
+    throw new Error('Failed to process order');
+  }
+}
+
+  // NEW: Create comprehensive loyalty transaction record
+  async loyaltyTransaction(
+    transactionData: Omit<ComprehensiveLoyaltyTransaction, 'id' | 'auditTrail'> & {
+      createdBy: string;
+    }
+  ): Promise<string> {
+    try {
+      // Create a clean copy of the data with null values for undefined fields
+      const cleanData = {
+        ...transactionData,
+        orderDetails: {
+          ...transactionData.orderDetails,
+          tableNumber: transactionData.orderDetails.tableNumber || '',
+          baristaNotes: transactionData.orderDetails.baristaNotes || ''
+        },
+        userDetails: {
+          ...transactionData.userDetails,
+          phoneNumber: transactionData.userDetails.phoneNumber || '',
+          email: transactionData.userDetails.email || ''
+        },
+        transactionDetails: {
+          ...transactionData.transactionDetails,
+          staffId: transactionData.transactionDetails.staffId || '',
+          notes: transactionData.transactionDetails.notes || ''
+        }
+      };
+
+      const comprehensiveTransaction: Omit<ComprehensiveLoyaltyTransaction, 'id'> = {
+        ...cleanData,
+        auditTrail: {
+          createdAt: Timestamp.now(),
+          updatedAt: Timestamp.now(),
+          createdBy: transactionData.createdBy,
+        }
+      };
+
+      const transactionRef = collection(db, 'loyaltyTransactions');
+      const docRef = await addDoc(transactionRef, comprehensiveTransaction);
+      
+      return docRef.id;
+    } catch (error) {
+      console.error('Error creating comprehensive loyalty transaction:', error);
+      throw new Error('Failed to create comprehensive loyalty transaction');
+    }
+  }
+
+  // NEW: Get comprehensive loyalty transactions for a user
+  async getComprehensiveLoyaltyTransactions(
+    userId: string,
+    limitCount: number = 50
+  ): Promise<ComprehensiveLoyaltyTransaction[]> {
+    try {
+      const transactionsRef = collection(db, 'loyaltyTransactions');
+      const q = query(
+        transactionsRef,
+        where('userId', '==', userId),
+        orderBy('transactionDetails.timestamp', 'desc'),
+        limit(limitCount)
       );
+      
+      const querySnapshot = await getDocs(q);
+      return querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as ComprehensiveLoyaltyTransaction[];
+    } catch (error) {
+      console.error('Error fetching comprehensive loyalty transactions:', error);
+      throw new Error('Failed to fetch comprehensive loyalty transactions');
+    }
+  }
 
-      if (!tierDiscount.isEligible) {
+  // NEW: Subscribe to comprehensive loyalty transactions
+  subscribeToComprehensiveLoyaltyTransactions(
+    userId: string,
+    callback: (transactions: ComprehensiveLoyaltyTransaction[]) => void,
+    limitCount: number = 50
+  ): Unsubscribe {
+    if (!userId) {
+      console.warn('subscribeToComprehensiveLoyaltyTransactions: userId is required');
+      return () => {};
+    }
+
+    const transactionsRef = collection(db, 'loyaltyTransactions');
+    const q = query(
+      transactionsRef,
+      where('userId', '==', userId),
+      orderBy('transactionDetails.timestamp', 'desc'),
+      limit(limitCount)
+    );
+    
+    return onSnapshot(q, 
+      (snapshot) => {
+        const transactions = snapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        })) as ComprehensiveLoyaltyTransaction[];
+        callback(transactions);
+      }, 
+      (error) => {
+        console.error('Error in comprehensive loyalty transactions subscription:', error);
+        callback([]);
+      },
+      () => {
+        console.log('Comprehensive loyalty transactions listener completed');
+      }
+    );
+  }
+
+  // UPDATED: Create transaction record with comprehensive tracking
+  async createTransactionRecord(
+  orderId: string,
+  userId: string,
+  transaction: {
+    originalAmount: number;
+    discountType: string;
+    pointsUsed: number;
+    discountValue: number;
+    finalAmountPaid: number;
+    pointsEarned: number;
+    timestamp: Date;
+    description: string;
+    items?: any[];
+    orderType?: string;
+    tableNumber?: string;
+    baristaNotes?: string;
+  }
+): Promise<OrderData> {
+  try {
+    // Get current user data BEFORE creating transaction
+    const userRef = doc(db, 'users', userId);
+    const userDoc = await getDoc(userRef);
+    const userData = userDoc.data();
+    
+    if (!userData) {
+      throw new Error('User not found');
+    }
+
+    // FIXED: Get points before transaction (current balance before this order)
+    const pointsBeforeOrder = userData.loyaltyPoints || 0;
+    
+    // FIXED: Calculate points after transaction correctly
+    // pointsAfterOrder = pointsBeforeOrder + pointsEarned - pointsUsed
+    const pointsAfterOrder = pointsBeforeOrder + transaction.pointsEarned - transaction.pointsUsed;
+
+    // Create order record in orders collection
+    const orderData: OrderData = {
+      id: orderId,
+      orderId: orderId,
+      userId: userId,
+      items: transaction.items || [],
+      totalAmount: transaction.originalAmount,
+      originalAmount: transaction.originalAmount,
+      paymentStatus: "Paid",
+      orderStatus: 'Order Placed',
+      description: transaction.description,
+      orderType: transaction.orderType || 'regular',
+      tableNumber: transaction.tableNumber || null,
+      paymentMode: 'loyalty',
+      createdAt: Timestamp.fromDate(transaction.timestamp),
+      baristaNotes: transaction.baristaNotes || null,
+      isRewardEarned: transaction.pointsEarned > 0,
+      rating: null,
+      mood: null,
+      discountType: transaction.discountType,
+      pointsUsed: transaction.pointsUsed,
+      discountValue: transaction.discountValue,
+      finalAmountPaid: transaction.finalAmountPaid,
+      loyaltyDetails: {
+        pointsBeforeOrder: pointsBeforeOrder, // FIXED: Correct points before
+        pointsEarned: transaction.pointsEarned, // Points earned on final amount
+        pointsRedeemed: transaction.pointsUsed, // Points used for discount
+        pointsAfterOrder: pointsAfterOrder, // FIXED: Correct calculation
+        discountApplied: {
+          type: transaction.discountType,
+          amount: transaction.discountValue,
+          description: transaction.description
+        },
+        amountDetails: {
+          originalAmount: transaction.originalAmount,
+          discountAmount: transaction.discountValue,
+          finalAmount: transaction.finalAmountPaid
+        }
+      }
+    };
+
+    // Create the order document
+    const orderRef = doc(db, 'orders', orderId);
+    await setDoc(orderRef, orderData);
+
+    // Create comprehensive loyalty transaction with FIXED points calculation
+    const loyaltyTransactionData: Omit<ComprehensiveLoyaltyTransaction, 'id' | 'auditTrail'> & { createdBy: string } = {
+      userId: userId,
+      userName: userData.displayName || userData.userName || 'Guest',
+      orderId: orderId,
+      userDetails: {
+        phoneNumber: userData.phoneNumber || '',
+        email: userData.email || '',
+        isFirstTimeUser: userData.isFirstTimeUser ?? true,
+        totalOrdersBeforeThis: userData.totalOrders || 0,
+        totalSpentBeforeThis: userData.totalSpent || 0 
+      },
+      orderDetails: {
+        originalAmount: transaction.originalAmount,
+        discountType: transaction.discountType as 'flat_percentage' | 'first_time' | 'points' | 'none',
+        discountAmount: transaction.discountValue,
+        finalAmount: transaction.finalAmountPaid,
+        items: transaction.items || [],
+        orderType: transaction.orderType || 'regular',
+        tableNumber: transaction.tableNumber || undefined,
+        baristaNotes: transaction.baristaNotes || undefined
+      },
+      loyaltyDetails: {
+        pointsBeforeTransaction: pointsBeforeOrder, // FIXED: Correct before points
+        pointsEarned: transaction.pointsEarned, // Earned on final amount
+        pointsRedeemed: transaction.pointsUsed, // Used for discount
+        pointsAfterTransaction: pointsAfterOrder, // FIXED: Correct after points
+        earningRate: this.POINTS_EARNING_RATE
+      },
+      transactionDetails: {
+        timestamp: Timestamp.fromDate(transaction.timestamp),
+        paymentMode: 'loyalty',
+        status: 'completed',
+        staffId: auth.currentUser?.uid || 'system',
+        notes: transaction.description
+      },
+      createdBy: auth.currentUser?.uid || 'system'
+    };
+
+    await this.loyaltyTransaction(loyaltyTransactionData);
+
+    return orderData;
+  } catch (error) {
+    console.error('Error creating transaction record:', error);
+    throw new Error('Failed to create transaction record');
+  }
+}
+
+  // FIXED: Process redemption with proper first-time user validation
+  async processRedemption(
+  userId: string,
+  orderAmount: number,
+  discountType: 'flat_percentage' | 'points' | 'first_time',
+  pointsToRedeem: number = 0,
+  orderId?: string,
+  items?: any[],
+  orderType?: string,
+  tableNumber?: string,
+  baristaNotes?: string
+): Promise<RedemptionResult> {
+  try {
+    return await runTransaction(db, async (transaction) => {
+      const userRef = doc(db, 'users', userId);
+      const userDoc = await transaction.get(userRef);
+
+      if (!userDoc.exists()) {
+        throw new Error('User profile not found');
+      }
+
+      const userData = userDoc.data();
+      const currentPoints = userData.loyaltyPoints || 0;
+      const userName = userData.displayName || userData.userName || 'Guest';
+      const isFirstTimeUser = userData.isFirstTimeUser ?? true;
+      const totalOrders = userData.totalOrders || 0;
+      const totalSpent = userData.totalSpent || 0;
+
+      // Validate first-time user discount
+      if (discountType === 'first_time' && !isFirstTimeUser) {
         return {
-          userName: userName,
-          membershipTier: membershipTier,
+          userName,
           orderAmount,
           discountApplied: 0,
           pointsUsed: 0,
           remainingPoints: currentPoints,
-          error: tierDiscount.reasonNotEligible
+          finalAmount: orderAmount,
+          pointsEarned: 0,
+          discountType: 'first_time',
+          error: 'First-time discount is only available for new users',
+          isFirstTimeUser: false
         };
       }
 
-      // Use transaction for atomicity
-      return await runTransaction(db, async (transaction) => {
-        const userDocRef = doc(db, 'users', userId);
-        const userDoc = await transaction.get(userDocRef);
-        
-        if (!userDoc.exists()) {
-          throw new Error('User document not found');
-        }
-
-        const currentUserData = userDoc.data();
-        const currentPoints = currentUserData.loyaltyPoints || 0;
-        
-        // Recalculate with current points to avoid race conditions
-        const currentTierDiscount = this.calculateTierDiscount(
+      // Validate points redemption
+      if (discountType === 'points' && pointsToRedeem > currentPoints) {
+        return {
+          userName,
           orderAmount,
-          currentUserData.membershipTier || 'Bronze',
-          currentPoints
-        );
+          discountApplied: 0,
+          pointsUsed: 0,
+          remainingPoints: currentPoints,
+          finalAmount: orderAmount,
+          pointsEarned: 0,
+          discountType: 'points',
+          error: 'Insufficient points for redemption'
+        };
+      }
 
-        if (!currentTierDiscount.isEligible) {
-          throw new Error(currentTierDiscount.reasonNotEligible || 'Not eligible for discount');
+      // Calculate discount and final amount
+      let discountApplied = 0;
+      let pointsUsed = 0;
+      let finalAmount = orderAmount;
+
+      if (discountType === 'first_time' && isFirstTimeUser) {
+        discountApplied = Math.min(this.FIRST_TIME_DISCOUNT, orderAmount);
+        finalAmount = orderAmount - discountApplied;
+        pointsUsed = 0; // No points used for first-time discount
+      } else if (discountType === 'points') {
+        pointsUsed = Math.min(pointsToRedeem, currentPoints, orderAmount);
+        discountApplied = pointsUsed;
+        finalAmount = orderAmount - pointsUsed;
+      } else if (discountType === 'flat_percentage' && orderAmount >= this.MIN_ORDER_AMOUNT) {
+        discountApplied = (orderAmount * this.FLAT_DISCOUNT_PERCENTAGE) / 100;
+        finalAmount = orderAmount - discountApplied;
+        pointsUsed = 0; // No points used for flat percentage discount
+      }
+
+      // FIXED: Calculate points earned based on final amount (what customer pays)
+      const pointsEarned = Math.round(finalAmount * this.POINTS_EARNING_RATE);
+      
+      // FIXED: Calculate new balance correctly
+      const newBalance = currentPoints + pointsEarned - pointsUsed;
+
+      // Update user data
+      const updateData = {
+        loyaltyPoints: newBalance,
+        totalOrders: totalOrders + 1,
+        totalSpent: totalSpent + finalAmount,
+        isFirstTimeUser: false,
+        updatedAt: Timestamp.now()
+      };
+
+      transaction.update(userRef, updateData);
+
+      // Create comprehensive transaction record if orderId is provided
+      if (orderId) {
+        const loyaltyTransactionData: Omit<ComprehensiveLoyaltyTransaction, 'id' | 'auditTrail'> & { createdBy: string } = {
+          userId: userId,
+          userName: userName,
+          orderId: orderId,
+          userDetails: {
+            phoneNumber: userData.phoneNumber || '',
+            email: userData.email || '',
+            isFirstTimeUser: isFirstTimeUser,
+            totalOrdersBeforeThis: totalOrders,
+            totalSpentBeforeThis: totalSpent
+          },
+          orderDetails: {
+            originalAmount: orderAmount,
+            discountType: discountType,
+            discountAmount: discountApplied,
+            finalAmount: finalAmount,
+            items: items || [],
+            orderType: orderType || 'regular',
+            tableNumber: tableNumber || undefined,
+            baristaNotes: baristaNotes || undefined
+          },
+          loyaltyDetails: {
+            pointsBeforeTransaction: currentPoints, // FIXED: Current points before transaction
+            pointsEarned: pointsEarned, // Earned on final amount
+            pointsRedeemed: pointsUsed, // Used for discount (0 for flat_percentage)
+            pointsAfterTransaction: newBalance, // FIXED: Correct calculation
+            earningRate: this.POINTS_EARNING_RATE
+          },
+          transactionDetails: {
+            timestamp: Timestamp.now(),
+            paymentMode: 'loyalty',
+            status: 'completed',
+            staffId: auth.currentUser?.uid || 'system',
+            notes: `Order processed with ${discountType} discount`
+          },
+          createdBy: auth.currentUser?.uid || 'system'
+        };
+
+        // Store comprehensive transaction after the main transaction completes
+        setTimeout(async () => {
+          try {
+            await this.loyaltyTransaction(loyaltyTransactionData);
+          } catch (error) {
+            console.error('Error creating comprehensive transaction:', error);
+          }
+        }, 100);
+      }
+
+      return {
+        userName,
+        orderAmount,
+        discountApplied,
+        pointsUsed,
+        remainingPoints: newBalance,
+        finalAmount,
+        pointsEarned,
+        discountType,
+        isFirstTimeUser: false
+      };
+    });
+  } catch (error) {
+    console.error('Error processing redemption:', error);
+    throw new Error('Failed to process redemption');
+  }
+}
+
+  // Update user points (for admin adjustments)
+  async updateUserPoints(userId: string, pointsAdjustment: number, reason: string): Promise<void> {
+    try {
+      return await runTransaction(db, async (transaction) => {
+        const userRef = doc(db, 'users', userId);
+        const userDoc = await transaction.get(userRef);
+
+        if (!userDoc.exists()) {
+          throw new Error('User not found');
         }
 
-        const pointsRequired = currentTierDiscount.pointsRequired || 0;
-        const newPointsBalance = currentPoints - pointsRequired;
-        
-        // Update user's loyalty points in users collection
-        transaction.update(userDocRef, {
-          loyaltyPoints: newPointsBalance,
+        const userData = userDoc.data();
+        const currentPoints = userData.loyaltyPoints || 0;
+        const newBalance = Math.max(0, currentPoints + pointsAdjustment);
+
+        transaction.update(userRef, {
+          loyaltyPoints: newBalance,
           updatedAt: Timestamp.now()
         });
 
-        // Create redemption transaction record
-        const transactionRef = doc(collection(db, 'redemptionTransactions'));
-        const transactionData: Omit<RedemptionTransaction, 'id'> = {
-          userId: userId,
-          orderAmount,
-          discountApplied: currentTierDiscount.discountAmount,
-          pointsUsed: pointsRequired,
-          membershipTier: currentUserData.membershipTier || 'Bronze',
-          timestamp: Timestamp.now(),
-          status: 'completed'
-        };
-        
-        transaction.set(transactionRef, transactionData);
-
-        // Create loyalty transaction for history
-        const loyaltyTransactionRef = doc(collection(db, 'loyaltyTransactions'));
-        const loyaltyTransactionData: Omit<LoyaltyTransaction, 'id'> = {
-          userId: userId,
-          points: -pointsRequired,
-          type: 'tier_discount',
-          description: `Tier discount applied - ₹${currentTierDiscount.discountAmount}`,
-          timestamp: Timestamp.now()
-        };
-        
-        transaction.set(loyaltyTransactionRef, loyaltyTransactionData);
-
-        return {
-          userName: currentUserData.displayName || 'Customer',
-          membershipTier: currentUserData.membershipTier || 'Bronze',
-          orderAmount,
-          discountApplied: currentTierDiscount.discountAmount,
-          pointsUsed: pointsRequired,
-          remainingPoints: newPointsBalance
-        };
-      });
-    } catch (error: any) {
-      console.error('Error redeeming points:', error);
-      throw new Error(error.message || 'Failed to redeem points');
-    }
-  }
-
-  async awardPoints(userId: string, orderAmount: number, orderId?: string): Promise<void> {
-    try {
-      const userProfile = await this.getUserProfile(userId);
-      if (!userProfile) {
-        throw new Error('User profile not found');
-      }
-
-      const tierConfig = this.getTierConfig(userProfile.membershipTier);
-      const multiplier = tierConfig?.pointMultiplier || 1;
-      const pointsEarned = this.calculatePointsEarned(orderAmount, multiplier);
-      
-      if (pointsEarned <= 0) {
-        console.log(`No points earned for order amount ₹${orderAmount} (below minimum)`);
-        return;
-      }
-
-      const newPointsBalance = userProfile.loyaltyPoints + pointsEarned;
-      const newTier = this.determineMembershipTier(newPointsBalance);
-
-      await updateDoc(doc(db, 'loyaltyUsers', userProfile.uid), {
-        loyaltyPoints: newPointsBalance,
-        membershipTier: newTier,
-        updatedAt: Timestamp.now()
-      });
-
-      // Create points transaction record
-      const transaction: Omit<LoyaltyTransaction, 'id'> = {
-        userId,
-        points: pointsEarned,
-        type: 'earned',
-        description: orderId ? `Points earned from order #${orderId}` : `Points earned from purchase`,
-        timestamp: Timestamp.now(),
-        orderId,
-        multiplier
-      };
-
-      await addDoc(collection(db, 'loyaltyTransactions'), transaction);
-
-      // Check for tier upgrade
-      if (newTier !== userProfile.membershipTier) {
-        const bonusTransaction: Omit<LoyaltyTransaction, 'id'> = {
+        // Create points transaction record
+        const pointsTransactionRef = collection(db, 'pointsTransactions');
+        const pointsTransaction: PointsTransaction = {
           userId,
-          points: 0,
-          type: 'bonus',
-          description: `Congratulations! You've been upgraded to ${newTier} tier!`,
-          timestamp: Timestamp.now()
+          points: pointsAdjustment,
+          type: pointsAdjustment > 0 ? 'bonus' : 'adjusted',
+          description: reason,
+          timestamp: Timestamp.now(),
+          createdBy: auth.currentUser?.uid || 'admin'
         };
-        
-        await addDoc(collection(db, 'loyaltyTransactions'), bonusTransaction);
-      }
+
+        transaction.set(doc(pointsTransactionRef), pointsTransaction);
+      });
     } catch (error) {
-      console.error('Error awarding points:', error);
-      throw new Error('Failed to award points');
+      console.error('Error updating user points:', error);
+      throw new Error('Failed to update user points');
     }
   }
 
-  private determineMembershipTier(points: number): MembershipTier {
-    // Use LOYALTY_CONFIG instead of hardcoded values
-    const sortedTiers = [...LOYALTY_CONFIG.tiers].sort((a, b) => b.minPoints - a.minPoints);
-    
-    for (const tier of sortedTiers) {
-      if (points >= tier.minPoints) {
-        return tier.name;
-      }
-    }
-    
-    return 'Bronze'; // Default fallback
-  }
-
-  async getRedemptionHistory(userId: string, limitCount = 10): Promise<RedemptionTransaction[]> {
+  // Get user statistics
+  async getUserStats(userId: string): Promise<UserStats> {
     try {
-      const q = query(
-        collection(db, 'redemptionTransactions'),
-        where('userId', '==', userId),
-        orderBy('timestamp', 'desc'),
-        limit(limitCount)
-      );
-
-      const querySnapshot = await getDocs(q);
-      return querySnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as RedemptionTransaction[];
-    } catch (error) {
-      console.error('Error fetching redemption history:', error);
-      throw new Error('Failed to fetch redemption history');
-    }
-  }
-
-  async getLoyaltyHistory(userId: string, limitCount = 20): Promise<LoyaltyTransaction[]> {
-    try {
-      const q = query(
-        collection(db, 'loyaltyTransactions'),
-        where('userId', '==', userId),
-        orderBy('timestamp', 'desc'),
-        limit(limitCount)
-      );
-
-      const querySnapshot = await getDocs(q);
-      return querySnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as LoyaltyTransaction[];
-    } catch (error) {
-      console.error('Error fetching loyalty history:', error);
-      throw new Error('Failed to fetch loyalty history');
-    }
-  }
-
-  getTierBenefits(tier: MembershipTier): string {
-    const tierConfig = this.getTierConfig(tier);
-    if (!tierConfig) return 'No benefits available';
-
-    return tierConfig.benefits.join('\n');
-  }
-
-  getNextTierProgress(currentTier: MembershipTier, currentPoints: number): { nextTier: MembershipTier | null; pointsNeeded: number } {
-    const tiers: MembershipTier[] = ['Bronze', 'Silver', 'Gold', 'Platinum'];
-    const currentIndex = tiers.indexOf(currentTier);
-    
-    if (currentIndex === -1 || currentIndex === tiers.length - 1) {
-      return { nextTier: null, pointsNeeded: 0 };
-    }
-
-    const nextTier = tiers[currentIndex + 1];
-    const nextTierConfig = this.getTierConfig(nextTier);
-    
-    if (!nextTierConfig) {
-      return { nextTier: null, pointsNeeded: 0 };
-    }
-
-    const pointsNeeded = Math.max(0, nextTierConfig.minPoints - currentPoints);
-    return { nextTier, pointsNeeded };
-  }
-
-  getNextRewardMilestone(currentPoints: number): { pointsNeeded: number; rewardValue: number } {
-    // Calculate the next milestone for rewards based on LOYALTY_CONFIG
-    const rewardInterval = globalMath.ceil(1 / LOYALTY_CONFIG.redemptionRate); // 100 points for ₹10
-    const rewardValue = globalMath.floor(rewardInterval * LOYALTY_CONFIG.redemptionRate);
-    
-    const nextMilestone = globalMath.ceil(currentPoints / rewardInterval) * rewardInterval;
-    const pointsNeeded = nextMilestone - currentPoints;
-    
-    return {
-      pointsNeeded: pointsNeeded > 0 ? pointsNeeded : rewardInterval,
-      rewardValue: rewardValue
-    };
-  }
-
-  generateQRToken(userId: string): string {
-    try {
-      const tokenData = {
-        userId,
-        timestamp: Date.now(),
-        expiresAt: Date.now() + (5 * 60 * 1000), // 5 minutes
-        type: 'loyalty_qr'
-      };
-      
-      return JSON.stringify(tokenData);
-    } catch (error) {
-      console.error('Error generating QR token:', error);
-      throw new Error('Failed to generate QR token');
-    }
-  }
-
-  validateQRToken(token: string): { isValid: boolean; userId?: string; error?: string } {
-    try {
-      // Basic validation
-      if (!token || typeof token !== 'string') {
-        return { isValid: false, error: 'Invalid token format' };
-      }
-
-      // Parse token
-      const tokenData = JSON.parse(token);
-      const now = Date.now();
-      
-      // Check token expiration
-      if (tokenData.expiresAt && tokenData.expiresAt < now) {
-        return { isValid: false, error: 'QR code expired' };
-      }
-
-      // Validate required fields
-      if (!tokenData.userId || !tokenData.timestamp || !tokenData.type) {
-        return { isValid: false, error: 'Invalid QR code data' };
-      }
-
-      // Validate token type
-      if (tokenData.type !== 'loyalty_qr') {
-        return { isValid: false, error: 'Invalid QR code type' };
-      }
-
-      // Validate timestamp (token should not be too old)
-      const tokenAge = now - tokenData.timestamp;
-      const maxAge = 5 * 60 * 1000; // 5 minutes
-      
-      if (tokenAge > maxAge) {
-        return { isValid: false, error: 'QR code expired' };
-      }
-
-      return { isValid: true, userId: tokenData.userId };
-    } catch (error) {
-      return { isValid: false, error: 'Invalid QR code format' };
-    }
-  }
-
-  // Calculate points earned from purchase amount
-  calculatePointsEarned(amount: number, multiplier: number = 1): number {
-    if (amount < LOYALTY_CONFIG.minOrderAmount) return 0;
-    return globalMath.floor(amount * LOYALTY_CONFIG.pointsPerRupee * multiplier);
-  }
-
-  // Calculate discount amount from points
-  calculateDiscountFromPoints(points: number): number {
-    return globalMath.floor(points * LOYALTY_CONFIG.redemptionRate);
-  }
-
-  // Calculate tier-based discount - FIXED to follow loyalty.ts rules
-  calculateTierDiscount(
-    orderAmount: number, 
-    membershipTier: MembershipTier, 
-    loyaltyPoints: number
-  ): TierDiscountCalculation {
-    // Minimum order value check
-    if (orderAmount < LOYALTY_CONFIG.minOrderAmount) {
-      return {
-        discountAmount: 0,
-        discountType: 'none',
-        maxDiscountLimit: 0,
-        isEligible: false,
-        reasonNotEligible: `Minimum order value of ₹${LOYALTY_CONFIG.minOrderAmount} required`
-      };
-    }
-
-    const tierConfig = this.getTierConfig(membershipTier);
-    if (!tierConfig) {
-      return {
-        discountAmount: 0,
-        discountType: 'none',
-        maxDiscountLimit: 0,
-        isEligible: false,
-        reasonNotEligible: 'Invalid membership tier'
-      };
-    }
-
-    let discount = 0;
-    let maxCap = tierConfig.maxDiscountPerBill;
-    let discountType: 'flat' | 'percentage' | 'combo' | 'none' = 'none';
-    let pointsRequired = 0;
-
-    // Set minimum points required based on tier (consistent with loyalty.ts rules)
-    switch (membershipTier) {
-      case 'Bronze':
-        pointsRequired = 0; // Bronze needs 100+ points as per benefits description
-        break;
-      case 'Silver':
-        pointsRequired = 500; // Silver needs minimum points for tier discount
-        break;
-      case 'Gold':
-        pointsRequired = 1000; // Gold needs minimum points for tier discount
-        break;
-      case 'Platinum':
-        pointsRequired = 2000; // Platinum needs minimum points for tier discount
-        break;
-    }
-
-    // Check if user has enough points for the redemption
-    if (loyaltyPoints < pointsRequired) {
-      return {
-        discountAmount: 0,
-        discountType: 'none',
-        maxDiscountLimit: maxCap,
-        isEligible: false,
-        reasonNotEligible: `Need ${pointsRequired} points for ${membershipTier} tier discount (you have ${loyaltyPoints})`
-      };
-    }
-
-    // Calculate discount based on tier benefits as defined in loyalty.ts
-    switch (membershipTier) {
-      case 'Bronze':
-        // Bronze: Flat ₹20 or 2% discount (max ₹20) - as per benefits
-        const flatDiscount = 20;
-        const percentageDiscount = globalMath.floor(orderAmount * 0.02);
-        discount = globalMath.min(flatDiscount, percentageDiscount, maxCap);
-        discountType = flatDiscount <= percentageDiscount ? 'flat' : 'percentage';
-        break;
-
-      case 'Silver':
-        // Silver: 5% discount (max ₹75) - as per benefits
-        discount = globalMath.min(globalMath.floor(orderAmount * 0.05), maxCap);
-        discountType = 'percentage';
-        break;
-
-      case 'Gold':
-        // Gold: 10% discount (max ₹150) - as per benefits
-        discount = globalMath.min(globalMath.floor(orderAmount * 0.10), maxCap);
-        discountType = 'percentage';
-        break;
-
-      case 'Platinum':
-        // Platinum: 15% + ₹50 combo discount (max ₹200) - as per benefits
-        const baseDiscount = globalMath.floor(orderAmount * 0.15);
-        // const bonusDiscount = 50; // Fixed ₹50 bonus as per benefits
-        discount = globalMath.min(baseDiscount, maxCap);
-        discountType = 'combo';
-        break;
-    }
-
-    return {
-      discountAmount: discount,
-      discountType,
-      maxDiscountLimit: maxCap,
-      isEligible: discount > 0,
-      pointsRequired,
-      reasonNotEligible: discount > 0 ? undefined : 'No discount available for this order'
-    };
-  }
-
-  // Calculate redemption using LOYALTY_CONFIG values
-  calculateRedemption(
-    pointsToRedeem: number,
-    availablePoints: number,
-    orderAmount: number
-  ): RedemptionCalculation {
-    // Validate points
-    if (pointsToRedeem <= 0) {
-      return {
-        pointsToRedeem: 0,
-        discountAmount: 0,
-        remainingAmount: orderAmount,
-        isValid: false,
-        errorMessage: 'Please enter a valid number of points'
-      };
-    }
-
-    if (pointsToRedeem > availablePoints) {
-      return {
-        pointsToRedeem,
-        discountAmount: 0,
-        remainingAmount: orderAmount,
-        isValid: false,
-        errorMessage: 'Insufficient points'
-      };
-    }
-
-    if (pointsToRedeem < LOYALTY_CONFIG.minRedemption) {
-      return {
-        pointsToRedeem,
-        discountAmount: 0,
-        remainingAmount: orderAmount,
-        isValid: false,
-        errorMessage: `Minimum ${LOYALTY_CONFIG.minRedemption} points required for redemption`
-      };
-    }
-
-    // Calculate discount amount using LOYALTY_CONFIG
-    const discountAmount = globalMath.floor(pointsToRedeem * LOYALTY_CONFIG.redemptionRate);
-    
-    // Apply maximum discount limits from LOYALTY_CONFIG
-    const maxDiscount = globalMath.floor(orderAmount * LOYALTY_CONFIG.maxRedemptionPercentage);
-    const finalDiscount = globalMath.min(discountAmount, maxDiscount, LOYALTY_CONFIG.maxRedemptionAmount);
-    
-    // Calculate remaining amount
-    const remainingAmount = orderAmount - finalDiscount;
-
-    return {
-      pointsToRedeem,
-      discountAmount: finalDiscount,
-      remainingAmount,
-      isValid: true,
-      maxDiscountAmount: LOYALTY_CONFIG.maxRedemptionAmount
-    };
-  }
-
-  async getUserLoyaltyPoints(userId: string): Promise<number> {
-    try {
-      const userProfile = await this.getUserProfile(userId);
-      if (!userProfile) {
-        // Check if there are any existing transactions
-        const transactions = await this.getLoyaltyHistory(userId);
-        let totalPoints = 0;
-        
-        // Calculate points from transaction history
-        for (const transaction of transactions) {
-          if (transaction.type === 'earned' || transaction.type === 'bonus') {
-            totalPoints += Math.abs(transaction.points);
-          } else if (transaction.type === 'redeemed') {
-            totalPoints -= Math.abs(transaction.points);
-          }
-          // Don't subtract points for tier_discount transactions as they're already accounted for
-        }
-
-        // Ensure points are never negative
-        totalPoints = Math.max(0, totalPoints);
-
-        // Create a new user profile with calculated points
-        const userData = {
-          uid: userId,
-          displayName: auth.currentUser?.displayName || 'User',
-          // Only include email if it exists and is not null
-          ...(auth.currentUser?.email && { email: auth.currentUser.email }),
-          // Only include phone if it exists and is not null
-          ...(auth.currentUser?.phoneNumber && { phone: auth.currentUser.phoneNumber })
-        };
-        
-        const newProfile = await this.createUserProfile(userData, totalPoints);
-        return newProfile.loyaltyPoints;
-      }
-      // Ensure existing profile points are never negative
-      return Math.max(0, userProfile.loyaltyPoints);
-    } catch (error) {
-      console.error('Error getting user loyalty points:', error);
-      throw new Error('Failed to get user loyalty points');
-    }
-  }
-
-  // Get best available discount
-  getBestAvailableDiscount(
-    orderAmount: number,
-    membershipTier: MembershipTier,
-    availablePoints: number,
-    pointsToRedeem: number
-  ): {
-    tierDiscount: TierDiscountCalculation;
-    pointsRedemption: RedemptionCalculation;
-    recommendedOption: 'tier' | 'points' | 'none';
-  } {
-    const tierDiscount = this.calculateTierDiscount(orderAmount, membershipTier, availablePoints);
-    const pointsRedemption = this.calculateRedemption(pointsToRedeem, availablePoints, orderAmount);
-
-    // If neither option is valid, return none
-    if (!tierDiscount.isEligible && !pointsRedemption.isValid) {
-      return {
-        tierDiscount,
-        pointsRedemption,
-        recommendedOption: 'none'
-      };
-    }
-
-    // If only one option is valid, recommend that one
-    if (!tierDiscount.isEligible) {
-      return {
-        tierDiscount,
-        pointsRedemption,
-        recommendedOption: 'points'
-      };
-    }
-
-    if (!pointsRedemption.isValid) {
-      return {
-        tierDiscount,
-        pointsRedemption,
-        recommendedOption: 'tier'
-      };
-    }
-
-    // If both are valid, recommend the one with higher discount
-    return {
-      tierDiscount,
-      pointsRedemption,
-      recommendedOption: tierDiscount.discountAmount > pointsRedemption.discountAmount ? 'tier' : 'points'
-    };
-  }
-
-  // Process order completion with proper multipliers from LOYALTY_CONFIG
-  async processOrderCompletion(
-    userId: string,
-    orderId: string,
-    orderAmount: number,
-    pointsRedeemed: number,
-    tierDiscount: number,
-    userName: string,
-    isFirstOrder: boolean,
-    isBirthday: boolean,
-    isFestival: boolean
-  ): Promise<void> {
-    try {
-      const userRef = doc(db, 'loyaltyUsers', userId);
+      const userRef = doc(db, 'users', userId);
       const userDoc = await getDoc(userRef);
-      
+
       if (!userDoc.exists()) {
         throw new Error('User not found');
       }
 
-      const userData = userDoc.data() as LoyaltyUser;
-      const currentPoints = Math.max(0, userData.loyaltyPoints || 0);
-      const membershipTier = userData.membershipTier || 'Bronze';
-
-      // Get tier config for multiplier
-      const tierConfig = this.getTierConfig(membershipTier);
-      const baseTierMultiplier = tierConfig?.pointMultiplier || 1;
-
-      // Calculate points earned with base tier multiplier
-      let pointsEarned = this.calculatePointsEarned(orderAmount, baseTierMultiplier);
+      const userData = userDoc.data();
       
-      // Apply bonus multipliers from LOYALTY_CONFIG
-      if (isFirstOrder) {
-        pointsEarned = globalMath.floor(pointsEarned * LOYALTY_CONFIG.firstOrderMultiplier);
-      }
-      if (isBirthday) {
-        pointsEarned += LOYALTY_CONFIG.birthdayBonusPoints;
-      }
-      if (isFestival) {
-        pointsEarned = globalMath.floor(pointsEarned * LOYALTY_CONFIG.festivalMultiplier);
-      }
+      // Get transaction history for detailed stats
+      const transactionsRef = collection(db, 'transactions');
+      const q = query(transactionsRef, where('userId', '==', userId));
+      const transactionDocs = await getDocs(q);
 
-      // Ensure points earned is never negative
-      pointsEarned = Math.max(0, pointsEarned);
+      let totalSaved = 0;
+      let totalPointsEarned = 0;
+      let totalPointsRedeemed = 0;
 
-      // Calculate final points, ensuring it never goes negative
-      const finalPoints = Math.max(0, currentPoints + pointsEarned - pointsRedeemed);
-
-      // Update user's points and tier
-      const newTier = this.determineMembershipTier(finalPoints);
-      await updateDoc(doc(db, 'loyaltyUsers', userData.uid), {
-        loyaltyPoints: finalPoints,
-        membershipTier: newTier,
-        updatedAt: Timestamp.now()
+      transactionDocs.forEach(doc => {
+        const transaction = doc.data();
+        totalSaved += transaction.discountValue || 0;
+        totalPointsEarned += transaction.pointsEarned || 0;
+        totalPointsRedeemed += transaction.pointsUsed || 0;
       });
 
-      // Create loyalty transaction
-      const transaction: Omit<LoyaltyTransaction, 'id'> = {
-        userId,
-        points: pointsEarned - pointsRedeemed,
-        type: pointsRedeemed > 0 ? 'redeemed' : 'earned',
-        description: `Purchase of ₹${orderAmount.toFixed(2)} Earned ${pointsEarned} points`,
-        timestamp: Timestamp.now(),
-        orderId
+      return {
+        totalOrders: userData.totalOrders || 0,
+        totalSpent: userData.totalSpent || 0,
+        totalSaved,
+        totalPointsEarned,
+        totalPointsRedeemed,
+        currentPoints: userData.loyaltyPoints || 0
       };
-
-      const transactionRef = await addDoc(collection(db, 'loyaltyTransactions'), transaction);
-
-      // If points were redeemed, create redemption transaction
-      if (pointsRedeemed > 0) {
-        const redemptionTransaction: RedemptionTransaction = {
-          userId,
-          orderAmount,
-          discountApplied: tierDiscount,
-          pointsUsed: pointsRedeemed,
-          membershipTier,
-          timestamp: Timestamp.now(),
-          status: 'completed',
-          orderId
-        };
-
-        await addDoc(collection(db, 'redemptionTransactions'), redemptionTransaction);
-      }
-
-      // Check for tier upgrade
-      if (newTier !== membershipTier) {
-        const tierUpgradeTransaction: Omit<LoyaltyTransaction, 'id'> = {
-          userId,
-          points: 0,
-          type: 'bonus',
-          description: `Tier upgraded to ${newTier}!`,
-          timestamp: Timestamp.now()
-        };
-        
-        await addDoc(collection(db, 'loyaltyTransactions'), tierUpgradeTransaction);
-      }
     } catch (error) {
-      console.error('Error processing order completion:', error);
-      throw new Error('Failed to process order completion');
+      console.error('Error fetching user stats:', error);
+      throw new Error('Failed to fetch user statistics');
     }
   }
 
-  // Process staff transaction (complete loyalty flow like online purchase)
-  async processStaffTransaction(
-    userId: string,
-    orderAmount: number,
-    discountApplied: number,
-    pointsUsed: number,
-    pointsEarned: number,
-    membershipTier: MembershipTier
-  ): Promise<void> {
+  // FIXED: Get user's first-time status with proper validation
+  async getUserFirstTimeStatus(userId: string): Promise<boolean> {
     try {
-      // Use transaction for atomicity
-      await runTransaction(db, async (transaction) => {
-        // Update user's points in users collection
-        const userDocRef = doc(db, 'users', userId);
-        const userDoc = await transaction.get(userDocRef);
-        
-        if (!userDoc.exists()) {
-          throw new Error('User document not found');
-        }
+      const userRef = doc(db, 'users', userId);
+      const userDoc = await getDoc(userRef);
+      
+      if (!userDoc.exists()) {
+        return true; // New user is considered first-time
+      }
+      
+      const userData = userDoc.data();
+      return userData.isFirstTimeUser ?? true;
+    } catch (error) {
+      console.error('Error checking first-time status:', error);
+      return true; // Default to first-time on error
+    }
+  }
 
-        const currentUserData = userDoc.data();
-        const currentPoints = currentUserData.loyaltyPoints || 0;
-        
-        // Calculate new points balance (subtract used points, add earned points)
-        const newPointsBalance = Math.max(0, currentPoints - pointsUsed + pointsEarned);
-        const newTier = this.determineMembershipTier(newPointsBalance);
-        
-        // Update user's loyalty points and tier in users collection
-        transaction.update(userDocRef, {
-          loyaltyPoints: newPointsBalance,
-          membershipTier: newTier,
-          updatedAt: Timestamp.now(),
-          totalOrders: (currentUserData.totalOrders || 0) + 1
-        });
-
-        // Create redemption transaction record (if discount was applied)
-        if (discountApplied > 0) {
-          const redemptionTransactionRef = doc(collection(db, 'redemptionTransactions'));
-          const redemptionTransactionData: Omit<RedemptionTransaction, 'id'> = {
-            userId: userId,
-            orderAmount,
-            discountApplied,
-            pointsUsed,
-            membershipTier,
-            timestamp: Timestamp.now(),
-            status: 'completed',
-            staffId: 'staff_transaction'
-          };
-          
-          transaction.set(redemptionTransactionRef, redemptionTransactionData);
-        }
-
-        // Create loyalty transaction for points used (if any)
-        if (pointsUsed > 0) {
-          const pointsUsedTransactionRef = doc(collection(db, 'loyaltyTransactions'));
-          const pointsUsedTransactionData: Omit<LoyaltyTransaction, 'id'> = {
-            userId: userId,
-            points: -pointsUsed,
-            type: 'tier_discount',
-            description: `Staff transaction - Tier discount applied (₹${discountApplied})`,
-            timestamp: Timestamp.now()
-          };
-          
-          transaction.set(pointsUsedTransactionRef, pointsUsedTransactionData);
-        }
-
-        // Create loyalty transaction for points earned (if any)
-        if (pointsEarned > 0) {
-          const pointsEarnedTransactionRef = doc(collection(db, 'loyaltyTransactions'));
-          const pointsEarnedTransactionData: Omit<LoyaltyTransaction, 'id'> = {
-            userId: userId,
-            points: pointsEarned,
-            type: 'earned',
-            description: `Staff transaction - Points earned from purchase (₹${(orderAmount - discountApplied).toFixed(2)})`,
-            timestamp: Timestamp.now(),
-            multiplier: this.getTierConfig(membershipTier)?.pointMultiplier || 1
-          };
-          
-          transaction.set(pointsEarnedTransactionRef, pointsEarnedTransactionData);
-        }
-
-        // Check for tier upgrade and add bonus transaction
-        if (newTier !== membershipTier) {
-          const tierUpgradeTransactionRef = doc(collection(db, 'loyaltyTransactions'));
-          const tierUpgradeTransactionData: Omit<LoyaltyTransaction, 'id'> = {
-            userId: userId,
-            points: 0,
-            type: 'bonus',
-            description: `Congratulations! You've been upgraded to ${newTier} tier!`,
-            timestamp: Timestamp.now()
-          };
-          
-          transaction.set(tierUpgradeTransactionRef, tierUpgradeTransactionData);
-        }
+  // FIXED: Set user's first-time status (used after successful order)
+  async setUserFirstTimeStatus(userId: string, isFirstTime: boolean): Promise<void> {
+    try {
+      const userRef = doc(db, 'users', userId);
+      await updateDoc(userRef, {
+        isFirstTimeUser: isFirstTime,
+        updatedAt: Timestamp.now()
       });
-    } catch (error: any) {
-      console.error('Error processing staff transaction:', error);
-      throw new Error(error.message || 'Failed to process staff transaction');
+    } catch (error) {
+      console.error('Error updating first-time status:', error);
+      throw new Error('Failed to update first-time status');
+    }
+  }
+
+  // Bulk update user points (for admin operations)
+  async bulkUpdateUserPoints(updates: Array<{userId: string, pointsAdjustment: number, reason: string}>): Promise<void> {
+    try {
+      const batch = writeBatch(db);
+      const timestamp = Timestamp.now();
+
+      for (const update of updates) {
+        const userRef = doc(db, 'users', update.userId);
+        const userDoc = await getDoc(userRef);
+        
+        if (userDoc.exists()) {
+          const userData = userDoc.data();
+          const currentPoints = userData.loyaltyPoints || 0;
+          const newBalance = Math.max(0, currentPoints + update.pointsAdjustment);
+          
+          batch.update(userRef, {
+            loyaltyPoints: newBalance,
+            updatedAt: timestamp
+          });
+
+          // Create points transaction record
+          const pointsTransactionRef = doc(collection(db, 'pointsTransactions'));
+          const pointsTransaction: PointsTransaction = {
+            userId: update.userId,
+            points: update.pointsAdjustment,
+            type: update.pointsAdjustment > 0 ? 'bonus' : 'adjusted',
+            description: update.reason,
+            timestamp: timestamp,
+            createdBy: auth.currentUser?.uid || 'admin'
+          };
+
+          batch.set(pointsTransactionRef, pointsTransaction);
+        }
+      }
+
+      await batch.commit();
+    } catch (error) {
+      console.error('Error in bulk points update:', error);
+      throw new Error('Failed to update points in bulk');
+    }
+  }
+
+  // Get loyalty configuration
+  getLoyaltyConfig(): LoyaltyConfig {
+    return LOYALTY_CONFIG;
+  }
+
+  // Check if user can use first-time discount
+  async canUseFirstTimeDiscount(userId: string): Promise<boolean> {
+    try {
+      const isFirstTime = await this.getUserFirstTimeStatus(userId);
+      return isFirstTime;
+    } catch (error) {
+      console.error('Error checking first-time discount eligibility:', error);
+      return false;
+    }
+  }
+
+  // Get comprehensive analytics for admin dashboard
+  async getLoyaltyAnalytics(dateRange?: { start: Date, end: Date }): Promise<{
+    totalUsers: number;
+    totalPointsEarned: number;
+    totalPointsRedeemed: number;
+    totalDiscountsGiven: number;
+    totalRevenue: number;
+    firstTimeUsers: number;
+    returningUsers: number;
+  }> {
+    try {
+      let query = collection(db, 'loyaltyTransactions');
+      
+      if (dateRange) {
+        query = collection(db, 'loyaltyTransactions');
+        // Add date range filtering if needed
+      }
+
+      const snapshot = await getDocs(query);
+      const transactions = snapshot.docs.map(doc => doc.data()) as ComprehensiveLoyaltyTransaction[];
+
+      const analytics = transactions.reduce((acc, transaction) => {
+        acc.totalPointsEarned += transaction.loyaltyDetails.pointsEarned;
+        acc.totalPointsRedeemed += transaction.loyaltyDetails.pointsRedeemed;
+        acc.totalDiscountsGiven += transaction.orderDetails.discountAmount;
+        acc.totalRevenue += transaction.orderDetails.finalAmount;
+        
+        if (transaction.userDetails.isFirstTimeUser) {
+          acc.firstTimeUsers += 1;
+        } else {
+          acc.returningUsers += 1;
+        }
+        
+        return acc;
+      }, {
+        totalUsers: 0,
+        totalPointsEarned: 0,
+        totalPointsRedeemed: 0,
+        totalDiscountsGiven: 0,
+        totalRevenue: 0,
+        firstTimeUsers: 0,
+        returningUsers: 0
+      });
+
+      // Get unique users count
+      const uniqueUsers = new Set(transactions.map(t => t.userId)).size;
+      analytics.totalUsers = uniqueUsers;
+
+      return analytics;
+    } catch (error) {
+      console.error('Error fetching loyalty analytics:', error);
+      throw new Error('Failed to fetch loyalty analytics');
     }
   }
 }
 
-// Create and export a singleton instance
-const loyaltyServiceInstance = new LoyaltyServiceClass();
-export const LoyaltyService = loyaltyServiceInstance;
+// Export singleton instance
+export const loyaltyService = new LoyaltyServiceClass();

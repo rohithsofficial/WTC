@@ -144,18 +144,19 @@ const MenuScreen = () => {
     });
 
     // Apply sorting
-    filtered.sort((a, b) => {
-      switch (sortBy) {
-        case 'price_asc':
-          return getProductPrice(a) - getProductPrice(b);
-        case 'price_desc':
-          return getProductPrice(b) - getProductPrice(a);
-        case 'name':
-          return a.name.localeCompare(b.name);
-        default:
-          return 0;
-      }
-    });
+   filtered.sort((a, b) => {
+  switch (sortBy) {
+    case 'price_asc':
+      return getProductPrice(a) - getProductPrice(b);
+    case 'price_desc':
+      return getProductPrice(b) - getProductPrice(a);
+    case 'name':
+      return (a.name || '').localeCompare(b.name || '');
+    default:
+      return 0;
+  }
+});
+
 
     return filtered;
   };

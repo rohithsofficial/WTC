@@ -46,6 +46,26 @@ interface OrderData {
   userId: string;
   pointsEarned?: number;
   pointsRedeemed?: number;
+  baristaNotes?: string | {
+    message: string;
+    timestamp: Date;
+  }[];
+  loyaltyDetails?: {
+    pointsEarned: number;
+    pointsRedeemed: number;
+    pointsBeforeOrder: number;
+    pointsAfterOrder: number;
+    amountDetails: {
+      originalAmount: number;
+      discountAmount: number;
+      finalAmount: number;
+    };
+    discountApplied: {
+      type: string;
+      amount: number;
+      description: string;
+    };
+  };
 }
 
 interface BaristaNote {
@@ -299,6 +319,36 @@ const OrderStatusScreen = () => {
         // Update order details immediately
         setOrderDetails(orderData);
         
+        // Handle barista notes - convert string to array if needed
+        if (orderData.baristaNotes) {
+          if (typeof orderData.baristaNotes === 'string') {
+            // If it's a single note as string, convert to array format
+            setBaristaNotes([{
+              message: orderData.baristaNotes,
+              timestamp: new Date()
+            }]);
+          } else if (Array.isArray(orderData.baristaNotes)) {
+            // If it's already an array, process normally
+            setBaristaNotes(orderData.baristaNotes.map((note: any) => ({
+              message: note.message || '',
+              timestamp: note.timestamp instanceof Date ? note.timestamp : new Date(note.timestamp)
+            })));
+          }
+        } else {
+          setBaristaNotes([]);
+        }
+        
+        // Update loyalty points from loyaltyDetails
+        if (orderData.loyaltyDetails) {
+          const { pointsEarned = 0, pointsRedeemed = 0 } = orderData.loyaltyDetails;
+          setLoyaltyPoints(pointsEarned - pointsRedeemed);
+        } else {
+          // Fallback to direct points if loyaltyDetails is not available
+          const pointsEarned = orderData.pointsEarned || 0;
+          const pointsRedeemed = orderData.pointsRedeemed || 0;
+          setLoyaltyPoints(pointsEarned - pointsRedeemed);
+        }
+        
         if (orderData.orderStatus) {
           const newStatusIndex = getStatusIndex(orderData.orderStatus);
           console.log('New status detected:', {
@@ -312,11 +362,13 @@ const OrderStatusScreen = () => {
         }
       } else {
         console.log('Order document not found');
+        setBaristaNotes([]);
       }
       setLoading(false);
     }, (error) => {
       console.error('Error in real-time listener:', error);
       setLoading(false);
+      setBaristaNotes([]);
     });
 
     // Cleanup listener on unmount
@@ -445,19 +497,32 @@ const OrderStatusScreen = () => {
     </View>
   );
 
-  const renderBaristaNotes = () => (
-    <View style={styles.notesSection}>
-      <Text style={styles.sectionTitle}>Barista Notes</Text>
-      {baristaNotes.map((note, index) => (
-        <View key={index} style={styles.noteBubble}>
-          <Text style={styles.noteText}>{note.message}</Text>
-          <Text style={styles.noteTime}>
-            {new Date(note.timestamp).toLocaleTimeString()}
-          </Text>
+  const renderBaristaNotes = () => {
+    if (!baristaNotes || baristaNotes.length === 0) {
+      return (
+        <View style={styles.notesSection}>
+          <Text style={styles.sectionTitle}>Barista Notes</Text>
+          <View style={styles.emptyNotesContainer}>
+            <Text style={styles.emptyNotesText}>No notes from barista yet</Text>
+          </View>
         </View>
-      ))}
-    </View>
-  );
+      );
+    }
+
+    return (
+      <View style={styles.notesSection}>
+        <Text style={styles.sectionTitle}>Barista Notes</Text>
+        {baristaNotes.map((note, index) => (
+          <View key={index} style={styles.noteBubble}>
+            <Text style={styles.noteText}>{note.message}</Text>
+            <Text style={styles.noteTime}>
+              {note.timestamp.toLocaleTimeString()}
+            </Text>
+          </View>
+        ))}
+      </View>
+    );
+  };
 
   const renderOrderSummary = () => (
     <View style={styles.summarySection}>
@@ -499,9 +564,12 @@ const OrderStatusScreen = () => {
   const renderLoyaltySection = () => {
     if (!orderDetails) return null;
 
-    const pointsEarned = orderDetails.pointsEarned || 0;
-    const pointsRedeemed = orderDetails.pointsRedeemed || 0;
+    const loyaltyDetails = orderDetails.loyaltyDetails;
+    const pointsEarned = loyaltyDetails?.pointsEarned || orderDetails.pointsEarned || 0;
+    const pointsRedeemed = loyaltyDetails?.pointsRedeemed || orderDetails.pointsRedeemed || 0;
     const netPoints = pointsEarned - pointsRedeemed;
+    const pointsBeforeOrder = loyaltyDetails?.pointsBeforeOrder || 0;
+    const pointsAfterOrder = loyaltyDetails?.pointsAfterOrder || 0;
 
     return (
       <View style={styles.loyaltySection}>
@@ -524,6 +592,16 @@ const OrderStatusScreen = () => {
           <Text style={[styles.rewardText, { marginTop: SPACING.space_8 }]}>
             {netPoints > 0 ? "Keep earning points for rewards!" : "Thanks for using your points!"}
           </Text>
+          {loyaltyDetails && (
+            <View style={styles.pointsHistory}>
+              <Text style={styles.pointsHistoryText}>
+                Points before order: {pointsBeforeOrder}
+              </Text>
+              <Text style={styles.pointsHistoryText}>
+                Points after order: {pointsAfterOrder}
+              </Text>
+            </View>
+          )}
         </View>
       </View>
     );
@@ -540,6 +618,20 @@ const OrderStatusScreen = () => {
     );
   }
 
+  // Update the header section to use MaterialIcons instead of app_icons
+  const renderHeader = () => (
+    <View style={styles.headerContainer}>
+      <TouchableOpacity 
+        onPress={() => router.push('/Home')}
+        style={styles.backButton}
+      >
+        <Icon name="arrow-back" size={24} color={COLORS.primaryBlackHex} />
+      </TouchableOpacity>
+      <Text style={styles.headerText}>Order Status</Text>
+      <Text style={styles.timeText}>{formatTime()}</Text>
+    </View>
+  );
+
   return (
     <SafeAreaView style={styles.screenContainer}>
       <StatusBar backgroundColor="#F5F5DC" barStyle="dark-content" />
@@ -548,22 +640,8 @@ const OrderStatusScreen = () => {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollViewContent}
       >
-        {/* Header */}
-        <View style={styles.headerContainer}>
-          <TouchableOpacity onPress={() => router.push('/Home')}>
-            <GradientBGIcon
-              name="back"
-              color={COLORS.primaryBlackHex}
-              size={FONTSIZE.size_18}
-            />
-          </TouchableOpacity>
-          <Text style={styles.headerText}>Order Status</Text>
-          <Text style={styles.timeText}>{formatTime()}</Text>
-        </View>
-
-        {/* Main Content */}
+        {renderHeader()}
         {renderOrderProgress()}
-        {/* {renderCountdownTimer()} */}
         {renderQRCode()}
         {renderBaristaNotes()}
         {renderOrderSummary()}
@@ -886,6 +964,35 @@ const styles = StyleSheet.create({
     fontFamily: FONTFAMILY.poppins_semibold,
     fontSize: FONTSIZE.size_16,
     color: COLORS.primaryOrangeHex,
+  },
+  emptyNotesContainer: {
+    padding: SPACING.space_16,
+    backgroundColor: '#F5F5DC',
+    borderRadius: BORDERRADIUS.radius_15,
+    alignItems: 'center',
+  },
+  emptyNotesText: {
+    fontFamily: FONTFAMILY.poppins_regular,
+    fontSize: FONTSIZE.size_14,
+    color: COLORS.primaryGreyHex,
+    fontStyle: 'italic',
+  },
+  backButton: {
+    padding: SPACING.space_8,
+    borderRadius: BORDERRADIUS.radius_8,
+  },
+  pointsHistory: {
+    marginTop: SPACING.space_16,
+    padding: SPACING.space_12,
+    backgroundColor: COLORS.primaryWhiteHex,
+    borderRadius: BORDERRADIUS.radius_10,
+    width: '100%',
+  },
+  pointsHistoryText: {
+    fontFamily: FONTFAMILY.poppins_regular,
+    fontSize: FONTSIZE.size_14,
+    color: COLORS.primaryGreyHex,
+    marginBottom: SPACING.space_4,
   },
 });
 

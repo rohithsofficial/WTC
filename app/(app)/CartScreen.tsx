@@ -30,6 +30,7 @@ export default function CartScreen() {
   const { state, dispatch } = useCart();
   const [orderType, setOrderType] = useState('takeaway');
   const [tableNumber, setTableNumber] = useState('');
+  const [baristaNotes, setBaristaNotes] = useState('');
 
   const handleIncrementQuantity = (id: string, size: string) => {
   dispatch({ type: 'INCREMENT_QUANTITY', payload: { id, size } });
@@ -57,16 +58,30 @@ const handleRemoveItem = (id: string, size: string) => {
     }
 
     try {
+      // Create a clean state object with only necessary data
+      const checkoutData = {
+        items: state.items.map(item => ({
+          id: item.id,
+          name: item.name,
+          price: item.price,
+          quantity: item.quantity,
+          size: item.size,
+          type: item.type
+        })),
+        total: state.total,
+        orderType,
+        tableNumber: orderType === 'dinein' ? tableNumber : '',
+        baristaNotes: baristaNotes.trim()
+      };
+
       router.push({
         pathname: '/(app)/PaymentScreen',
         params: {
-          items: JSON.stringify(state.items),
-          total: state.total.toString(),
+          state: JSON.stringify(checkoutData),
+          amount: state.total.toString(),
           userId: auth.currentUser.uid,
-          displayName: auth.currentUser.displayName,
-          orderType,
-          tableNumber: orderType === 'dinein' ? tableNumber : '',
-        },
+          displayName: auth.currentUser.displayName || ''
+        }
       });
     } catch (error) {
       Alert.alert('Checkout Failed', 'Something went wrong. Please try again.');
@@ -115,8 +130,8 @@ const handleRemoveItem = (id: string, size: string) => {
                       id={item.id}
                       name={item.name}
                       imagelink_square={{ uri: item.imagelink_square }}
-                      special_ingredient={item.special_ingredient}
-                      roasted={item.roasted}
+                      special_ingredient={item.special_ingredient || 'No special ingredients'}
+                      roasted={item.roasted || 'Medium Roast'}
                       prices={[{ size: item.size, price: item.price, quantity: item.quantity }]}
                       type={item.type || 'coffee'}
                       incrementCartItemQuantityHandler={() => handleIncrementQuantity(item.id, item.size)}
@@ -133,6 +148,17 @@ const handleRemoveItem = (id: string, size: string) => {
                 <View style={styles.totalContainer}>
                   <Text style={styles.totalLabel}>Total:</Text>
                   <Text style={styles.totalAmount}>₹{state.total.toFixed(2)}</Text>
+                </View>
+                <View style={styles.notesContainer}>
+                  <TextInput
+                    style={styles.notesInput}
+                    value={baristaNotes}
+                    onChangeText={setBaristaNotes}
+                    placeholder="Add a note for the barista (optional)"
+                    placeholderTextColor={COLORS.primaryGreyHex}
+                    multiline
+                    numberOfLines={2}
+                  />
                 </View>
                 <View style={styles.orderTypeFooterRow}>
                   <TouchableOpacity
@@ -502,5 +528,19 @@ const styles = StyleSheet.create({
     fontSize: FONTSIZE.size_16,
     fontWeight: 'bold',
     fontFamily: FONTFAMILY.poppins_semibold,
+  },
+  notesContainer: {
+    marginBottom: SPACING.space_16,
+    borderWidth: 1,
+    borderColor: COLORS.primaryOrangeHex,
+    borderRadius: BORDERRADIUS.radius_10,
+    backgroundColor: COLORS.primaryWhiteHex,
+  },
+  notesInput: {
+    padding: SPACING.space_12,
+    color: COLORS.primaryBlackHex,
+    fontFamily: FONTFAMILY.poppins_medium,
+    minHeight: 60,
+    textAlignVertical: 'top',
   },
 });

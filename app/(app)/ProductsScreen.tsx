@@ -94,10 +94,6 @@ export default function ProductsScreen() {
         <Text style={styles.productDescription}>{item.description}</Text>
         <View style={styles.productDetails}>
           <Text style={styles.productPrice}>{item.prices[0]}</Text>
-          <View style={styles.ratingContainer}>
-            <Text style={styles.rating}>★ {item.average_rating}</Text>
-            <Text style={styles.ratingCount}>({item.ratings_count})</Text>
-          </View>
         </View>
       </View>
     </TouchableOpacity>
@@ -216,18 +212,5 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold',
     color: '#2ecc71',
-  },
-  ratingContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  rating: {
-    color: '#f1c40f',
-    fontWeight: 'bold',
-    marginRight: 5,
-  },
-  ratingCount: {
-    color: '#95a5a6',
-    fontSize: 12,
   },
 }); 

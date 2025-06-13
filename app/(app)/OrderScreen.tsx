@@ -30,7 +30,7 @@ import { TabView, TabBar } from 'react-native-tab-view';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { CountdownCircleTimer } from 'react-native-countdown-circle-timer';
 
-interface Order {
+interface orders{
   id: string;
   userId: string;
   items: any[];

@@ -29,7 +29,7 @@ interface CoffeeCardProps {
   imagelink_square: string | ImageProps;
   name: string;
   special_ingredient: string;
-  average_rating: number;
+  // average_rating: number;
   price: any;
   buttonPressHandler: any;
 }
@@ -42,7 +42,7 @@ const CoffeeCard: React.FC<CoffeeCardProps> = ({
   imagelink_square,
   name,
   special_ingredient,
-  average_rating,
+  // average_rating,
   price,
   buttonPressHandler,
 }) => {
@@ -64,14 +64,15 @@ const CoffeeCard: React.FC<CoffeeCardProps> = ({
         style={styles.CardImageBG}
         resizeMode="cover"
       >
-        <View style={styles.CardRatingContainer}>
+        {/* rating of the products */}
+        {/* <View style={styles.CardRatingContainer}>
           <CustomIcon
             name={"star"}
             color={COLORS.primaryOrangeHex}
             size={FONTSIZE.size_16}
           />
           <Text style={styles.CardRatingText}>{average_rating}</Text>
-        </View>
+        </View> */}
       </ImageBackground>
       <Text style={styles.CardTitle}>{name}</Text>
       <Text style={styles.CardSubtitle}>{special_ingredient}</Text>
@@ -117,25 +118,25 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.space_15,
     overflow: "hidden",
   },
-  CardRatingContainer: {
-    flexDirection: "row",
-    backgroundColor: "rgba(248, 233, 219, 0.8)", // Light cream with opacity
-    alignItems: "center",
-    justifyContent: "center",
-    gap: SPACING.space_10,
-    paddingHorizontal: SPACING.space_15,
-    position: "absolute",
-    borderBottomLeftRadius: BORDERRADIUS.radius_20,
-    borderTopRightRadius: BORDERRADIUS.radius_20,
-    top: 0,
-    right: 0,
-  },
-  CardRatingText: {
-    fontFamily: FONTFAMILY.poppins_medium,
-    color: COLORS.primaryBlackHex,
-    lineHeight: 22,
-    fontSize: FONTSIZE.size_14,
-  },
+  // CardRatingContainer: {
+  //   flexDirection: "row",
+  //   backgroundColor: "rgba(248, 233, 219, 0.8)", // Light cream with opacity
+  //   alignItems: "center",
+  //   justifyContent: "center",
+  //   gap: SPACING.space_10,
+  //   paddingHorizontal: SPACING.space_15,
+  //   position: "absolute",
+  //   borderBottomLeftRadius: BORDERRADIUS.radius_20,
+  //   borderTopRightRadius: BORDERRADIUS.radius_20,
+  //   top: 0,
+  //   right: 0,
+  // },
+  // CardRatingText: {
+  //   fontFamily: FONTFAMILY.poppins_medium,
+  //   color: COLORS.primaryBlackHex,
+  //   lineHeight: 22,
+  //   fontSize: FONTSIZE.size_14,
+  // },
   CardTitle: {
     fontFamily: FONTFAMILY.poppins_medium,
     color: COLORS.primaryBlackHex,

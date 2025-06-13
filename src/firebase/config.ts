@@ -1,9 +1,9 @@
+// src/firebase/config.ts
+
 import { initializeApp, FirebaseApp, getApps } from 'firebase/app';
-import { initializeAuth, getReactNativePersistence, Auth } from 'firebase/auth';
+import { initializeAuth, getReactNativePersistence, Auth, getAuth } from 'firebase/auth';
 import { getFirestore, Firestore } from 'firebase/firestore';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import Constants from 'expo-constants';
-import * as FirebaseCore from 'expo-firebase-core';
 
 import {
   FIREBASE_API_KEY,
@@ -15,8 +15,8 @@ import {
   FIREBASE_MEASUREMENT_ID,
 } from '@env';
 
-// Get Firebase config from Expo config if available
-const firebaseConfig = FirebaseCore.DEFAULT_WEB_APP_OPTIONS || {
+// ✅ Directly use your .env variables
+const firebaseConfig = {
   apiKey: FIREBASE_API_KEY,
   authDomain: FIREBASE_AUTH_DOMAIN,
   projectId: FIREBASE_PROJECT_ID,
@@ -26,31 +26,26 @@ const firebaseConfig = FirebaseCore.DEFAULT_WEB_APP_OPTIONS || {
   measurementId: FIREBASE_MEASUREMENT_ID,
 };
 
-// Initialize Firebase only if it hasn't been initialized
+// Initialize Firebase only once
 let app: FirebaseApp;
-try {
-  if (getApps().length === 0) {
-    app = initializeApp(firebaseConfig);
-    console.log('Firebase initialized successfully');
-  } else {
-    app = getApps()[0];
-    console.log('Using existing Firebase app');
-  }
-} catch (error) {
-  console.error('Error initializing Firebase:', error);
-  throw error;
+if (getApps().length === 0) {
+  app = initializeApp(firebaseConfig);
+  console.log('Firebase initialized successfully');
+} else {
+  app = getApps()[0];
+  console.log('Using existing Firebase app');
 }
 
 // Initialize Auth with AsyncStorage persistence
 let auth: Auth;
 try {
   auth = initializeAuth(app, {
-    persistence: getReactNativePersistence(AsyncStorage)
+    persistence: getReactNativePersistence(AsyncStorage),
   });
   console.log('Firebase Auth initialized with AsyncStorage persistence');
-} catch (error) {
-  console.error('Error initializing Firebase Auth:', error);
-  throw error;
+} catch (error: any) {
+  // If auth is already initialized (e.g. on hot reload), fallback to getAuth
+  auth = getAuth(app);
 }
 
 // Setup Firestore

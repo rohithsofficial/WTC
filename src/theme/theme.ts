@@ -54,6 +54,7 @@ export interface Color {
   caramelHex: string;
   primaryGreenHex: string;
   primaryPurpleHex: string;
+  primaryCoffee: string;
 }
 
 export const COLORS: Color = {
@@ -76,6 +77,7 @@ export const COLORS: Color = {
   caramelHex: '#d2691e',
   primaryGreenHex: '#4CAF50',
   primaryPurpleHex: '#800080',
+  primaryCoffee: '#F8E9DB'
 };
 
 export interface FontFamily {

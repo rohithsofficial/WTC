@@ -140,20 +140,21 @@ const ProfileScreen = () => {
 
   // Enhanced profile options combining both screens
   const profileOptions = [
-    {
-      id: 'loyalty-qr',
-      title: 'My Loyalty Card',
-      subtitle: 'Show QR code to earn points',
-      icon: 'qr-code',
-      screen: '/(app)/LoyaltyScreen',
-      highlighted: true,
-      category: 'loyalty'
-    },
+    // {
+    //   id: 'loyalty-qr',
+    //   title: 'My Loyalty Card',
+    //   subtitle: 'Show QR code to earn points',
+    //   icon: 'qr-code',
+    //   screen: '/(app)/LoyaltyScreen',
+    //   highlighted: true,
+    //   category: 'loyalty'
+    // },
     {
       id: 'loyalty-history',
       title: 'Points History',
       subtitle: 'View your transaction history',
       icon: 'time',
+      highlighted: true,
       screen: '/(app)/LoyaltyScreen',
       category: 'loyalty'
     },
@@ -317,14 +318,9 @@ const ProfileScreen = () => {
               <Text style={styles.statValue}>{userData?.loyaltyPoints || '0'}</Text>
               <Text style={styles.statLabel}>Points</Text>
             </View>
-            <View style={styles.statDivider} />
+
             <View style={styles.statItem}>
-              <Text style={styles.statValue}>{userData?.loyaltyTier || 'Bronze'}</Text>
-              <Text style={styles.statLabel}>Tier</Text>
-            </View>
-            <View style={styles.statDivider} />
-            <View style={styles.statItem}>
-              <Text style={styles.statValue}>{userData?.orderCount || '0'}</Text>
+              <Text style={styles.statValue}>{userData?.totalOrders || '0'}</Text>
               <Text style={styles.statLabel}>Orders</Text>
             </View>
           </View>
@@ -334,10 +330,10 @@ const ProfileScreen = () => {
         {user && (
           <TouchableOpacity
             style={styles.quickQRButton}
-            onPress={() => handleOptionPress('/(app)/LoyaltyScreen')}
+            onPress={() => handleOptionPress('/(app)/LoyaltyQRCodeScreen')}
           >
             <Ionicons name="qr-code" size={24} color={COLORS.primaryWhiteHex} />
-            <Text style={styles.quickQRText}>Show Loyalty QR Code</Text>
+            <Text style={styles.quickQRText}>Show QR code to earn points</Text>
           </TouchableOpacity>
         )}
 
@@ -494,7 +490,7 @@ const ProfileScreen = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.primaryBlackHex,
+    backgroundColor: COLORS.primaryCoffee,
   },
   loadingContainer: {
     flex: 1,
@@ -534,7 +530,7 @@ const styles = StyleSheet.create({
     borderColor: COLORS.primaryBlackHex,
   },
   userName: {
-    color: COLORS.primaryWhiteHex,
+    color: COLORS.primaryBlackHex,
     fontSize: FONTSIZE.size_24,
     fontFamily: FONTFAMILY.poppins_semibold,
     marginBottom: SPACING.space_4,
@@ -607,7 +603,7 @@ const styles = StyleSheet.create({
     margin: SPACING.space_20,
   },
   sectionTitle: {
-    color: COLORS.primaryWhiteHex,
+    color: COLORS.primaryBlackHex,
     fontSize: FONTSIZE.size_18,
     fontFamily: FONTFAMILY.poppins_semibold,
     marginBottom: SPACING.space_15,

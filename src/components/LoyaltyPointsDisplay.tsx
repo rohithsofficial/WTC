@@ -1,145 +1,138 @@
 // src/components/LoyaltyPointsDisplay.tsx
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { LOYALTY_CONFIG ,MembershipTier } from '../types/loyalty';
+import { LOYALTY_CONFIG } from '../types/loyalty';
 import { doc, getDoc } from 'firebase/firestore';
 import { COLORS } from '../theme/theme';
-import { db ,auth } from "../firebase/config";
+import { db, auth } from "../firebase/config";
 
 interface LoyaltyPointsDisplayProps {
-  initialPoints: number;
-  nextMilestone?: {
-  pointsNeeded: number;
-  rewardValue: number;
   initialPoints?: number;
-  initialTier?: MembershipTier;
-  };
+  onPointsUpdate?: (points: number) => void;
 }
 
+interface NextReward {
+  pointsNeeded: number;
+  rewardValue: number;
+}
 
-const LoyaltyPointsDisplay: React.FC<LoyaltyPointsDisplayProps> = () => {
-  // Get current tier based on points
-  const [initialPoints, setAvailablePoints] = useState<number>(0);
-const [membershipTier, setMembershipTier] = useState<MembershipTier>('Bronze');
+const LoyaltyPointsDisplay: React.FC<LoyaltyPointsDisplayProps> = ({ 
+  initialPoints: propPoints,
+  onPointsUpdate 
+}) => {
+  const [availablePoints, setAvailablePoints] = useState<number>(propPoints || 0);
+  const [loading, setLoading] = useState<boolean>(!propPoints);
 
   useEffect(() => {
+    if (propPoints !== undefined) {
+      setAvailablePoints(propPoints);
+      return;
+    }
+
     const fetchLoyaltyData = async () => {
-      const userId = auth.currentUser?.uid; // get logged-in user's id
-      if (!userId) return;
+      try {
+        const userId = auth.currentUser?.uid;
+        if (!userId) {
+          setLoading(false);
+          return;
+        }
 
-      const docRef = doc(db, 'users', userId);
-      const docSnap = await getDoc(docRef);
+        const docRef = doc(db, 'users', userId);
+        const docSnap = await getDoc(docRef);
 
-      if (docSnap.exists()) {
-        const data = docSnap.data();
-        setAvailablePoints(data.loyaltyPoints ?? 0);
-        setMembershipTier(data.membershipTier ?? 'Bronze');
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          const points = data.loyaltyPoints ?? 0;
+          setAvailablePoints(points);
+          onPointsUpdate?.(points);
+        }
+      } catch (error) {
+        console.error('Error fetching loyalty data:', error);
+      } finally {
+        setLoading(false);
       }
     };
 
     fetchLoyaltyData();
-  }, []);
-
-  const currentTier =
-    LOYALTY_CONFIG.tiers
-      .filter((tier) => initialPoints >= tier.minPoints)
-      .sort((a, b) => b.minPoints - a.minPoints)[0] || LOYALTY_CONFIG.tiers[0];
-  // Get next tier
-  const nextTier = LOYALTY_CONFIG.tiers.find(tier => tier.minPoints > initialPoints);
+  }, [propPoints, onPointsUpdate]);
 
   // Calculate next reward milestone
-  const calculateNextReward = () => {
+  const calculateNextReward = (): NextReward => {
     const { minRedemption, redemptionRate } = LOYALTY_CONFIG;
     
     // If user has less than minimum redemption points
-    if (initialPoints < minRedemption) {
+    if (availablePoints < minRedemption) {
       return {
-        pointsNeeded: minRedemption - initialPoints,
+        pointsNeeded: minRedemption - availablePoints,
         rewardValue: Math.floor(minRedemption * redemptionRate)
       };
     }
     
-    // Calculate next reward increment (e.g., every 100 points = ₹10)
-    const rewardIncrement = Math.ceil(minRedemption); // 100 points
-    const rewardValue = Math.floor(rewardIncrement * redemptionRate); // ₹10
-    
-    // Find next milestone
-    const currentRewardLevel = Math.floor(initialPoints / rewardIncrement);
+    // Calculate next reward increment (every 10 points = ₹10)
+    const rewardIncrement = 10; // Every 10 points
+    const currentRewardLevel = Math.floor(availablePoints / rewardIncrement);
     const nextRewardLevel = currentRewardLevel + 1;
     const nextMilestonePoints = nextRewardLevel * rewardIncrement;
     
     return {
-      pointsNeeded: nextMilestonePoints - initialPoints,
+      pointsNeeded: nextMilestonePoints - availablePoints,
       rewardValue: Math.floor(nextMilestonePoints * redemptionRate)
     };
   };
 
-  const nextMilestone = calculateNextReward();
+  const nextReward = calculateNextReward();
+  const currentRedeemableValue = Math.floor(availablePoints * LOYALTY_CONFIG.redemptionRate);
+  const canRedeem = availablePoints >= LOYALTY_CONFIG.minRedemption;
 
-  // Calculate progress percentage between current tier and next tier, capped at 100%
-  const progressPercentage = nextTier
-    ? Math.min(
-        ((initialPoints - currentTier.minPoints) /
-          (nextTier.minPoints - currentTier.minPoints)) *
-          100,
-        100
-      )
-    : 100;
+  // Calculate earning rate display
+  const earningRateText = `Earn ${LOYALTY_CONFIG.pointsPerRupee} points per ₹1 spent`;
+
+  if (loading) {
+    return (
+      <View style={styles.container}>
+        <View style={styles.loadingContainer}>
+          <Text style={styles.loadingText}>Loading loyalty points...</Text>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.title}>Loyalty Points</Text>
-        <View style={[styles.tierBadge, { backgroundColor: currentTier.color }]}>
-          <Text style={styles.tierText}>{currentTier.name}</Text>
+        <View style={styles.earningRate}>
+          <Text style={styles.earningRateText}>{earningRateText}</Text>
         </View>
       </View>
 
       <View style={styles.pointsContainer}>
-        <Text style={styles.pointsValue}>{Math.max(0, initialPoints).toLocaleString()}</Text>
+        <Text style={styles.pointsValue}>{Math.max(0, availablePoints).toLocaleString()}</Text>
         <Text style={styles.pointsLabel}>Available Points</Text>
-      </View>
-
-      <View style={styles.progressContainer}>
-        {nextTier ? (
-          <>
-            <View style={styles.progressBar}>
-              <View
-                style={[
-                  styles.progressFill,
-                  { width: `${Math.min(100, Math.max(0, progressPercentage))}%`, backgroundColor: currentTier.color },
-                ]}
-              />
-            </View>
-            <Text style={styles.progressText}>
-              {Math.min(100, Math.max(0, progressPercentage)).toFixed(0)}% to {nextTier.name}
-            </Text>
-          </>
-        ) : (
-          <Text style={styles.progressText}>You're in the final tier 🎉</Text>
+        {canRedeem && (
+          <Text style={styles.redeemableValue}>
+            Worth ₹{currentRedeemableValue}
+          </Text>
         )}
       </View>
 
-      <View style={styles.milestoneContainer}>
-        <Text style={styles.milestoneTitle}>Next Reward</Text>
-        <Text style={styles.milestoneText}>
-          {nextMilestone.pointsNeeded} points needed for ₹{nextMilestone.rewardValue} reward
-        </Text>
-        {initialPoints >= LOYALTY_CONFIG.minRedemption && (
+
+
+      {canRedeem && (
+        <View style={styles.currentRewardContainer}>
+          <Text style={styles.currentRewardTitle}>Ready to Redeem</Text>
           <Text style={styles.currentRewardText}>
-            Current: ₹{Math.floor(initialPoints * LOYALTY_CONFIG.redemptionRate)} available to redeem
+            You have ₹{currentRedeemableValue} worth of points ready to use on your next order!
           </Text>
-        )}
-      </View>
+        </View>
+      )}
 
-      <View style={styles.tierBenefits}>
-        <Text style={styles.benefitsTitle}>Current Tier Benefits:</Text>
-        <Text style={styles.benefitText}>• {currentTier.pointMultiplier}x points on all purchases</Text>
-        {currentTier.benefits.map((benefit: string, index: number) => (
-          <Text key={index} style={styles.benefitText}>
-            • {benefit}
-          </Text>
-        ))}
+      <View style={styles.infoContainer}>
+        <Text style={styles.infoTitle}>How It Works:</Text>
+        <Text style={styles.infoText}>• Spend ₹{Math.ceil(1/LOYALTY_CONFIG.pointsPerRupee)} = Earn 1 point</Text>
+        <Text style={styles.infoText}>• 1 point = ₹{LOYALTY_CONFIG.redemptionRate} discount</Text>
+        <Text style={styles.infoText}>• Minimum order: ₹{LOYALTY_CONFIG.minOrderAmount}</Text>
+        <Text style={styles.infoText}>• Minimum redemption: {LOYALTY_CONFIG.minRedemption} point</Text>
       </View>
     </View>
   );
@@ -157,26 +150,36 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 3,
   },
+  loadingContainer: {
+    alignItems: 'center',
+    paddingVertical: 20,
+  },
+  loadingText: {
+    fontSize: 16,
+    color: COLORS.primaryGreyHex,
+  },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 16,
+    flexWrap: 'wrap',
   },
   title: {
     fontSize: 20,
     fontWeight: '600',
     color: COLORS.primaryBlackHex,
   },
-  tierBadge: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
+  earningRate: {
+    backgroundColor: COLORS.primaryRedHex,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
   },
-  tierText: {
+  earningRateText: {
+    fontSize: 12,
     color: COLORS.primaryWhiteHex,
-    fontWeight: '600',
-    fontSize: 14,
+    fontWeight: '500',
   },
   pointsContainer: {
     alignItems: 'center',
@@ -192,18 +195,41 @@ const styles = StyleSheet.create({
     color: COLORS.primaryGreyHex,
     marginTop: 4,
   },
-  progressContainer: {
+  redeemableValue: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: COLORS.primaryOrangeHex || '#FF6B35',
+    marginTop: 4,
+  },
+  rewardContainer: {
+    backgroundColor: COLORS.primaryLightGreyHex,
+    padding: 12,
+    borderRadius: 8,
     marginBottom: 16,
   },
+  rewardTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: COLORS.primaryBlackHex,
+    marginBottom: 4,
+  },
+  rewardText: {
+    fontSize: 14,
+    color: COLORS.primaryGreyHex,
+    marginBottom: 8,
+  },
+  progressContainer: {
+    marginTop: 8,
+  },
   progressBar: {
-    height: 8,
-    backgroundColor: COLORS.primaryLightGreyHex,
-    borderRadius: 4,
+    height: 6,
+    backgroundColor: COLORS.primaryWhiteHex,
+    borderRadius: 3,
     overflow: 'hidden',
   },
   progressFill: {
     height: '100%',
-    borderRadius: 4,
+    borderRadius: 3,
   },
   progressText: {
     fontSize: 12,
@@ -211,40 +237,37 @@ const styles = StyleSheet.create({
     marginTop: 4,
     textAlign: 'center',
   },
-  milestoneContainer: {
-    backgroundColor: COLORS.primaryLightGreyHex,
+  currentRewardContainer: {
+    backgroundColor: (COLORS.primaryOrangeHex || '#FF6B35') + '20',
     padding: 12,
     borderRadius: 8,
     marginBottom: 16,
+    borderLeftWidth: 4,
+    borderLeftColor: COLORS.primaryOrangeHex || '#FF6B35',
   },
-  milestoneTitle: {
+  currentRewardTitle: {
     fontSize: 16,
     fontWeight: '600',
     color: COLORS.primaryBlackHex,
     marginBottom: 4,
   },
-  milestoneText: {
-    fontSize: 14,
-    color: COLORS.primaryGreyHex,
-  },
   currentRewardText: {
-    fontSize: 12,
-    color: COLORS.primaryGreyHex,
-    marginTop: 4,
-    fontStyle: 'italic',
+    fontSize: 14,
+    color: COLORS.primaryBlackHex,
+    fontWeight: '500',
   },
-  tierBenefits: {
+  infoContainer: {
     borderTopWidth: 1,
     borderTopColor: COLORS.primaryLightGreyHex,
     paddingTop: 16,
   },
-  benefitsTitle: {
+  infoTitle: {
     fontSize: 16,
     fontWeight: '600',
     color: COLORS.primaryBlackHex,
     marginBottom: 8,
   },
-  benefitText: {
+  infoText: {
     fontSize: 14,
     color: COLORS.primaryGreyHex,
     marginBottom: 4,

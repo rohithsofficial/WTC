@@ -45,41 +45,10 @@ const FavoritesScreen = () => {
   };
 
   const handleProductPress = (item: Product) => {
-    // Navigate to product details with proper params
     router.push({
-      pathname: `/products/[id]`,
-      params: { 
-        id: item.id,
-        type: item.type || 'Coffee'
-      }
+      pathname: '/(app)/products/[id]',
+      params: { id: item.id }
     });
-  };
-
-  const renderStars = (rating: number) => {
-    const stars = [];
-    const fullStars = Math.floor(rating);
-    const hasHalfStar = rating % 1 !== 0;
-
-    for (let i = 0; i < fullStars; i++) {
-      stars.push(
-        <MaterialIcons key={i} name="star" size={16} color={COLORS.primaryOrangeHex} />
-      );
-    }
-
-    if (hasHalfStar) {
-      stars.push(
-        <MaterialIcons key="half" name="star-half" size={16} color={COLORS.primaryOrangeHex} />
-      );
-    }
-
-    const emptyStars = 5 - Math.ceil(rating);
-    for (let i = 0; i < emptyStars; i++) {
-      stars.push(
-        <MaterialIcons key={`empty-${i}`} name="star-border" size={16} color={COLORS.primaryGreyHex} />
-      );
-    }
-
-    return stars;
   };
 
   const renderItem = ({ item }: { item: Product }) => (
@@ -118,22 +87,6 @@ const FavoritesScreen = () => {
           <Text style={styles.productDescription} numberOfLines={2}>
             {item.description}
           </Text>
-        )}
-
-        {item.average_rating && (
-          <View style={styles.ratingContainer}>
-            <View style={styles.starsContainer}>
-              {renderStars(item.average_rating)}
-            </View>
-            <Text style={styles.ratingText}>
-              {item.average_rating.toFixed(1)}
-            </Text>
-            {item.ratings_count && (
-              <Text style={styles.ratingsCount}>
-                ({item.ratings_count})
-              </Text>
-            )}
-          </View>
         )}
 
         <View style={styles.priceContainer}>
@@ -410,15 +363,15 @@ const styles = StyleSheet.create({
   ratingContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: SPACING.space_12,
+    marginBottom: SPACING.space_8,
   },
   starsContainer: {
     flexDirection: 'row',
-    marginRight: SPACING.space_8,
+    marginRight: SPACING.space_4,
   },
   ratingText: {
     fontSize: FONTSIZE.size_14,
-    fontFamily: FONTFAMILY.poppins_semibold,
+    fontFamily: FONTFAMILY.poppins_medium,
     color: COLORS.primaryBlackHex,
     marginRight: SPACING.space_4,
   },

@@ -1,9 +1,62 @@
-// app/(app)/_layout.tsx (App Layout with Hidden Staff Screens)
+// app/(app)/_layout.tsx - Clean Tab Layout
 import React from 'react';
 import { Tabs } from 'expo-router';
 import { COLORS, FONTFAMILY } from '../../src/theme/theme';
 import { MaterialIcons } from '@expo/vector-icons';
 import { StyleSheet } from 'react-native';
+
+// Only define the actual tab screens
+const mainTabs = [
+  {
+    name: 'HomeScreen',
+    title: 'Home',
+    icon: 'home' as const
+  },
+  {
+    name: 'MenuScreen', 
+    title: 'Menu',
+    icon: 'restaurant-menu' as const
+  },
+  {
+    name: 'CartScreen',
+    title: 'Cart', 
+    icon: 'shopping-cart' as const
+  },
+  {
+    name: 'LoyaltyScreen',
+    title: 'Loyalty',
+    icon: 'stars' as const
+  },
+  {
+    name: 'ProfileScreen',
+    title: 'Profile',
+    icon: 'person' as const
+  }
+];
+
+// Hidden screens that shouldn't appear in tab bar
+const hiddenScreens = [
+  'OrderScreen',
+  'StaffQRScannerScreen', 
+  'StaffLoyaltyScannerScreen',
+  'StaffRedemptionScreen',
+  'PaymentScreen',
+  'OrderStatusScreen',
+  'products/[id]',
+  'category/[category]',
+  'FavoritesScreen',
+  'SearchScreen',
+  'AddressScreen',
+  'SupportScreen',
+  'NotificationSettings',
+  'EditProfileScreen',
+  'NotificationScreen',
+  'explore',
+  'HomeScreen1',
+  'OffersScreen',
+  'LoyaltyQRCodeScreen',
+  'ProductsScreen'
+];
 
 const AppLayout = () => {
   return (
@@ -16,101 +69,30 @@ const AppLayout = () => {
         tabBarInactiveTintColor: COLORS.primaryGreyHex,
       }}
     >
-      {/* Visible Tab Screens */}
-      <Tabs.Screen
-        name="HomeScreen"
-        options={{
-          title: 'Home',
-          tabBarIcon: ({ color }) => (
-            <MaterialIcons name="home" size={24} color={color} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="MenuScreen"
-        options={{
-          title: 'Menu',
-          tabBarIcon: ({ color }) => (
-            <MaterialIcons name="restaurant-menu" size={24} color={color} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="CartScreen"
-        options={{
-          title: 'Cart',
-          tabBarIcon: ({ color }) => (
-            <MaterialIcons name="shopping-cart" size={24} color={color} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="LoyaltyScreen"
-        options={{
-          title: 'Loyalty',
-          tabBarIcon: ({ color }) => (
-            <MaterialIcons name="stars" size={24} color={color} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="OrderScreen"
-        options={{
-          title: 'Orders',
-          tabBarIcon: ({ color }) => (
-            <MaterialIcons name="receipt-long" size={24} color={color} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="ProfileScreen"
-        options={{
-          title: 'Profile',
-          tabBarIcon: ({ color }) => (
-            <MaterialIcons name="person" size={24} color={color} />
-          ),
-        }}
-      />
+      {/* Main tab screens */}
+      {mainTabs.map((tab) => (
+        <Tabs.Screen
+          key={tab.name}
+          name={tab.name}
+          options={{
+            title: tab.title,
+            tabBarIcon: ({ color, size = 24 }) => (
+              <MaterialIcons name={tab.icon} size={size} color={color} />
+            ),
+          }}
+        />
+      ))}
 
-      {/* Hidden Screens - Staff and Other Screens */}
-      <Tabs.Screen 
-        name="StaffQRScannerScreen" 
-        options={{ 
-          href: null,
-          headerShown: false,
-        }} 
-      />
-      <Tabs.Screen 
-        name="StaffLoyaltyScannerScreen" 
-        options={{ 
-          href: null,
-          headerShown: false,
-        }} 
-      />
-      <Tabs.Screen 
-        name="StaffRedemptionScreen" 
-        options={{ 
-          href: null,
-          headerShown: false,
-        }} 
-      />
-      <Tabs.Screen name="styles" options={{ href: null }} />
-      <Tabs.Screen name="ProductsScreen" options={{ href: null }} />
-      <Tabs.Screen name="OrderStatusScreen" options={{ href: null }} />
-      <Tabs.Screen name="FavoritesScreen" options={{ href: null }} />
-      <Tabs.Screen name="SearchScreen" options={{ href: null }} />
-      <Tabs.Screen name="products/[id]" options={{ href: null }} />
-      <Tabs.Screen name="category/[category]" options={{ href: null }} />
-      <Tabs.Screen name="AddressScreen" options={{ href: null }} />
-      <Tabs.Screen name="SupportScreen" options={{ href: null }} />
-      <Tabs.Screen name="NotificationSettings" options={{ href: null }} />
-      <Tabs.Screen name="EditProfileScreen" options={{ href: null }} />
-      <Tabs.Screen name="NotificationScreen" options={{ href: null }} />
-      <Tabs.Screen name="explore" options={{ href: null }} />
-      <Tabs.Screen name="HomeScreen1" options={{ href: null }} />
-      <Tabs.Screen name="OffersScreen" options={{ href: null }} />
-      <Tabs.Screen name="PaymentScreen" options={{ href: null }} />
-      <Tabs.Screen name="LoyaltyQRCodeScreen" options={{ href: null }} />
+      {/* Hidden screens - no tab bar buttons */}
+      {hiddenScreens.map((screenName) => (
+        <Tabs.Screen
+          key={screenName}
+          name={screenName}
+          options={{
+            href: null, // This properly hides the screen from tab bar
+          }}
+        />
+      ))}
     </Tabs>
   );
 };
@@ -123,11 +105,13 @@ const styles = StyleSheet.create({
     height: 60,
     elevation: 0,
     shadowOpacity: 0,
+    paddingBottom: 8,
+    paddingTop: 8,
   },
   tabBarLabel: {
     fontFamily: FONTFAMILY.poppins_medium,
     fontSize: 12,
-    marginBottom: 8,
+    marginTop: 4,
   },
 });
 

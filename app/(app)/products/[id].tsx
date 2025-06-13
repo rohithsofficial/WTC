@@ -177,31 +177,27 @@ export default function ProductDetails() {
                 <Text style={styles.roasted}>Roasted: {product.roasted}</Text>
               ) : null}
             </View>
-            <View style={styles.ratingContainer}>
-              <FontAwesome name="star" size={20} color="#f1c40f" />
-              <Text style={styles.rating}>{product.average_rating}</Text>
-              <Text style={styles.ratingCount}>({product.ratings_count})</Text>
-            </View>
           </View>
           <Text style={styles.price}>₹{product.prices[selectedSize]?.toFixed(2)}</Text>
           <Text style={styles.sectionTitle}>Size</Text>
           <View style={styles.sizesContainer}>
-            {sizes.map((size, index) => (
-              product.prices[index] && (
-                <TouchableOpacity
-                  key={size}
-                  style={[styles.sizeButton, selectedSize === index && styles.selectedSize]}
-                  onPress={() => setSelectedSize(index)}
-                >
-                  <Text style={[styles.sizeText, selectedSize === index && styles.selectedSizeText]}>
-                    {size}
-                  </Text>
-                  <Text style={[styles.priceText, selectedSize === index && styles.selectedSizeText]}>
-                    ₹{(product.prices[index] || 0).toFixed(2)}
-                  </Text>
-                </TouchableOpacity>
-              )
-            ))}
+           {sizes.map((size, index) => (
+  typeof product.prices[index] === 'number' && product.prices[index] > 0 && (
+    <TouchableOpacity
+      key={size}
+      style={[styles.sizeButton, selectedSize === index && styles.selectedSize]}
+      onPress={() => setSelectedSize(index)}
+    >
+      <Text style={[styles.sizeText, selectedSize === index && styles.selectedSizeText]}>
+        {size}
+      </Text>
+      <Text style={[styles.priceText, selectedSize === index && styles.selectedSizeText]}>
+        ₹{product.prices[index].toFixed(2)}
+      </Text>
+    </TouchableOpacity>
+  )
+))}
+
           </View>
           <Text style={styles.sectionTitle}>Quantity</Text>
           <View style={styles.quantityContainer}>
@@ -341,22 +337,6 @@ const styles = StyleSheet.create({
     color: '#8d6e63',
     marginTop: 2,
     fontWeight: '500',
-  },
-  ratingContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginLeft: 8,
-  },
-  rating: {
-    fontSize: 16,
-    color: '#222',
-    marginLeft: 4,
-    fontWeight: 'bold',
-  },
-  ratingCount: {
-    fontSize: 14,
-    color: '#888',
-    marginLeft: 2,
   },
   price: {
     fontSize: 22,

@@ -792,7 +792,7 @@ const HomeScreen = () => {
                   imagelink_square={item.imagelink_square}
                   name={item.name}
                   special_ingredient={item.special_ingredient}
-                  average_rating={item.average_rating}
+                  // average_rating={item.average_rating}
                   price={item.prices[0]}
                   buttonPressHandler={() => handleAddToCart(item)}
                 />

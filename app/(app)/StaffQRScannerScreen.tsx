@@ -16,7 +16,7 @@ import { CameraView, Camera } from 'expo-camera';
 import { useRouter } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
 import { COLORS, FONTFAMILY, FONTSIZE, SPACING, BORDERRADIUS } from '../../src/theme/theme';
-import { LoyaltyService } from '../../src/services/loyaltyService';
+import { loyaltyService } from '../../src/services/loyaltyService';
 import { doc, getDoc, addDoc, collection, updateDoc, arrayUnion, increment, Timestamp } from 'firebase/firestore';
 import { db } from '../../src/firebase/config';
 import { LOYALTY_CONFIG, TierConfig, MembershipTier } from '../../src/types/loyalty';

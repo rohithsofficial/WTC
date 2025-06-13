@@ -10,7 +10,7 @@ import {
   ActivityIndicator 
 } from 'react-native';
 import { LOYALTY_CONFIG, RedemptionCalculation } from '../types/loyalty';
-import { LoyaltyService } from '../services/loyaltyService';
+import { loyaltyService } from '../services/loyaltyService';
 import { COLORS } from '../theme/theme';
 
 interface LoyaltyRedemptionProps {

@@ -1,9 +1,14 @@
-// src/components/RedeemPointsInput.tsx
+// RedeemPointsInput.tsx
 import React, { useState, useEffect } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert } from 'react-native';
-import { COLORS, FONTFAMILY, FONTSIZE, SPACING, BORDERRADIUS } from '../theme/theme';
-import { LoyaltyService } from '../services/loyaltyService';
-import type { RedemptionCalculation } from '../types/loyalty';
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  StyleSheet,
+} from 'react-native';
+import { COLORS, FONTSIZE } from '../theme/theme';
+import { loyaltyService, RedemptionCalculation } from '../services/loyaltyService';
 
 interface RedeemPointsInputProps {
   availablePoints: number;
@@ -12,288 +17,203 @@ interface RedeemPointsInputProps {
   disabled?: boolean;
 }
 
-const RedeemPointsInput: React.FC<RedeemPointsInputProps> = ({
+export const RedeemPointsInput: React.FC<RedeemPointsInputProps> = ({
   availablePoints,
   orderAmount,
   onRedemptionChange,
-  disabled = false
+  disabled = false,
 }) => {
-  const [pointsInput, setPointsInput] = useState('');
+  const [pointsToRedeem, setPointsToRedeem] = useState<string>('');
   const [calculation, setCalculation] = useState<RedemptionCalculation>({
     pointsToRedeem: 0,
     discountAmount: 0,
     remainingAmount: orderAmount,
-    isValid: true
+    isValid: false,
   });
 
+  // Calculate redemption when points input changes
   useEffect(() => {
-    const points = parseInt(pointsInput) || 0;
-    const newCalculation = LoyaltyService.calculateRedemption(
-      points, 
-      availablePoints, 
-      orderAmount
+    const points = parseInt(pointsToRedeem) || 0;
+    const redemption = loyaltyService.calculateRedemption(
+      availablePoints,
+      orderAmount,
+      points
     );
-    setCalculation(newCalculation);
-    onRedemptionChange(newCalculation);
-  }, [pointsInput, availablePoints, orderAmount]);
+    setCalculation(redemption);
+    onRedemptionChange(redemption);
+  }, [pointsToRedeem, availablePoints, orderAmount]);
 
-  const handleMaxRedeem = () => {
-    const maxCalculation = LoyaltyService.calculateRedemption(
-      availablePoints, 
-      availablePoints, 
-      orderAmount
-    );
-    setPointsInput(maxCalculation.pointsToRedeem.toString());
+  // Handle points input change
+  const handlePointsChange = (value: string) => {
+    // Only allow numbers
+    if (/^\d*$/.test(value)) {
+      setPointsToRedeem(value);
+    }
   };
 
-  const canRedeem = availablePoints >= 50;
-
-  if (!canRedeem) {
-    return (
-      <View style={styles.container}>
-        <Text style={styles.disabledText}>
-          Minimum 50 points required for redemption
-        </Text>
-        <Text style={styles.disabledSubtext}>
-          You have {availablePoints} points
-        </Text>
-      </View>
-    );
-  }
+  // Quick select buttons
+  const quickSelectPoints = (percentage: number) => {
+    const maxPoints = Math.min(availablePoints, orderAmount);
+    const points = Math.floor(maxPoints * percentage);
+    setPointsToRedeem(points.toString());
+  };
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Redeem Points</Text>
-        <TouchableOpacity onPress={handleMaxRedeem} style={styles.maxButton}>
-          <Text style={styles.maxButtonText}>Use Max</Text>
+      <Text style={styles.title}>Redeem Points</Text>
+      
+      <View style={styles.inputContainer}>
+        <TextInput
+          style={styles.input}
+          value={pointsToRedeem}
+          onChangeText={handlePointsChange}
+          keyboardType="numeric"
+          placeholder="Enter points to redeem"
+          placeholderTextColor={COLORS.primaryLightGreyHex}
+          editable={!disabled}
+        />
+        <Text style={styles.pointsLabel}>points</Text>
+      </View>
+
+      <View style={styles.quickSelectContainer}>
+        <TouchableOpacity
+          style={styles.quickSelectButton}
+          onPress={() => quickSelectPoints(0.25)}
+          disabled={disabled}
+        >
+          <Text style={styles.quickSelectText}>25%</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.quickSelectButton}
+          onPress={() => quickSelectPoints(0.5)}
+          disabled={disabled}
+        >
+          <Text style={styles.quickSelectText}>50%</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.quickSelectButton}
+          onPress={() => quickSelectPoints(0.75)}
+          disabled={disabled}
+        >
+          <Text style={styles.quickSelectText}>75%</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.quickSelectButton}
+          onPress={() => quickSelectPoints(1)}
+          disabled={disabled}
+        >
+          <Text style={styles.quickSelectText}>100%</Text>
         </TouchableOpacity>
       </View>
 
-      <View style={styles.inputContainer}>
-        <TextInput
-          style={[styles.input, disabled && styles.disabledInput]}
-          placeholder="Enter points to redeem"
-          placeholderTextColor={COLORS.primaryLightGreyHex}
-          value={pointsInput}
-          onChangeText={setPointsInput}
-          keyboardType="numeric"
-          editable={!disabled}
-          maxLength={6}
-        />
-        <Text style={styles.availableText}>Available: {availablePoints}</Text>
+      <View style={styles.summaryContainer}>
+        <View style={styles.summaryRow}>
+          <Text style={styles.summaryLabel}>Available Points:</Text>
+          <Text style={styles.summaryValue}>{availablePoints}</Text>
+        </View>
+        <View style={styles.summaryRow}>
+          <Text style={styles.summaryLabel}>Points to Redeem:</Text>
+          <Text style={styles.summaryValue}>{calculation.pointsToRedeem}</Text>
+        </View>
+        <View style={styles.summaryRow}>
+          <Text style={styles.summaryLabel}>Discount Amount:</Text>
+          <Text style={[styles.summaryValue, styles.discountValue]}>
+            ₹{calculation.discountAmount}
+          </Text>
+        </View>
+        <View style={styles.summaryRow}>
+          <Text style={styles.summaryLabel}>Remaining Amount:</Text>
+          <Text style={styles.summaryValue}>₹{calculation.remainingAmount}</Text>
+        </View>
       </View>
 
-      {calculation.discountAmount > 0 && (
-        <View style={styles.summaryContainer}>
-          <View style={styles.summaryRow}>
-            <Text style={styles.summaryLabel}>Points to redeem:</Text>
-            <Text style={styles.summaryValue}>{calculation.pointsToRedeem}</Text>
-          </View>
-          <View style={styles.summaryRow}>
-            <Text style={styles.summaryLabel}>Discount:</Text>
-            <Text style={styles.discountValue}>-₹{calculation.discountAmount.toFixed(2)}</Text>
-          </View>
-          <View style={[styles.summaryRow, styles.totalRow]}>
-            <Text style={styles.totalLabel}>New Total:</Text>
-            <Text style={styles.totalValue}>₹{calculation.remainingAmount.toFixed(2)}</Text>
-          </View>
-        </View>
-      )}
-
-      {calculation.errorMessage && (
-        <Text style={styles.errorText}>{calculation.errorMessage}</Text>
+      {!calculation.isValid && pointsToRedeem !== '' && (
+        <Text style={styles.errorText}>
+          {calculation.pointsToRedeem > availablePoints
+            ? 'Not enough points available'
+            : calculation.pointsToRedeem > orderAmount
+            ? 'Cannot redeem more points than order amount'
+            : 'Please enter a valid number of points'}
+        </Text>
       )}
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  // LoyaltyPointsDisplay styles
   container: {
-    marginVertical: SPACING.space_10,
+    backgroundColor: COLORS.primaryDarkGreyHex,
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 20,
   },
-  gradientContainer: {
-    padding: SPACING.space_20,
-    borderRadius: BORDERRADIUS.radius_20,
-    marginHorizontal: SPACING.space_15,
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: SPACING.space_15,
-  },
-  pointsSection: {
-    flex: 1,
-  },
-  pointsLabel: {
-    fontFamily: FONTFAMILY.poppins_regular,
-    fontSize: FONTSIZE.size_12,
-    color: COLORS.primaryWhiteHex,
-    opacity: 0.8,
-  },
-  pointsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: SPACING.space_4,
-  },
-  pointsValue: {
-    fontFamily: FONTFAMILY.poppins_bold,
-    fontSize: FONTSIZE.size_24,
-    color: COLORS.primaryWhiteHex,
-    marginLeft: SPACING.space_8,
-  },
-  valueSection: {
-    alignItems: 'flex-end',
-  },
-  valueLabel: {
-    fontFamily: FONTFAMILY.poppins_regular,
-    fontSize: FONTSIZE.size_12,
-    color: COLORS.primaryWhiteHex,
-    opacity: 0.8,
-  },
-  valueAmount: {
-    fontFamily: FONTFAMILY.poppins_semibold,
-    fontSize: FONTSIZE.size_18,
-    color: COLORS.primaryWhiteHex,
-    marginTop: SPACING.space_4,
-  },
-  progressSection: {
-    marginTop: SPACING.space_10,
-  },
-  progressHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: SPACING.space_8,
-  },
-  progressText: {
-    fontFamily: FONTFAMILY.poppins_regular,
-    fontSize: FONTSIZE.size_12,
-    color: COLORS.primaryWhiteHex,
-    opacity: 0.9,
-  },
-  progressPercentage: {
-    fontFamily: FONTFAMILY.poppins_semibold,
-    fontSize: FONTSIZE.size_12,
-    color: COLORS.primaryWhiteHex,
-  },
-  progressBar: {
-    height: 6,
-    backgroundColor: 'rgba(255, 255, 255, 0.3)',
-    borderRadius: 3,
-    overflow: 'hidden',
-  },
-  progressFill: {
-    height: '100%',
-    backgroundColor: COLORS.primaryWhiteHex,
-    borderRadius: 3,
-  },
-
-  // RedeemPointsInput styles - reusing container
   title: {
-    fontFamily: FONTFAMILY.poppins_semibold,
-    fontSize: FONTSIZE.size_16,
+    fontSize: FONTSIZE.size_18,
+    fontWeight: '600',
     color: COLORS.primaryWhiteHex,
-  },
-  maxButton: {
-    paddingHorizontal: SPACING.space_12,
-    paddingVertical: SPACING.space_16,
-    backgroundColor: COLORS.primaryOrangeHex,
-    borderRadius: BORDERRADIUS.radius_8,
-  },
-  maxButtonText: {
-    fontFamily: FONTFAMILY.poppins_semibold,
-    fontSize: FONTSIZE.size_12,
-    color: COLORS.primaryWhiteHex,
+    marginBottom: 16,
   },
   inputContainer: {
-    marginVertical: SPACING.space_15,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.primaryBlackHex,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    marginBottom: 16,
   },
   input: {
-    backgroundColor: COLORS.primaryDarkGreyHex,
-    borderRadius: BORDERRADIUS.radius_10,
-    padding: SPACING.space_15,
-    fontFamily: FONTFAMILY.poppins_regular,
-    fontSize: FONTSIZE.size_16,
+    flex: 1,
+    height: 48,
     color: COLORS.primaryWhiteHex,
-    borderWidth: 1,
-    borderColor: COLORS.primaryGreyHex,
+    fontSize: FONTSIZE.size_16,
   },
-  disabledInput: {
-    opacity: 0.5,
-  },
-  availableText: {
-    fontFamily: FONTFAMILY.poppins_regular,
-    fontSize: FONTSIZE.size_12,
+  pointsLabel: {
     color: COLORS.primaryLightGreyHex,
-    marginTop: SPACING.space_8,
-    textAlign: 'right',
+    fontSize: FONTSIZE.size_14,
+  },
+  quickSelectContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+  },
+  quickSelectButton: {
+    backgroundColor: COLORS.primaryBlackHex,
+    borderRadius: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    minWidth: 60,
+    alignItems: 'center',
+  },
+  quickSelectText: {
+    color: COLORS.primaryWhiteHex,
+    fontSize: FONTSIZE.size_14,
+    fontWeight: '500',
   },
   summaryContainer: {
-    backgroundColor: COLORS.primaryDarkGreyHex,
-    borderRadius: BORDERRADIUS.radius_10,
-    padding: SPACING.space_15,
-    marginTop: SPACING.space_10,
+    backgroundColor: COLORS.primaryBlackHex,
+    borderRadius: 8,
+    padding: 12,
   },
   summaryRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: SPACING.space_8,
+    marginBottom: 8,
   },
   summaryLabel: {
-    fontFamily: FONTFAMILY.poppins_regular,
-    fontSize: FONTSIZE.size_14,
     color: COLORS.primaryLightGreyHex,
+    fontSize: FONTSIZE.size_14,
   },
   summaryValue: {
-    fontFamily: FONTFAMILY.poppins_medium,
-    fontSize: FONTSIZE.size_14,
     color: COLORS.primaryWhiteHex,
+    fontSize: FONTSIZE.size_14,
+    fontWeight: '500',
   },
   discountValue: {
-    fontFamily: FONTFAMILY.poppins_medium,
-    fontSize: FONTSIZE.size_14,
-    color: COLORS.primaryGreenHex,
-  },
-  totalRow: {
-    borderTopWidth: 1,
-    borderTopColor: COLORS.primaryGreyHex,
-    paddingTop: SPACING.space_8,
-    marginBottom: 0,
-  },
-  totalLabel: {
-    fontFamily: FONTFAMILY.poppins_semibold,
-    fontSize: FONTSIZE.size_16,
-    color: COLORS.primaryWhiteHex,
-  },
-  totalValue: {
-    fontFamily: FONTFAMILY.poppins_bold,
-    fontSize: FONTSIZE.size_16,
     color: COLORS.primaryOrangeHex,
   },
   errorText: {
-    fontFamily: FONTFAMILY.poppins_regular,
-    fontSize: FONTSIZE.size_12,
     color: COLORS.primaryRedHex,
-    marginTop: SPACING.space_8,
-    textAlign: 'center',
-  },
-  disabledText: {
-    fontFamily: FONTFAMILY.poppins_regular,
-    fontSize: FONTSIZE.size_14,
-    color: COLORS.primaryLightGreyHex,
-    textAlign: 'center',
-    padding: SPACING.space_20,
-  },
-  disabledSubtext: {
-    fontFamily: FONTFAMILY.poppins_regular,
     fontSize: FONTSIZE.size_12,
-    color: COLORS.primaryLightGreyHex,
-    textAlign: 'center',
-    marginTop: SPACING.space_4,
+    marginTop: 8,
   },
 });
-
-export { RedeemPointsInput };
