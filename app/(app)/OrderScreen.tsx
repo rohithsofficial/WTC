@@ -30,13 +30,24 @@ import { TabView, TabBar } from 'react-native-tab-view';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { CountdownCircleTimer } from 'react-native-countdown-circle-timer';
 
-interface orders{
+// Define interfaces
+interface OrderItem {
+  name: string;
+  quantity: number;
+  price: number;
+  size?: string;
+  description?: string;
+  category?: string;
+  customizations?: Customization[];
+}
+
+interface Order {
   id: string;
   userId: string;
-  items: any[];
+  items: OrderItem[];
   totalAmount: number;
   orderStatus: string;
-  orderType: string;
+  orderType: 'dinein' | 'takeaway' | 'offline';
   tableNumber?: string;
   paymentMode: string;
   createdAt: any;
@@ -44,16 +55,16 @@ interface orders{
   rating?: number;
   mood?: string;
   isRewardEarned?: boolean;
+  isOfflineOrder?: boolean;
 }
 
-type OrderCategory = 'all' | 'ongoing' | 'completed' | 'cancelled';
-type DateFilter = 'today' | 'week' | 'custom';
-
-// Add type for customization
 interface Customization {
   name: string;
   value: string;
 }
+
+type OrderCategory = 'all' | 'ongoing' | 'completed' | 'cancelled';
+type DateFilter = 'today' | 'week' | 'custom';
 
 const OrderScreen = () => {
   const router = useRouter();
@@ -107,7 +118,8 @@ const OrderScreen = () => {
         baristaNotes: doc.data().baristaNotes || '',
         rating: doc.data().rating || 0,
         mood: doc.data().mood || '',
-        isRewardEarned: doc.data().isRewardEarned || false
+        isRewardEarned: doc.data().isRewardEarned || false,
+        isOfflineOrder: doc.data().isOfflineOrder || false
       } as Order));
 
       setOrders(ordersList);
@@ -306,45 +318,58 @@ const OrderScreen = () => {
         <View style={styles.detailRow}>
           <Text style={styles.detailLabel}>Order Type</Text>
           <Text style={styles.detailValue}>
-            {order.orderType === 'dinein' ? `Table ${order.tableNumber}` : 'Takeaway'}
+            {order.orderType === 'dinein' 
+              ? `Table ${order.tableNumber}` 
+              : order.orderType === 'offline'
+                ? 'Offline Order'
+                : 'Takeaway'}
           </Text>
         </View>
 
         {/* Product Details Section */}
         <View style={styles.productsContainer}>
           <Text style={styles.productsTitle}>Ordered Items:</Text>
-          {order.items.map((item, index) => (
-            <View key={index} style={styles.productItem}>
-              <View style={styles.productHeader}>
-                <Text style={styles.productName}>{item.name}</Text>
-                <Text style={styles.productQuantity}>x{item.quantity}</Text>
-              </View>
-              
-              {item.size && (
-                <Text style={styles.productDetail}>Size: {item.size}</Text>
-              )}
-              
-              {item.customizations && item.customizations.length > 0 && (
-                <View style={styles.customizationsContainer}>
-                  <Text style={styles.customizationsLabel}>Customizations:</Text>
-                  {item.customizations.map((custom, idx) => (
-                    <Text key={idx} style={styles.customizationItem}>• {getCustomizationText(custom, idx)}</Text>
-                  ))}
-                </View>
-              )}
-              
-              <View style={styles.productPriceContainer}>
-                <Text style={styles.productPrice}>
-                  ₹{(item.price * item.quantity).toFixed(2)}
-                </Text>
-                {item.quantity > 1 && (
-                  <Text style={styles.unitPrice}>
-                    (₹{item.price.toFixed(2)} each)
-                  </Text>
-                )}
-              </View>
+          {order.isOfflineOrder ? (
+            <View style={styles.offlineOrderMessage}>
+              <MaterialIcons name="offline-pin" size={24} color={COLORS.primaryGreyHex} />
+              <Text style={styles.offlineOrderText}>
+                This was an offline order. Item details are not available.
+              </Text>
             </View>
-          ))}
+          ) : (
+            order.items.map((item: OrderItem, index: number) => (
+              <View key={index} style={styles.productItem}>
+                <View style={styles.productHeader}>
+                  <Text style={styles.productName}>{item.name}</Text>
+                  <Text style={styles.productQuantity}>x{item.quantity}</Text>
+                </View>
+                
+                {item.size && (
+                  <Text style={styles.productDetail}>Size: {item.size}</Text>
+                )}
+                
+                {item.customizations && item.customizations.length > 0 && (
+                  <View style={styles.customizationsContainer}>
+                    <Text style={styles.customizationsLabel}>Customizations:</Text>
+                    {item.customizations.map((custom: Customization, idx: number) => (
+                      <Text key={idx} style={styles.customizationItem}>• {getCustomizationText(custom, idx)}</Text>
+                    ))}
+                  </View>
+                )}
+                
+                <View style={styles.productPriceContainer}>
+                  <Text style={styles.productPrice}>
+                    ₹{(Number(item.price || 0) * item.quantity).toFixed(2)}
+                  </Text>
+                  {item.quantity > 1 && (
+                    <Text style={styles.unitPrice}>
+                      (₹{Number(item.price || 0).toFixed(2)} each)
+                    </Text>
+                  )}
+                </View>
+              </View>
+            ))
+          )}
         </View>
 
         <View style={styles.summaryDivider} />
@@ -472,30 +497,6 @@ const OrderScreen = () => {
       'steam_level_specific': 'Steam Level',
       'foam_density_level_specific': 'Foam Density Level',
       'milk_temp_level_specific': 'Milk Temperature Level',
-      'milk_type_specific_specific': 'Milk Type',
-      'milk_ratio_amount_specific': 'Milk Ratio Amount',
-      'sugar_type_specific_specific': 'Sugar Type',
-      'sugar_amount_specific_specific': 'Sugar Amount',
-      'ice_amount_specific_specific': 'Ice Amount',
-      'ice_type_specific_specific': 'Ice Type',
-      'topping_amount_specific_specific': 'Topping Amount',
-      'syrup_amount_specific_specific': 'Syrup Amount',
-      'syrup_type_specific_specific': 'Syrup Type',
-      'espresso_amount_specific_specific': 'Espresso Amount',
-      'foam_amount_specific_specific': 'Foam Amount',
-      'whip_amount_specific_specific': 'Whipped Cream Amount',
-      'drizzle_amount_specific_specific': 'Drizzle Amount',
-      'drizzle_type_specific_specific': 'Drizzle Type',
-      'spice_amount_specific_specific': 'Spice Amount',
-      'sweetness_amount_specific_specific': 'Sweetness Amount',
-      'strength_amount_specific_specific': 'Strength Amount',
-      'blend_type_specific_specific': 'Blend Type',
-      'roast_level_specific_specific': 'Roast Level',
-      'grind_size_specific_specific': 'Grind Size',
-      'water_ratio_specific_specific': 'Water Ratio',
-      'steam_level_specific_specific': 'Steam Level',
-      'foam_density_level_specific_specific': 'Foam Density Level',
-      'milk_temp_level_specific_specific': 'Milk Temperature Level',
     };
 
     return customMap[custom.name] || custom.name;
@@ -1122,6 +1123,21 @@ const styles = StyleSheet.create({
     height: 1,
     backgroundColor: '#E8E8D0',
     marginVertical: SPACING.space_16,
+  },
+  offlineOrderMessage: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F5F5F5',
+    padding: SPACING.space_16,
+    borderRadius: BORDERRADIUS.radius_10,
+    marginTop: SPACING.space_8,
+  },
+  offlineOrderText: {
+    fontFamily: FONTFAMILY.poppins_regular,
+    fontSize: FONTSIZE.size_14,
+    color: COLORS.primaryGreyHex,
+    marginLeft: SPACING.space_12,
+    flex: 1,
   },
 });
 

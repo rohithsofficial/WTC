@@ -79,11 +79,19 @@ const MenuScreen = () => {
   };
 
   const getProductPrice = (product: Product) => {
-    if (product.prices && product.prices.length > 0) {
-      return product.prices[0];
-    }
-    return 0;
-  };
+  if (product.prices && product.prices.length > 0) {
+    // Find the first valid price (not 0, null, or undefined)
+    const validPrice = product.prices.find(price => 
+      price !== null && 
+      price !== undefined && 
+      price > 0
+    );
+    
+    // Return the valid price or 0 as fallback
+    return validPrice || 0;
+  }
+  return 0;
+};
 
   // Filter products by search and category
   const filteredProducts = products.filter((p) => {
@@ -114,24 +122,27 @@ const MenuScreen = () => {
   });
 
   // Get featured products using the featured flag
-  const getFeaturedProducts = () => {
-    // First try to get products marked as featured
-    const featuredProducts = products.filter(product => product.featured === true);
-    
-    // If no featured products are explicitly marked, fallback to top 5 by price
-    if (featuredProducts.length === 0) {
-      return products
-        .slice()
-        .sort((a, b) => {
-          const priceA = getProductPrice(a);
-          const priceB = getProductPrice(b);
-          return priceB - priceA;
-        })
-        .slice(0, showAllFeatured ? undefined : 5);
-    }
-    
-    return showAllFeatured ? featuredProducts : featuredProducts.slice(0, 5);
-  };
+ const getFeaturedProducts = () => {
+  // Filter products marked as featured and have valid price > 0
+  const featuredProducts = products.filter(product => 
+    product.featured === true && getProductPrice(product) > 0
+  );
+
+  // If no valid featured products, fallback to top priced non-zero products
+  if (featuredProducts.length === 0) {
+    return products
+      .filter(product => getProductPrice(product) > 0) // remove zero-priced products
+      .sort((a, b) => {
+        const priceA = getProductPrice(a);
+        const priceB = getProductPrice(b);
+        return priceB - priceA;
+      })
+      .slice(0, showAllFeatured ? undefined : 5);
+  }
+
+  // Return top N featured products (with price > 0)
+  return showAllFeatured ? featuredProducts : featuredProducts.slice(0, 5);
+};
 
   // Apply filters and sorting
   const getFilteredAndSortedProducts = () => {
@@ -184,67 +195,93 @@ const MenuScreen = () => {
     </TouchableOpacity>
   );
 
-  const renderProductCard = ({ item }: { item: Product }) => (
-    <TouchableOpacity
-      style={styles.productCard}
-      onPress={() => router.push({
-        pathname: '/(app)/products/[id]',
-        params: { id: item.id }
-      })}
-    >
-      <Image
-        source={{ uri: item.imagelink_square }}
-        style={styles.productImage}
-        resizeMode="cover"
-      />
-      <TouchableOpacity
-        style={styles.favoriteButton}
-        onPress={() => {
-          if (isFavorite(item.id)) {
-            removeFromFavorites(item.id);
-          } else {
-            addToFavorites(item);
-          }
-        }}
-      >
-        <MaterialIcons
-          name={isFavorite(item.id) ? "favorite" : "favorite-border"}
-          size={24}
-          color={isFavorite(item.id) ? COLORS.primaryOrangeHex : COLORS.primaryGreyHex}
-        />
-      </TouchableOpacity>
-      <View style={styles.productInfo}>
-        <Text style={styles.productName} numberOfLines={1}>{item.name}</Text>
-        <Text style={styles.productCategory} numberOfLines={1}>{categories.find(c => c.id === item.categoryId)?.name || ''}</Text>
-        <Text style={styles.productPrice}>₹{getProductPrice(item).toFixed(2)}</Text>
-      </View>
-    </TouchableOpacity>
-  );
 
+
+  const renderProductCard = ({ item }: { item: Product }) => (
+  <TouchableOpacity
+    style={styles.productCard}
+    onPress={() => router.push({
+      pathname: '/(app)/products/[id]',
+      params: { id: item.id }
+    })}
+  >
+    <Image
+      source={getImageSource(item.imagelink_square)}
+      style={styles.productImage}
+      resizeMode="cover"
+      onError={() => {
+        // Optional: Handle image load error
+        console.log('Failed to load image for product:', item.name);
+      }}
+    />
+    <TouchableOpacity
+      style={styles.favoriteButton}
+      onPress={() => {
+        if (isFavorite(item.id)) {
+          removeFromFavorites(item.id);
+        } else {
+          addToFavorites(item);
+        }
+      }}
+    >
+      <MaterialIcons
+        name={isFavorite(item.id) ? "favorite" : "favorite-border"}
+        size={24}
+        color={isFavorite(item.id) ? COLORS.primaryOrangeHex : COLORS.primaryGreyHex}
+      />
+    </TouchableOpacity>
+    <View style={styles.productInfo}>
+      <Text style={styles.productName} numberOfLines={1}>{item.name}</Text>
+      <Text style={styles.productCategory} numberOfLines={1}>{categories.find(c => c.id === item.categoryId)?.name || ''}</Text>
+      <Text style={styles.productPrice}>₹{getProductPrice(item).toFixed(2)}</Text>
+    </View>
+  </TouchableOpacity>
+);
+
+ const getImageSource = (imageUrl: string | undefined | null): { uri: string } | number => {
+  if (imageUrl && imageUrl.trim() !== '') {
+    return { uri: imageUrl };
+  }
+  return require('../../assets/app_images/fallback.jpg');
+};
+      
   // --- FEATURED PRODUCT CARD ---
   const renderFeaturedProductCard = (product: Product) => (
-    <TouchableOpacity
-      key={product.id}
-      style={styles.featuredProductCard}
-      onPress={() => router.push({
-        pathname: '/(app)/products/[id]',
-        params: { id: product.id }
-      })}
-    >
-      <Image
-        source={{ uri: product.imagelink_square }}
-        style={styles.featuredProductImage}
-        resizeMode="cover"
-      />
-      <View style={styles.featuredProductBadge}>
-        <Text style={styles.featuredProductBadgeText}>Featured</Text>
-      </View>
-      <View style={styles.featuredProductInfo}>
-        <Text style={styles.featuredProductName} numberOfLines={1}>{product.name}</Text>
-        <Text style={styles.featuredProductPrice}>₹{getProductPrice(product).toFixed(2)}</Text>
-      </View>
-    </TouchableOpacity>
-  );
+  <TouchableOpacity
+    key={product.id}
+    style={styles.featuredProductCard}
+    onPress={() => router.push({
+      pathname: '/(app)/products/[id]',
+      params: { id: product.id }
+    })}
+  >
+    <Image
+      source={getImageSource(product.imagelink_square)}
+      style={styles.featuredProductImage}
+      resizeMode="cover"
+      onError={() => {
+        // Optional: Handle image load error
+        console.log('Failed to load featured image for product:', product.name);
+      }}
+    />
+    <View style={styles.featuredProductBadge}>
+      <Text style={styles.featuredProductBadgeText}>Featured</Text>
+    </View>
+    <View style={styles.featuredProductInfo}>
+      <Text style={styles.featuredProductName} numberOfLines={1}>{product.name}</Text>
+      <Text style={styles.featuredProductPrice}>
+        ₹{(getProductPrice(product) || product.offerprice || 0).toFixed(2)}
+      </Text>
+    </View>
+  </TouchableOpacity>
+);
+
+// Alternative approach using state for more control (optional)
+const [imageErrors, setImageErrors] = useState<Set<string>>(new Set());
+
+const handleImageError = (productId: string) => {
+  setImageErrors(prev => new Set([...prev, productId]));
+};
 
   const renderContent = () => {
     if (loading) {
@@ -286,6 +323,8 @@ const MenuScreen = () => {
       );
     }
     
+   
+
     const filteredAndSortedProducts = getFilteredAndSortedProducts();
     const groupedProducts = filteredAndSortedProducts.reduce((acc, product) => {
       const category = categories.find(c => c.id === product.categoryId);
@@ -297,6 +336,8 @@ const MenuScreen = () => {
       acc[categoryName].push(product);
       return acc;
     }, {} as Record<string, Product[]>);
+
+    
     
     return (
       <ScrollView>
@@ -306,9 +347,6 @@ const MenuScreen = () => {
             <View style={styles.featuredHeaderRow}>
               <Text style={styles.featuredTitle}>Featured</Text>
               <TouchableOpacity onPress={() => setShowAllFeatured(!showAllFeatured)}>
-                <Text style={styles.seeAllText}>
-                  {showAllFeatured ? 'Show Less' : 'See All'}
-                </Text>
               </TouchableOpacity>
             </View>
             <ScrollView

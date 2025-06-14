@@ -16,130 +16,48 @@ import { CameraView, Camera } from 'expo-camera';
 import { useRouter } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
 import { COLORS, FONTFAMILY, FONTSIZE, SPACING, BORDERRADIUS } from '../../src/theme/theme';
-import { loyaltyService } from '../../src/services/loyaltyService';
-import { doc, getDoc, addDoc, collection, updateDoc, arrayUnion, increment, Timestamp } from 'firebase/firestore';
-import { db } from '../../src/firebase/config';
-import { LOYALTY_CONFIG, TierConfig, MembershipTier } from '../../src/types/loyalty';
+import { doc, getDoc, addDoc, collection, updateDoc, increment, Timestamp } from 'firebase/firestore';
+import { db, auth } from '../../src/firebase/config';
+import { loyaltyService, ComprehensiveLoyaltyTransaction } from '../../src/services/loyaltyService';
+import { OrderData } from '../../src/types/offlineOrderData';
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
-interface RedemptionResult {
-  userName: string;
-  membershipTier: string;
-  orderAmount: number;
-  discountApplied: number;
-  pointsUsed: number;
-  remainingPoints: number;
-  pointsEarned: number;
-  finalAmount: number;
-  error?: string;
+interface CustomerData {
+  displayName: string;
+  userName?: string;
+  phoneNumber?: string;
+  email?: string;
+  loyaltyPoints: number;
+  membershipTier?: string;
+  totalSpent?: number;
+  totalOrders?: number;
+  isFirstTimeUser?: boolean;
 }
 
-interface CalculationPreview {
-  userName: string;
-  currentTier: MembershipTier;
-  currentPoints: number;
-  orderAmount: number;
-  discountAmount: number;
-  pointsUsed: number;
-  pointsEarned: number;
-  finalAmount: number;
-  remainingPoints: number;
-  newTier: MembershipTier;
-  tierUpgraded: boolean;
+interface OfflineTransactionPreview {
+  customerData: CustomerData;
+  purchaseAmount: number;
+  availablePoints: number;
+  maxRedeemableAmount: number;
+  finalPayableAmount: number;
+  pointsToRedeem: number;
+  pointsToEarn: number;
+  newPointsBalance: number;
 }
-
-// Correct tier discount calculation based on LOYALTY_CONFIG
-const calculateTierDiscount = (orderAmount: number, tier: MembershipTier, currentPoints: number) => {
-  const tierConfig = LOYALTY_CONFIG.tiers.find(t => t.name === tier);
-  
-  if (!tierConfig) {
-    return {
-      isEligible: false,
-      discountAmount: 0,
-      pointsRequired: 0,
-      reasonNotEligible: 'Invalid tier'
-    };
-  }
-
-  let discountAmount = 0;
-  let pointsRequired = 0;
-
-  switch (tier) {
-    case 'Bronze':
-      // Bronze: Flat ₹10 or 2% discount (max ₹20) when you have 100+ points
-      if (currentPoints < 100) {
-        return {
-          isEligible: false,
-          discountAmount: 0,
-          pointsRequired: 0,
-          reasonNotEligible: 'Minimum 100 points required for Bronze tier discount'
-        };
-      }
-      const percentageDiscount = orderAmount * 0.02;
-      const flatDiscount = 10;
-      discountAmount = Math.min(Math.max(percentageDiscount, flatDiscount), tierConfig.maxDiscountPerBill);
-      // Points required for this discount (using redemption rate)
-      pointsRequired = Math.ceil(discountAmount / LOYALTY_CONFIG.redemptionRate);
-      break;
-
-    case 'Silver':
-      // Silver: 5% discount (max ₹75)
-      discountAmount = Math.min(orderAmount * 0.05, tierConfig.maxDiscountPerBill);
-      pointsRequired = Math.ceil(discountAmount / LOYALTY_CONFIG.redemptionRate);
-      break;
-
-    case 'Gold':
-      // Gold: 10% discount (max ₹150)
-      discountAmount = Math.min(orderAmount * 0.10, tierConfig.maxDiscountPerBill);
-      pointsRequired = Math.ceil(discountAmount / LOYALTY_CONFIG.redemptionRate);
-      break;
-
-    case 'Platinum':
-      // Platinum: 15% + ₹50 combo discount (max ₹200)
-      const percentageDisc = orderAmount * 0.15;
-      const comboDiscount = percentageDisc + 50;
-      discountAmount = Math.min(comboDiscount, tierConfig.maxDiscountPerBill);
-      pointsRequired = Math.ceil(discountAmount / LOYALTY_CONFIG.redemptionRate);
-      break;
-
-    default:
-      return {
-        isEligible: false,
-        discountAmount: 0,
-        pointsRequired: 0,
-        reasonNotEligible: 'Unknown tier'
-      };
-  }
-
-  if (currentPoints < pointsRequired) {
-    return {
-      isEligible: false,
-      discountAmount: 0,
-      pointsRequired: 0,
-      reasonNotEligible: `Insufficient points. Need ${pointsRequired} points for ₹${discountAmount.toFixed(2)} discount`
-    };
-  }
-
-  return {
-    isEligible: true,
-    discountAmount: discountAmount,
-    pointsRequired: pointsRequired,
-    reasonNotEligible: null
-  };
-};
 
 const StaffQRScannerScreen = () => {
   const router = useRouter();
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
   const [scanned, setScanned] = useState(false);
-  const [orderAmount, setOrderAmount] = useState('');
+  const [purchaseAmount, setPurchaseAmount] = useState('');
   const [loading, setLoading] = useState(false);
-  const [redemptionResult, setRedemptionResult] = useState<RedemptionResult | null>(null);
   const [scannedUserId, setScannedUserId] = useState<string | null>(null);
+  const [customerData, setCustomerData] = useState<CustomerData | null>(null);
   const [showAmountInput, setShowAmountInput] = useState(false);
   const [showConfirmation, setShowConfirmation] = useState(false);
-  const [calculationPreview, setCalculationPreview] = useState<CalculationPreview | null>(null);
+  const [transactionPreview, setTransactionPreview] = useState<OfflineTransactionPreview | null>(null);
+  const [transactionComplete, setTransactionComplete] = useState(false);
   const [cameraKey, setCameraKey] = useState(0);
 
   useEffect(() => {
@@ -159,7 +77,6 @@ const StaffQRScannerScreen = () => {
     try {
       // Check if it's a JWT token
       if (data.includes('.')) {
-        // Simple JWT validation - in production, use proper JWT library
         const parts = data.split('.');
         if (parts.length === 3) {
           const payload = JSON.parse(atob(parts[1]));
@@ -179,7 +96,13 @@ const StaffQRScannerScreen = () => {
     }
   };
 
-  const handleBarCodeScanned = ({ type, data }: { type: string; data: string }) => {
+  const generateReadableOrderId = (): string => {
+    const timestamp = Date.now().toString().slice(-6);
+    const randomSuffix = Math.random().toString(36).substring(2, 5).toUpperCase();
+    return `OFF${timestamp}${randomSuffix}`;
+  };
+
+  const handleBarCodeScanned = async ({ type, data }: { type: string; data: string }) => {
     if (scanned) return;
     
     setScanned(true);
@@ -203,259 +126,245 @@ const StaffQRScannerScreen = () => {
       return;
     }
 
-    setScannedUserId(userId);
-    setShowAmountInput(true);
-  };
-
-  const calculatePreview = async () => {
-    if (!scannedUserId || !orderAmount) {
-      Alert.alert('Error', 'Please enter a valid order amount');
-      return;
-    }
-
-    const amount = parseFloat(orderAmount);
-    if (amount <= 0) {
-      Alert.alert('Error', 'Order amount must be greater than 0');
-      return;
-    }
-
-    // Check minimum order amount
-    if (amount < LOYALTY_CONFIG.minOrderAmount) {
-      Alert.alert('Error', `Minimum order amount is ₹${LOYALTY_CONFIG.minOrderAmount}`);
-      return;
-    }
-
     setLoading(true);
     try {
-      // Get user's current data
-      const userDocRef = doc(db, 'users', scannedUserId);
+      // Fetch customer data
+      const userDocRef = doc(db, 'users', userId);
       const userDoc = await getDoc(userDocRef);
       
       if (!userDoc.exists()) {
-        throw new Error('User profile not found');
+        throw new Error('Customer profile not found');
       }
 
-      const userData = userDoc.data();
-      const currentPoints = userData.loyaltyPoints || 0;
-      const membershipTier = userData.membershipTier || 'Bronze';
-      const userName = userData.displayName || 'Customer';
+      const userData = userDoc.data() as CustomerData;
+      const customer: CustomerData = {
+        displayName: userData.displayName || 'Customer',
+        userName: userData.userName || '',
+        phoneNumber: userData.phoneNumber || '',
+        email: userData.email || '',
+        loyaltyPoints: userData.loyaltyPoints || 0,
+        membershipTier: userData.membershipTier || 'Bronze',
+        totalSpent: userData.totalSpent || 0,
+        totalOrders: userData.totalOrders || 0,
+        isFirstTimeUser: userData.isFirstTimeUser ?? true
+      };
 
-      // Calculate tier discount using correct logic
-      const tierDiscount = calculateTierDiscount(amount, membershipTier, currentPoints);
-
-      let discountAmount = 0;
-      let pointsUsed = 0;
-
-      // Apply discount if eligible
-      if (tierDiscount.isEligible) {
-        discountAmount = tierDiscount.discountAmount;
-        pointsUsed = tierDiscount.pointsRequired || 0;
-      }
-
-      // Calculate final amount after discount
-      const finalAmount = amount - discountAmount;
-
-      // Get tier config for multiplier
-      const tierConfig = LOYALTY_CONFIG.tiers.find(t => t.name === membershipTier);
-      const multiplier = tierConfig?.pointMultiplier || 1;
-
-      // Calculate points earned on ORIGINAL amount (before discount) with multiplier
-      const basePointsEarned = Math.floor(amount * LOYALTY_CONFIG.pointsPerRupee);
-      const pointsEarned = Math.floor(basePointsEarned * multiplier);
-
-      // Calculate remaining points after transaction
-      const remainingPoints = Math.max(0, currentPoints + pointsEarned - pointsUsed);
-
-      // Determine new tier based on remaining points
-      const newTier = LOYALTY_CONFIG.tiers
-        .sort((a: TierConfig, b: TierConfig) => b.minPoints - a.minPoints)
-        .find((tier: TierConfig) => remainingPoints >= tier.minPoints)?.name || 'Bronze' as MembershipTier;
-
-      const tierUpgraded = newTier !== membershipTier;
-
-      setCalculationPreview({
-        userName,
-        currentTier: membershipTier,
-        currentPoints,
-        orderAmount: amount,
-        discountAmount,
-        pointsUsed,
-        pointsEarned,
-        finalAmount,
-        remainingPoints,
-        newTier,
-        tierUpgraded
-      });
-
-      setShowConfirmation(true);
+      setScannedUserId(userId);
+      setCustomerData(customer);
+      setShowAmountInput(true);
 
     } catch (error) {
-      console.error('Calculation error:', error);
+      console.error('Error fetching customer data:', error);
       Alert.alert(
         'Error',
-        error instanceof Error ? error.message : 'Failed to calculate preview'
+        'Failed to load customer data. Please try again.',
+        [
+          { 
+            text: 'Scan Again', 
+            onPress: () => {
+              setScanned(false);
+              refreshCamera();
+            }
+          },
+          { text: 'Cancel', onPress: () => router.back() },
+        ]
       );
     } finally {
       setLoading(false);
     }
   };
 
-  const createOfflineOrder = async (
-    userId: string,
-    amount: number,
-    finalAmount: number,
-    discountAmount: number,
-    pointsEarned: number,
-    pointsUsed: number,
-    userName: string
-  ) => {
+  const handleAmountSubmit = async () => {
+    if (!purchaseAmount || !customerData || !scannedUserId) {
+      Alert.alert('Error', 'Please enter a valid purchase amount');
+      return;
+    }
+
+    const amount = parseFloat(purchaseAmount);
+    if (amount <= 0) {
+      Alert.alert('Error', 'Purchase amount must be greater than 0');
+      return;
+    }
+
+    setLoading(true);
     try {
-      const currentDate = new Date();
-      const orderData = {
-        createdAt: currentDate,
-        discountAmount: discountAmount,
-        displayName: userName,
-        finalAmount: finalAmount,
-        items: [
-          {
-            id: "offline_item",
-            imagelink_square: "",
-            name: "Staff Transaction",
-            price: amount,
-            quantity: 1,
-            roasted: "",
-            size: "Regular",
-            special_ingredient: ""
-          }
-        ],
-        orderDate: currentDate.toISOString().split('T')[0],
-        orderStatus: "Completed",
-        orderType: "offline",
-        paymentMethod: "cash",
-        paymentMode: "cash",
-        paymentStatus: "paid",
-        pointsEarned: pointsEarned,
-        pointsRedeemed: pointsUsed,
-        status: "Completed",
-        tableNumber: "",
-        timestamp: currentDate,
-        totalAmount: amount,
-        type: "offline",
-        updatedAt: currentDate,
-        userId: userId
+      // Get user's current points using loyaltyService
+      const availablePoints = await loyaltyService.getUserPoints(scannedUserId);
+      
+      // Calculate maximum redeemable amount
+      const maxRedeemableAmount = loyaltyService.calculateMaxRedeemableAmount(availablePoints, amount);
+      
+      // Calculate points to earn on final amount (after discount)
+      const finalPayableAmount = amount - maxRedeemableAmount;
+      const pointsToEarn = loyaltyService.calculatePointsEarned(finalPayableAmount);
+      
+      // Calculate new points balance
+      const pointsToRedeem = maxRedeemableAmount; // 1 point = ₹1
+      const newPointsBalance = availablePoints - pointsToRedeem + pointsToEarn;
+
+      const preview: OfflineTransactionPreview = {
+        customerData,
+        purchaseAmount: amount,
+        availablePoints,
+        maxRedeemableAmount,
+        finalPayableAmount,
+        pointsToRedeem,
+        pointsToEarn,
+        newPointsBalance
       };
 
-      const orderRef = await addDoc(collection(db, 'orders'), orderData);
-      return orderRef.id;
+      setTransactionPreview(preview);
+      setShowConfirmation(true);
+      setShowAmountInput(false);
+
+    } catch (error) {
+      console.error('Error calculating discount:', error);
+      Alert.alert('Error', 'Failed to calculate discount. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const createOfflineOrder = async (preview: OfflineTransactionPreview): Promise<string> => {
+    try {
+      const currentTimestamp = Timestamp.now();
+      const orderId = generateReadableOrderId();
+      const autoGeneratedId = doc(collection(db, 'orders')).id;
+
+      const orderData: OrderData = {
+        id: autoGeneratedId,
+        orderId: orderId,
+        userId: scannedUserId!,
+        items: [], // Empty for offline orders
+        totalAmount: preview.purchaseAmount,
+        originalAmount: preview.purchaseAmount,
+        orderStatus: 'completed',
+        orderType: 'offline',
+        tableNumber: '',
+        paymentMode: 'offline',
+        paymentStatus: 'paid',
+        description: 'Offline order with points discount',
+        createdAt: currentTimestamp,
+        baristaNotes: '',
+        isRewardEarned: true,
+        rating: null,
+        mood: null,
+        discountType: 'points',
+        pointsUsed: preview.pointsToRedeem,
+        discountValue: preview.maxRedeemableAmount,
+        finalAmountPaid: preview.finalPayableAmount,
+        loyaltyDetails: {
+          pointsBeforeOrder: preview.availablePoints,
+          pointsRedeemed: preview.pointsToRedeem,
+          pointsAfterOrder: preview.newPointsBalance,
+          pointsEarned: preview.pointsToEarn,
+          discountApplied: {
+            type: 'points',
+            amount: preview.maxRedeemableAmount,
+            description: 'Redeemed user loyalty points'
+          },
+          amountDetails: {
+            originalAmount: preview.purchaseAmount,
+            discountAmount: preview.maxRedeemableAmount,
+            finalAmount: preview.finalPayableAmount
+          }
+        },
+        isOfflineOrder: true
+      };
+
+      // Save order to Firestore
+      await addDoc(collection(db, 'orders'), orderData);
+      
+      return orderId;
     } catch (error) {
       console.error('Error creating offline order:', error);
       throw error;
     }
   };
 
-  const updateUserProfile = async (
-    userId: string,
-    amount: number,
-    discountAmount: number,
-    pointsUsed: number,
-    pointsEarned: number,
-    orderId: string,
-    remainingPoints: number,
-    newTier: MembershipTier
-  ) => {
+  const createLoyaltyTransaction = async (preview: OfflineTransactionPreview, orderId: string) => {
     try {
-      const userDocRef = doc(db, 'users', userId);
-      const currentDate = Timestamp.now();
+      const currentTimestamp = Timestamp.now();
       
-      const transaction = {
-        amount: amount,
-        date: currentDate,
-        description: `Staff Transaction of ₹${amount.toFixed(2)} - Earned ${pointsEarned} points${pointsUsed > 0 ? ` - Redeemed ${pointsUsed} points` : ''}`,
+      const loyaltyTransactionData: Omit<ComprehensiveLoyaltyTransaction, 'id' | 'auditTrail'> & { createdBy: string } = {
+        userId: scannedUserId!,
+        userName: preview.customerData.displayName || preview.customerData.userName || 'Guest',
         orderId: orderId,
-        pointsEarned: pointsEarned,
-        pointsRedeemed: pointsUsed,
-        type: "offline"
+        userDetails: {
+          phoneNumber: preview.customerData.phoneNumber || '',
+          email: preview.customerData.email || '',
+          isFirstTimeUser: preview.customerData.isFirstTimeUser ?? true,
+          totalOrdersBeforeThis: preview.customerData.totalOrders || 0,
+          totalSpentBeforeThis: preview.customerData.totalSpent || 0
+        },
+        orderDetails: {
+          originalAmount: preview.purchaseAmount,
+          discountType: 'points',
+          discountAmount: preview.maxRedeemableAmount,
+          finalAmount: preview.finalPayableAmount,
+          items: [], // Empty for offline orders
+          orderType: 'offline',
+          tableNumber: '',
+          baristaNotes: ''
+        },
+        loyaltyDetails: {
+          pointsBeforeTransaction: preview.availablePoints,
+          pointsEarned: preview.pointsToEarn,
+          pointsRedeemed: preview.pointsToRedeem,
+          pointsAfterTransaction: preview.newPointsBalance,
+          earningRate: loyaltyService.pointsEarningRate
+        },
+        transactionDetails: {
+          timestamp: currentTimestamp,
+          paymentMode: 'offline',
+          status: 'completed',
+          staffId: auth.currentUser?.uid || 'system',
+          notes: 'Offline order with points discount'
+        },
+        createdBy: auth.currentUser?.uid || 'system'
       };
 
-      await updateDoc(userDocRef, {
-        orderCount: increment(1),
-        totalOrders: increment(1),
-        totalSpent: increment(amount),
-        loyaltyPoints: remainingPoints,
-        membershipTier: newTier,
-        totalPoints: increment(pointsEarned - pointsUsed),
-        transactions: arrayUnion(transaction),
-        updatedAt: currentDate
-      });
-
+      // Add the transaction to the loyaltyTransactions collection
+      await addDoc(collection(db, 'loyaltyTransactions'), loyaltyTransactionData);
     } catch (error) {
-      console.error('Error updating user profile:', error);
+      console.error('Error creating loyalty transaction:', error);
       throw error;
     }
   };
 
-  const processConfirmedTransaction = async () => {
-    if (!calculationPreview || !scannedUserId) return;
+  const updateCustomerProfile = async (preview: OfflineTransactionPreview) => {
+    try {
+      const userDocRef = doc(db, 'users', scannedUserId!);
+      const currentTimestamp = Timestamp.now();
+      
+      await updateDoc(userDocRef, {
+        totalOrders: increment(1),
+        totalSpent: increment(preview.finalPayableAmount),
+        loyaltyPoints: preview.newPointsBalance,
+        updatedAt: currentTimestamp
+      });
+
+    } catch (error) {
+      console.error('Error updating customer profile:', error);
+      throw error;
+    }
+  };
+
+  const processTransaction = async () => {
+    if (!transactionPreview || !scannedUserId) return;
 
     setLoading(true);
     try {
       // Create offline order
-      const orderId = await createOfflineOrder(
-        scannedUserId,
-        calculationPreview.orderAmount,
-        calculationPreview.finalAmount,
-        calculationPreview.discountAmount,
-        calculationPreview.pointsEarned,
-        calculationPreview.pointsUsed,
-        calculationPreview.userName
-      );
-
-      // Update user profile
-      await updateUserProfile(
-        scannedUserId,
-        calculationPreview.orderAmount,
-        calculationPreview.discountAmount,
-        calculationPreview.pointsUsed,
-        calculationPreview.pointsEarned,
-        orderId,
-        calculationPreview.remainingPoints,
-        calculationPreview.newTier
-      );
-
-      // Process loyalty service transaction
-      await LoyaltyService.processStaffTransaction(
-        scannedUserId,
-        calculationPreview.orderAmount,
-        calculationPreview.discountAmount,
-        calculationPreview.pointsUsed,
-        calculationPreview.pointsEarned,
-        calculationPreview.currentTier
-      );
-
-      // If tier upgraded, create tier upgrade transaction
-      if (calculationPreview.tierUpgraded) {
-        const tierUpgradeTransaction = {
-          userId: scannedUserId,
-          points: 0,
-          type: 'bonus',
-          description: `Congratulations! You've been upgraded to ${calculationPreview.newTier} tier!`,
-          timestamp: Timestamp.now()
-        };
-        
-        await addDoc(collection(db, 'loyaltyTransactions'), tierUpgradeTransaction);
-      }
-
-      setRedemptionResult({
-        userName: calculationPreview.userName,
-        membershipTier: calculationPreview.newTier,
-        orderAmount: calculationPreview.orderAmount,
-        discountApplied: calculationPreview.discountAmount,
-        pointsUsed: calculationPreview.pointsUsed,
-        remainingPoints: calculationPreview.remainingPoints,
-        pointsEarned: calculationPreview.pointsEarned,
-        finalAmount: calculationPreview.finalAmount
-      });
-
+      const orderId = await createOfflineOrder(transactionPreview);
+      
+      // Create loyalty transaction record
+      await createLoyaltyTransaction(transactionPreview, orderId);
+      
+      // Update customer profile
+      await updateCustomerProfile(transactionPreview);
+      
+      setTransactionComplete(true);
       setShowConfirmation(false);
 
     } catch (error) {
@@ -472,11 +381,12 @@ const StaffQRScannerScreen = () => {
   const resetScanner = () => {
     setScanned(false);
     setScannedUserId(null);
-    setOrderAmount('');
-    setRedemptionResult(null);
+    setCustomerData(null);
+    setPurchaseAmount('');
     setShowAmountInput(false);
     setShowConfirmation(false);
-    setCalculationPreview(null);
+    setTransactionPreview(null);
+    setTransactionComplete(false);
     refreshCamera();
   };
 
@@ -505,15 +415,16 @@ const StaffQRScannerScreen = () => {
         <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
           <MaterialIcons name="arrow-back" size={24} color={COLORS.primaryBlackHex} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Staff QR Scanner</Text>
-        {(showAmountInput || showConfirmation || redemptionResult) && (
+        <Text style={styles.headerTitle}>Offline Purchase</Text>
+        {(showAmountInput || showConfirmation || transactionComplete) && (
           <TouchableOpacity style={styles.resetButton} onPress={resetScanner}>
             <MaterialIcons name="refresh" size={24} color={COLORS.primaryOrangeHex} />
           </TouchableOpacity>
         )}
       </View>
       
-      {!showAmountInput && !showConfirmation && !redemptionResult && (
+      {/* Camera Scanner */}
+      {!showAmountInput && !showConfirmation && !transactionComplete && (
         <View style={styles.cameraContainer}>
           <CameraView
             key={cameraKey}
@@ -541,97 +452,104 @@ const StaffQRScannerScreen = () => {
         </View>
       )}
 
-      {showAmountInput && !showConfirmation && !redemptionResult && (
+      {/* Amount Input Screen */}
+      {showAmountInput && customerData && (
         <ScrollView style={styles.inputContainer}>
+          <View style={styles.customerInfoCard}>
+            <Text style={styles.customerName}>{customerData.displayName}</Text>
+            <View style={styles.pointsContainer}>
+              <MaterialIcons name="stars" size={20} color={COLORS.primaryOrangeHex} />
+              <Text style={styles.customerPoints}>Available Points: ₹{customerData.loyaltyPoints}</Text>
+            </View>
+            {customerData.membershipTier && (
+              <View style={styles.tierBadge}>
+                <Text style={styles.tierText}>{customerData.membershipTier}</Text>
+              </View>
+            )}
+          </View>
+
           <View style={styles.inputSection}>
-            <Text style={styles.inputLabel}>Enter Order Amount</Text>
+            <Text style={styles.inputLabel}>Enter Purchase Amount</Text>
             <View style={styles.amountInputContainer}>
               <Text style={styles.currencySymbol}>₹</Text>
               <TextInput
                 style={styles.amountInput}
-                value={orderAmount}
-                onChangeText={setOrderAmount}
+                value={purchaseAmount}
+                onChangeText={setPurchaseAmount}
                 placeholder="0.00"
                 keyboardType="numeric"
                 autoFocus={true}
               />
             </View>
             
+            <View style={styles.discountInfo}>
+              <MaterialIcons name="info-outline" size={16} color={COLORS.primaryOrangeHex} />
+              <Text style={styles.discountInfoText}>
+                Maximum points discount will be auto-applied
+              </Text>
+            </View>
+            
             <TouchableOpacity
               style={[styles.processButton, loading && styles.disabledButton]}
-              onPress={calculatePreview}
+              onPress={handleAmountSubmit}
               disabled={loading}
             >
               {loading ? (
                 <ActivityIndicator color={COLORS.primaryWhiteHex} />
               ) : (
-                <Text style={styles.processButtonText}>Calculate & Preview</Text>
+                <Text style={styles.processButtonText}>Calculate & Continue</Text>
               )}
             </TouchableOpacity>
           </View>
         </ScrollView>
       )}
 
-      {showConfirmation && calculationPreview && (
+      {/* Confirmation Screen */}
+      {showConfirmation && transactionPreview && (
         <ScrollView style={styles.confirmationContainer}>
           <View style={styles.confirmationCard}>
             <Text style={styles.confirmationTitle}>Confirm Transaction</Text>
             
             <View style={styles.customerInfo}>
-              <Text style={styles.customerName}>{calculationPreview.userName}</Text>
-              <View style={styles.tierBadge}>
-                <Text style={styles.tierText}>{calculationPreview.currentTier} Member</Text>
-              </View>
-              <Text style={styles.currentPoints}>Current Points: {calculationPreview.currentPoints}</Text>
+              <Text style={styles.customerName}>{transactionPreview.customerData.displayName}</Text>
+              <Text style={styles.currentPoints}>Available Points: ₹{transactionPreview.availablePoints}</Text>
             </View>
 
-            <View style={styles.calculationDetails}>
+            <View style={styles.transactionDetails}>
               <View style={styles.detailRow}>
-                <Text style={styles.detailLabel}>Order Amount:</Text>
-                <Text style={styles.detailValue}>₹{calculationPreview.orderAmount.toFixed(2)}</Text>
+                <Text style={styles.detailLabel}>Purchase Amount:</Text>
+                <Text style={styles.detailValue}>₹{transactionPreview.purchaseAmount.toFixed(2)}</Text>
               </View>
               
-              {calculationPreview.discountAmount > 0 && (
-                <>
-                  <View style={styles.detailRow}>
-                    <Text style={styles.detailLabel}>Tier Discount:</Text>
-                    <Text style={[styles.detailValue, styles.discountValue]}>
-                      -₹{calculationPreview.discountAmount.toFixed(2)}
-                    </Text>
-                  </View>
-                  <View style={styles.detailRow}>
-                    <Text style={styles.detailLabel}>Points Used:</Text>
-                    <Text style={styles.detailValue}>{calculationPreview.pointsUsed}</Text>
-                  </View>
-                </>
-              )}
-              
               <View style={styles.detailRow}>
-                <Text style={styles.detailLabel}>Points Earned:</Text>
-                <Text style={[styles.detailValue, styles.pointsEarnedValue]}>
-                  +{calculationPreview.pointsEarned}
+                <Text style={styles.detailLabel}>Max Points Discount:</Text>
+                <Text style={[styles.detailValue, styles.discountValue]}>
+                  -₹{transactionPreview.maxRedeemableAmount.toFixed(2)}
                 </Text>
               </View>
               
               <View style={styles.detailRow}>
-                <Text style={styles.detailLabel}>Remaining Points:</Text>
-                <Text style={styles.detailValue}>{calculationPreview.remainingPoints}</Text>
+                <Text style={styles.detailLabel}>Points to Use:</Text>
+                <Text style={styles.detailValue}>{transactionPreview.pointsToRedeem}</Text>
               </View>
-
-              {calculationPreview.tierUpgraded && (
-                <View style={styles.tierUpgradeNotice}>
-                  <MaterialIcons name="upgrade" size={20} color="#4CAF50" />
-                  <Text style={styles.tierUpgradeText}>
-                    Tier Upgrade: {calculationPreview.currentTier} → {calculationPreview.newTier}
-                  </Text>
-                </View>
-              )}
+              
+              <View style={styles.detailRow}>
+                <Text style={styles.detailLabel}>Points to Earn:</Text>
+                <Text style={[styles.detailValue, styles.pointsEarnedValue]}>
+                  +{transactionPreview.pointsToEarn}
+                </Text>
+              </View>
+              
+              <View style={styles.detailRow}>
+                <Text style={styles.detailLabel}>New Points Balance:</Text>
+                <Text style={styles.detailValue}>{transactionPreview.newPointsBalance}</Text>
+              </View>
               
               <View style={styles.divider} />
               <View style={styles.finalAmountRow}>
-                <Text style={styles.finalAmountLabel}>Final Amount:</Text>
+                <Text style={styles.finalAmountLabel}>Final Payable:</Text>
                 <Text style={styles.finalAmountValue}>
-                  ₹{calculationPreview.finalAmount.toFixed(2)}
+                  ₹{transactionPreview.finalPayableAmount.toFixed(2)}
                 </Text>
               </View>
             </View>
@@ -641,18 +559,18 @@ const StaffQRScannerScreen = () => {
                 style={styles.cancelButton} 
                 onPress={() => setShowConfirmation(false)}
               >
-                <Text style={styles.cancelButtonText}>Cancel</Text>
+                <Text style={styles.cancelButtonText}>Back</Text>
               </TouchableOpacity>
               
               <TouchableOpacity
                 style={[styles.confirmButton, loading && styles.disabledButton]}
-                onPress={processConfirmedTransaction}
+                onPress={processTransaction}
                 disabled={loading}
               >
                 {loading ? (
                   <ActivityIndicator color={COLORS.primaryWhiteHex} />
                 ) : (
-                  <Text style={styles.confirmButtonText}>Confirm Transaction</Text>
+                  <Text style={styles.confirmButtonText}>Complete Transaction</Text>
                 )}
               </TouchableOpacity>
             </View>
@@ -660,77 +578,60 @@ const StaffQRScannerScreen = () => {
         </ScrollView>
       )}
 
-      {redemptionResult && (
+      {/* Transaction Complete Screen */}
+      {transactionComplete && transactionPreview && (
         <ScrollView style={styles.resultContainer}>
           <View style={styles.resultCard}>
-            {redemptionResult.error ? (
-              <View style={styles.errorResult}>
-                <MaterialIcons name="error" size={48} color={COLORS.primaryRedHex} />
-                <Text style={styles.errorText}>{redemptionResult.error}</Text>
+            <View style={styles.successResult}>
+              <MaterialIcons name="check-circle" size={48} color="#4CAF50" />
+              <Text style={styles.successTitle}>Transaction Completed!</Text>
+              
+              <View style={styles.customerInfo}>
+                <Text style={styles.customerName}>{transactionPreview.customerData.displayName}</Text>
               </View>
-            ) : (
-              <View style={styles.successResult}>
-                <MaterialIcons name="check-circle" size={48} color="#4CAF50" />
-                <Text style={styles.successTitle}>Transaction Successful!</Text>
-                
-                <View style={styles.customerInfo}>
-                  <Text style={styles.customerName}>{redemptionResult.userName}</Text>
-                  <View style={styles.tierBadge}>
-                    <Text style={styles.tierText}>{redemptionResult.membershipTier} Member</Text>
-                  </View>
-                </View>
 
-                <View style={styles.transactionDetails}>
-                  <View style={styles.detailRow}>
-                    <Text style={styles.detailLabel}>Order Amount:</Text>
-                    <Text style={styles.detailValue}>₹{redemptionResult.orderAmount.toFixed(2)}</Text>
-                  </View>
-                  {redemptionResult.discountApplied > 0 && (
-                    <View style={styles.detailRow}>
-                      <Text style={styles.detailLabel}>Discount Applied:</Text>
-                      <Text style={[styles.detailValue, styles.discountValue]}>
-                        -₹{redemptionResult.discountApplied.toFixed(2)}
-                      </Text>
-                    </View>
-                  )}
-                  {redemptionResult.pointsUsed > 0 && (
-                    <View style={styles.detailRow}>
-                      <Text style={styles.detailLabel}>Points Used:</Text>
-                      <Text style={styles.detailValue}>{redemptionResult.pointsUsed}</Text>
-                    </View>
-                  )}
-                  <View style={styles.detailRow}>
-                    <Text style={styles.detailLabel}>Points Earned:</Text>
-                    <Text style={[styles.detailValue, styles.pointsEarnedValue]}>
-                      +{redemptionResult.pointsEarned}
-                    </Text>
-                  </View>
-                  <View style={styles.detailRow}>
-                    <Text style={styles.detailLabel}>Remaining Points:</Text>
-                    <Text style={styles.detailValue}>{redemptionResult.remainingPoints}</Text>
-                  </View>
-                  <View style={styles.divider} />
-                  <View style={styles.finalAmountRow}>
-                    <Text style={styles.finalAmountLabel}>Final Amount:</Text>
-                    <Text style={styles.finalAmountValue}>
-                      ₹{redemptionResult.finalAmount.toFixed(2)}
-                    </Text>
-                  </View>
+              <View style={styles.transactionSummary}>
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>Purchase Amount:</Text>
+                  <Text style={styles.detailValue}>₹{transactionPreview.purchaseAmount.toFixed(2)}</Text>
+                </View>
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>Points Discount:</Text>
+                  <Text style={[styles.detailValue, styles.discountValue]}>
+                    -₹{transactionPreview.maxRedeemableAmount.toFixed(2)}
+                  </Text>
+                </View>
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>Points Earned:</Text>
+                  <Text style={[styles.detailValue, styles.pointsEarnedValue]}>
+                    +{transactionPreview.pointsToEarn}
+                  </Text>
+                </View>
+                <View style={styles.divider} />
+                <View style={styles.finalAmountRow}>
+                  <Text style={styles.finalAmountLabel}>Amount Paid:</Text>
+                  <Text style={styles.finalAmountValue}>
+                    ₹{transactionPreview.finalPayableAmount.toFixed(2)}
+                  </Text>
                 </View>
               </View>
-            )}
+            </View>
             
-            <TouchableOpacity style={styles.newScanButton} onPress={resetScanner}>
-              <Text style={styles.newScanButtonText}>New Customer</Text>
+            <TouchableOpacity style={styles.newTransactionButton} onPress={resetScanner}>
+              <Text style={styles.newTransactionButtonText}>New Transaction</Text>
             </TouchableOpacity>
           </View>
         </ScrollView>
       )}
 
-      {!showAmountInput && !showConfirmation && !redemptionResult && (
+      {/* Instructions */}
+      {!showAmountInput && !showConfirmation && !transactionComplete && (
         <View style={styles.instructions}>
           <Text style={styles.instructionText}>
             Ask customer to show their loyalty QR code
+          </Text>
+          <Text style={styles.subInstructionText}>
+            Maximum point discount will be automatically applied
           </Text>
           {scanned && (
             <TouchableOpacity
@@ -749,7 +650,6 @@ const StaffQRScannerScreen = () => {
   );
 };
 
-// Add the missing styles for new components
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -821,6 +721,41 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: COLORS.primaryWhiteHex,
   },
+  customerInfoCard: {
+    backgroundColor: '#F8F9FA',
+    margin: SPACING.space_20,
+    padding: SPACING.space_20,
+    borderRadius: BORDERRADIUS.radius_15,
+    alignItems: 'center',
+  },
+  customerName: {
+    fontSize: FONTSIZE.size_20,
+    fontFamily: FONTFAMILY.poppins_semibold,
+    color: COLORS.primaryBlackHex,
+    marginBottom: SPACING.space_8,
+  },
+  pointsContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: SPACING.space_10,
+  },
+  customerPoints: {
+    fontSize: FONTSIZE.size_16,
+    fontFamily: FONTFAMILY.poppins_medium,
+    color: COLORS.primaryOrangeHex,
+    marginLeft: SPACING.space_8,
+  },
+  tierBadge: {
+    backgroundColor: COLORS.primaryOrangeHex,
+    paddingHorizontal: SPACING.space_15,
+    paddingVertical: SPACING.space_8,
+    borderRadius: BORDERRADIUS.radius_15,
+  },
+  tierText: {
+    fontSize: FONTSIZE.size_12,
+    fontFamily: FONTFAMILY.poppins_medium,
+    color: COLORS.primaryWhiteHex,
+  },
   inputSection: {
     padding: SPACING.space_20,
   },
@@ -837,7 +772,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#F5F5F5',
     borderRadius: BORDERRADIUS.radius_15,
     paddingHorizontal: SPACING.space_20,
-    marginBottom: SPACING.space_24,
+    marginBottom: SPACING.space_15,
     borderWidth: 2,
     borderColor: COLORS.primaryOrangeHex,
   },
@@ -854,6 +789,21 @@ const styles = StyleSheet.create({
     color: COLORS.primaryBlackHex,
     paddingVertical: SPACING.space_15,
   },
+  discountInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFF3E0',
+    padding: SPACING.space_12,
+    borderRadius: BORDERRADIUS.radius_10,
+    marginBottom: SPACING.space_20,
+  },
+  discountInfoText: {
+    fontSize: FONTSIZE.size_12,
+    fontFamily: FONTFAMILY.poppins_regular,
+    color: COLORS.primaryOrangeHex,
+    marginLeft: SPACING.space_8,
+    flex: 1,
+  },
   processButton: {
     backgroundColor: COLORS.primaryOrangeHex,
     paddingVertical: SPACING.space_15,
@@ -864,6 +814,123 @@ const styles = StyleSheet.create({
     opacity: 0.6,
   },
   processButtonText: {
+    fontSize: FONTSIZE.size_16,
+    fontFamily: FONTFAMILY.poppins_semibold,
+    color: COLORS.primaryWhiteHex,
+  },
+  confirmationContainer: {
+    flex: 1,
+    backgroundColor: COLORS.primaryWhiteHex,
+  },
+  confirmationCard: {
+    margin: SPACING.space_20,
+    backgroundColor: COLORS.primaryWhiteHex,
+    borderRadius: BORDERRADIUS.radius_20,
+    padding: SPACING.space_24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  confirmationTitle: {
+    fontSize: FONTSIZE.size_20,
+    fontFamily: FONTFAMILY.poppins_semibold,
+    color: COLORS.primaryBlackHex,
+    textAlign: 'center',
+    marginBottom: SPACING.space_20,
+  },
+  customerInfo: {
+    alignItems: 'center',
+    marginBottom: SPACING.space_20,
+    paddingBottom: SPACING.space_15,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E0E0E0',
+  },
+  currentPoints: {
+    fontSize: FONTSIZE.size_14,
+    fontFamily: FONTFAMILY.poppins_medium,
+    color: COLORS.primaryOrangeHex,
+    marginTop: SPACING.space_4,
+  },
+  transactionDetails: {
+    marginBottom: SPACING.space_24,
+  },
+  detailRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: SPACING.space_8,
+  },
+  detailLabel: {
+    fontSize: FONTSIZE.size_14,
+    fontFamily: FONTFAMILY.poppins_regular,
+    color: COLORS.primaryBlackHex,
+    flex: 1,
+  },
+  detailValue: {
+    fontSize: FONTSIZE.size_14,
+    fontFamily: FONTFAMILY.poppins_semibold,
+    color: COLORS.primaryBlackHex,
+    textAlign: 'right',
+  },
+  discountValue: {
+    color: '#4CAF50',
+  },
+  pointsEarnedValue: {
+    color: COLORS.primaryOrangeHex,
+  },
+  divider: {
+    height: 1,
+    backgroundColor: '#E0E0E0',
+    marginVertical: SPACING.space_12,
+  },
+  finalAmountRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: SPACING.space_12,
+    backgroundColor: '#F8F9FA',
+    paddingHorizontal: SPACING.space_15,
+    borderRadius: BORDERRADIUS.radius_10,
+    marginTop: SPACING.space_8,
+  },
+  finalAmountLabel: {
+    fontSize: FONTSIZE.size_16,
+    fontFamily: FONTFAMILY.poppins_semibold,
+    color: COLORS.primaryBlackHex,
+  },
+  finalAmountValue: {
+    fontSize: FONTSIZE.size_18,
+    fontFamily: FONTFAMILY.poppins_bold,
+    color: COLORS.primaryOrangeHex,
+  },
+  confirmationButtons: {
+    flexDirection: 'row',
+    gap: SPACING.space_12,
+  },
+  cancelButton: {
+    flex: 1,
+    backgroundColor: '#F5F5F5',
+    paddingVertical: SPACING.space_15,
+    borderRadius: BORDERRADIUS.radius_15,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+  },
+  cancelButtonText: {
+    fontSize: FONTSIZE.size_16,
+    fontFamily: FONTFAMILY.poppins_semibold,
+    color: COLORS.primaryBlackHex,
+  },
+  confirmButton: {
+    flex: 2,
+    backgroundColor: COLORS.primaryOrangeHex,
+    paddingVertical: SPACING.space_15,
+    borderRadius: BORDERRADIUS.radius_15,
+    alignItems: 'center',
+  },
+  confirmButtonText: {
     fontSize: FONTSIZE.size_16,
     fontFamily: FONTFAMILY.poppins_semibold,
     color: COLORS.primaryWhiteHex,
@@ -883,166 +950,94 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 5,
   },
-  errorResult: {
-    alignItems: 'center',
-    paddingVertical: SPACING.space_24,
-  },
-  errorText: {
-    fontSize: FONTSIZE.size_16,
-    fontFamily: FONTFAMILY.poppins_medium,
-    color: COLORS.primaryRedHex,
-    textAlign: 'center',
-    marginTop: SPACING.space_15,
-  },
   successResult: {
     alignItems: 'center',
   },
   successTitle: {
-    fontSize: FONTSIZE.size_20,
+    fontSize: FONTSIZE.size_22,
     fontFamily: FONTFAMILY.poppins_semibold,
     color: '#4CAF50',
-    marginTop: SPACING.space_10,
+    textAlign: 'center',
+    marginTop: SPACING.space_15,
     marginBottom: SPACING.space_20,
   },
-  customerInfo: {
-    alignItems: 'center',
+  transactionSummary: {
+    width: '100%',
     marginBottom: SPACING.space_24,
   },
-  customerName: {
-    fontSize: FONTSIZE.size_20,
-    fontFamily: FONTFAMILY.poppins_semibold,
-    color: COLORS.primaryBlackHex,
-    marginBottom: SPACING.space_8,
-  },
-  tierBadge: {
-    backgroundColor: COLORS.primaryOrangeHex,
-    paddingHorizontal: SPACING.space_15,
-    paddingVertical: SPACING.space_8,
-    borderRadius: BORDERRADIUS.radius_15,
-  },
-  tierText: {
-    fontSize: FONTSIZE.size_14,
-    fontFamily: FONTFAMILY.poppins_medium,
-    color: COLORS.primaryWhiteHex,
-  },
-  transactionDetails: {
-    width: '100%',
-  },
-  detailRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: SPACING.space_8,
-  },
-  detailLabel: {
-    fontSize: FONTSIZE.size_14,
-    fontFamily: FONTFAMILY.poppins_regular,
-    color: COLORS.primaryBlackHex,
-  },
-  detailValue: {
-    fontSize: FONTSIZE.size_14,
-    fontFamily: FONTFAMILY.poppins_semibold,
-    color: COLORS.primaryBlackHex,
-  },
-  discountValue: {
-    color: '#4CAF50',
-  },
-  pointsEarnedValue: {
-    color: COLORS.primaryOrangeHex,
-  },
-  divider: {
-    height: 1,
-    backgroundColor: '#E5E5E5',
-    marginVertical: SPACING.space_15,
-  },
-  finalAmountRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: SPACING.space_10,
-    backgroundColor: '#F5F5F5',
-    paddingHorizontal: SPACING.space_15,
-    borderRadius: BORDERRADIUS.radius_10,
-  },
-  finalAmountLabel: {
-    fontSize: FONTSIZE.size_16,
-    fontFamily: FONTFAMILY.poppins_semibold,
-    color: COLORS.primaryBlackHex,
-  },
-  finalAmountValue: {
-    fontSize: FONTSIZE.size_18,
-    fontFamily: FONTFAMILY.poppins_bold,
-    color: COLORS.primaryOrangeHex,
-  },
-  newScanButton: {
+  newTransactionButton: {
     backgroundColor: COLORS.primaryOrangeHex,
     paddingVertical: SPACING.space_15,
     borderRadius: BORDERRADIUS.radius_15,
     alignItems: 'center',
-    marginTop: SPACING.space_24,
+    marginTop: SPACING.space_20,
   },
-  newScanButtonText: {
+  newTransactionButtonText: {
     fontSize: FONTSIZE.size_16,
     fontFamily: FONTFAMILY.poppins_semibold,
     color: COLORS.primaryWhiteHex,
   },
   instructions: {
-    padding: SPACING.space_20,
+    position: 'absolute',
+    bottom: SPACING.space_30,
+    left: SPACING.space_20,
+    right: SPACING.space_20,
     alignItems: 'center',
-    backgroundColor: COLORS.primaryWhiteHex,
   },
   instructionText: {
+    color: COLORS.primaryWhiteHex,
     fontSize: FONTSIZE.size_16,
-    fontFamily: FONTFAMILY.poppins_regular,
-    color: COLORS.primaryBlackHex,
+    fontFamily: FONTFAMILY.poppins_semibold,
     textAlign: 'center',
-    marginBottom: SPACING.space_10,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    paddingHorizontal: SPACING.space_20,
+    paddingVertical: SPACING.space_12,
+    borderRadius: BORDERRADIUS.radius_15,
+    marginBottom: SPACING.space_8,
+  },
+  subInstructionText: {
+    color: COLORS.primaryWhiteHex,
+    fontSize: FONTSIZE.size_12,
+    fontFamily: FONTFAMILY.poppins_regular,
+    textAlign: 'center',
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    paddingHorizontal: SPACING.space_15,
+    paddingVertical: SPACING.space_8,
+    borderRadius: BORDERRADIUS.radius_10,
   },
   scanAgainButton: {
     backgroundColor: COLORS.primaryOrangeHex,
-    paddingVertical: SPACING.space_10,
     paddingHorizontal: SPACING.space_20,
-    borderRadius: BORDERRADIUS.radius_10,
+    paddingVertical: SPACING.space_10,
+    borderRadius: BORDERRADIUS.radius_15,
+    marginTop: SPACING.space_15,
   },
   scanAgainText: {
     color: COLORS.primaryWhiteHex,
     fontSize: FONTSIZE.size_14,
     fontFamily: FONTFAMILY.poppins_medium,
+    textAlign: 'center',
   },
   text: {
-    fontSize: FONTSIZE.size_18,
+    fontSize: FONTSIZE.size_16,
     fontFamily: FONTFAMILY.poppins_regular,
-    color: COLORS.primaryBlackHex,
+    color: COLORS.primaryWhiteHex,
     textAlign: 'center',
-    marginBottom: SPACING.space_20,
+    margin: SPACING.space_20,
   },
   button: {
     backgroundColor: COLORS.primaryOrangeHex,
-    paddingVertical: SPACING.space_12,
+    paddingVertical: SPACING.space_15,
     paddingHorizontal: SPACING.space_30,
     borderRadius: BORDERRADIUS.radius_15,
     alignSelf: 'center',
+    margin: SPACING.space_20,
   },
   buttonText: {
-    color: COLORS.primaryWhiteHex,
     fontSize: FONTSIZE.size_16,
-    fontFamily: FONTFAMILY.poppins_medium,
-  },
-  refreshButton: {
-    position: 'absolute',
-    top: SPACING.space_20,
-    right: SPACING.space_20,
-    backgroundColor: COLORS.primaryOrangeHex,
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
-    elevation: 5,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
+    fontFamily: FONTFAMILY.poppins_semibold,
+    color: COLORS.primaryWhiteHex,
+    textAlign: 'center',
   },
 });
 

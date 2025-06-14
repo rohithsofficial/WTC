@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useReducer, ReactNode } from 'react';
+import React, { createContext, useContext, useReducer, ReactNode, useCallback } from 'react';
 
 interface CartItem {
   id: string;
@@ -118,6 +118,7 @@ const calculateTotal = (items: CartItem[]): number => {
 interface CartContextType {
   state: CartState;
   dispatch: React.Dispatch<CartAction>;
+  clearCart: () => void;
 }
 
 const CartContext = createContext<CartContextType | undefined>(undefined);
@@ -137,8 +138,12 @@ interface CartProviderProps {
 export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
   const [state, dispatch] = useReducer(cartReducer, initialState);
 
+  const clearCart = useCallback(() => {
+    dispatch({ type: 'CLEAR_CART' });
+  }, []);
+
   return (
-    <CartContext.Provider value={{ state, dispatch }}>
+    <CartContext.Provider value={{ state, dispatch, clearCart }}>
       {children}
     </CartContext.Provider>
   );

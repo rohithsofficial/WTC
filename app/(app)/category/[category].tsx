@@ -98,6 +98,15 @@ const ProductCategoryScreen = () => {
     return filtered;
   };
 
+
+  // Helper function to get image source with fallback
+const getImageSource = (imageUrl: string | undefined | null): { uri: string } | number => {
+  if (imageUrl && imageUrl.trim() !== '') {
+    return { uri: imageUrl };
+  }
+  return require('../../../assets/app_images/fallback.jpg');
+};
+
   // --- Featured Product Card ---
   const renderFeaturedProductCard = (product: Product) => (
     <TouchableOpacity
@@ -109,7 +118,7 @@ const ProductCategoryScreen = () => {
       })}
     >
       <Image
-        source={{ uri: product.imagelink_square }}
+        source={getImageSource(product.imagelink_square)}
         style={styles.featuredProductImage}
         resizeMode="cover"
       />
@@ -312,7 +321,7 @@ const ProductCategoryScreen = () => {
               })}
             >
               <Image
-                source={{ uri: item.imagelink_square }}
+                source={getImageSource(item.imagelink_square)}
                 style={styles.productImage}
                 resizeMode="cover"
               />

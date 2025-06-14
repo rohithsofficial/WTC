@@ -14,11 +14,13 @@ import {
   RedemptionCalculation, 
   DiscountCalculation, 
   OrderBreakdown,
-  UserLoyaltyProfile 
+  UserLoyaltyProfile
 } from '../../src/services/loyaltyService';
+import { OrderData } from '../../src/types/loyalty';
 import { RedeemPointsInput } from '../../src/components/RedeemPointsInput';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCart } from '../../src/store/CartContext';
+import { Timestamp } from 'firebase/firestore';
 
 interface PaymentScreenProps {
   navigation?: any;
@@ -286,6 +288,9 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({ navigation }) => {
       
       if (paymentSuccess) {
         try {
+          // Generate order ID first
+          const orderId = generateOrderId(userName);
+
           // Process loyalty transaction
           const loyaltyResult = await loyaltyService.processOrder(
             userId,
@@ -296,10 +301,8 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({ navigation }) => {
             isFirstTimeUser
           );
 
-          const orderId = generateOrderId(userName);
-
           // Create transaction record with order information
-          const orderData = await loyaltyService.createTransactionRecord(
+          const orderDataRecord = await loyaltyService.createTransactionRecord(
             orderId,
             userId,
             {
@@ -315,7 +318,10 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({ navigation }) => {
               description: effectiveDiscountType === 'first_time' ? 'First time user discount' :
                          effectiveDiscountType === 'flat_percentage' ? '10% flat discount' :
                          effectiveDiscountType === 'points' ? 'Points redemption' : 'No discount',
-              items: parsedState.items || [],
+              items: parsedState.items.map((item: { price: string | number; [key: string]: any }) => ({
+                ...item,
+                price: Number(item.price) || 0 // Ensure price is a number
+              })),
               orderType: parsedState.orderType || 'regular',
               tableNumber: parsedState.tableNumber || '',
               baristaNotes: parsedState.baristaNotes || ''
@@ -330,7 +336,7 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({ navigation }) => {
             pathname: '/(app)/OrderStatusScreen',
             params: {
               orderId: orderId,
-              orderData: JSON.stringify(orderData),
+              orderData: JSON.stringify(orderDataRecord),
               success: 'true'
             }
           });

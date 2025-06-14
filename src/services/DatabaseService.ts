@@ -79,8 +79,11 @@ class DatabaseService {
    */
   static async recordSuccessfulPayment(
     orderId: string, 
-    paymentResult: PaymentResult,
-    paymentDetails: any
+    paymentDetails: {
+      type: string;
+      pointsRedeemed: number;
+      pointsEarned: number;
+    }
   ): Promise<void> {
     try {
       console.log('💳 Recording successful payment for order:', orderId);
@@ -96,35 +99,13 @@ class DatabaseService {
 
         const orderData = orderDoc.data() as OrderRecord;
 
-        // Create payment record
-        const paymentRecord: PaymentRecord = {
-          orderId,
-          merchantTransactionId: paymentDetails.merchantTransactionId || '',
-          phonePeTransactionId: paymentResult.paymentId || '',
-          userId: orderData.userId,
-          amount: orderData.totalAmount,
-          currency: 'INR',
-          paymentMethod: orderData.paymentMode,
-          paymentStatus: 'SUCCESS',
-          paymentTimestamp: Timestamp.now(),
-          paymentDetails: paymentResult.data,
-          createdAt: Timestamp.now(),
-          updatedAt: Timestamp.now(),
-        };
-
-        // Add payment record
-        const paymentRef = doc(collection(db, "payments"));
-        transaction.set(paymentRef, paymentRecord);
-
         // Update order with payment info
         transaction.update(orderRef, {
-          paymentId: paymentRef.id,
           paymentStatus: 'Completed',
           orderStatus: 'CONFIRMED',
           paymentTimestamp: Timestamp.now(),
           updatedAt: Timestamp.now(),
-          phonePeTransactionId: paymentResult.paymentId,
-          paymentDetails: paymentResult.data
+          paymentDetails: paymentDetails
         });
 
         // Update user's order count (for analytics)

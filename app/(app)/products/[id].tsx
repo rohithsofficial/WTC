@@ -39,7 +39,22 @@ export default function ProductDetails() {
       try {
         setLoading(true);
         const productData = await getProductById(id as string);
-        setProduct(productData);
+        if (productData) {
+          setProduct(productData);
+
+          // Auto-select logic
+          if (Array.isArray(productData.prices)) {
+            const validIndexes = productData.prices
+              .map((price, index) => (typeof price === 'number' && price > 0 ? index : null))
+              .filter(index => index !== null);
+
+            if (validIndexes.length === 1) {
+              setSelectedSize(validIndexes[0]);
+            } else if (validIndexes.length > 1) {
+              setSelectedSize(validIndexes[0]); // Default to the first valid size
+            }
+          }
+        }
       } catch (error) {
         console.error('Error fetching product:', error);
       } finally {
@@ -58,7 +73,7 @@ export default function ProductDetails() {
       imagelink_square: product.imagelink_square,
       special_ingredient: product.special_ingredient,
       roasted: product.roasted,
-      price: product.prices[selectedSize],
+      price: product.prices[selectedSize].toString(), // Convert to string
       size: sizes[selectedSize],
       quantity: quantity,
     };
@@ -77,7 +92,16 @@ export default function ProductDetails() {
       if (isFavorite(product.id)) {
         await removeFromFavorites(product.id);
       } else {
-        await addToFavorites(product);
+        // Convert the product to match the expected interface
+        const favoriteProduct = {
+          ...product,
+          prices: product.prices.map((price, index) => ({
+            size: ['Small', 'Medium', 'Large'][index],
+            price: price.toString(),
+            currency: '₹'
+          }))
+        };
+        await addToFavorites(favoriteProduct);
       }
     } catch (error) {
       console.error('Error toggling favorite:', error);
@@ -120,7 +144,7 @@ export default function ProductDetails() {
   }
 
   const sizes = ['Small', 'Medium', 'Large'];
-
+const fallbackImage = require('../../../assets/app_images/fallback.jpg');
   return (
     <SafeAreaView style={styles.screen} edges={["top"]}>
       {showSuccess && (
@@ -142,13 +166,23 @@ export default function ProductDetails() {
       />
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         <View style={styles.imageContainer}>
-          <Animatable.Image
-            animation="fadeInDown"
-            delay={200}
-            duration={900}
-            source={{ uri: product.imagelink_square }}
-            style={styles.image}
-          />
+          {product.imagelink_square && product.imagelink_square.trim() !== '' ? (
+  <Animatable.Image
+    animation="fadeInDown"
+    delay={200}
+    duration={900}
+    source={{ uri: product.imagelink_square }}
+    style={styles.image}
+  />
+) : (
+  <Animatable.Image
+    animation="fadeInDown"
+    delay={200}
+    duration={900}
+    source={fallbackImage}
+    style={styles.image}
+  />
+)}
           <TouchableOpacity
             style={styles.favoriteButton}
             onPress={handleToggleFavorite}
@@ -178,11 +212,19 @@ export default function ProductDetails() {
               ) : null}
             </View>
           </View>
-          <Text style={styles.price}>₹{product.prices[selectedSize]?.toFixed(2)}</Text>
+          {typeof product.prices[selectedSize] === 'number' && product.prices[selectedSize] > 0 && (
+  <Text style={styles.price}>
+    ₹{product.prices[selectedSize].toFixed(2)}
+  </Text>
+)}
           <Text style={styles.sectionTitle}>Size</Text>
           <View style={styles.sizesContainer}>
-           {sizes.map((size, index) => (
-  typeof product.prices[index] === 'number' && product.prices[index] > 0 && (
+          {sizes.map((size, index) => {
+  const price = product.prices?.[index];
+
+  if (typeof price !== 'number' || price <= 0) return null;
+
+  return (
     <TouchableOpacity
       key={size}
       style={[styles.sizeButton, selectedSize === index && styles.selectedSize]}
@@ -192,12 +234,11 @@ export default function ProductDetails() {
         {size}
       </Text>
       <Text style={[styles.priceText, selectedSize === index && styles.selectedSizeText]}>
-        ₹{product.prices[index].toFixed(2)}
+        ₹{price.toFixed(2)}
       </Text>
     </TouchableOpacity>
-  )
-))}
-
+  );
+})}
           </View>
           <Text style={styles.sectionTitle}>Quantity</Text>
           <View style={styles.quantityContainer}>

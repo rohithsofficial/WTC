@@ -24,6 +24,7 @@ import {
   BORDERRADIUS,
 } from "../../src/theme/theme";
 import MapView, { Marker, PROVIDER_GOOGLE, Region } from "react-native-maps";
+import { getImageBackgroundSource } from '../../src/utils/imageUtils';
 
 const { width } = Dimensions.get("window");
 
@@ -316,9 +317,8 @@ export default function ExploreScreen() {
       {/* Header Section */}
       <View style={styles.headerContainer}>
         <ImageBackground
-          source={{ uri: "https://example.com/cafe-header.jpg" }}
+          source={getImageBackgroundSource(null)}
           style={styles.headerImage}
-          // defaultSource={require("../../src/assets/coffee_assets/americano/portrait/americano_pic_1_portrait.png")}
         >
           <View style={styles.headerOverlay} />
           <View style={styles.headerContent}>

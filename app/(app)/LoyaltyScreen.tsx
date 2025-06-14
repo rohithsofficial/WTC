@@ -17,6 +17,25 @@ import { loyaltyService, UserLoyaltyProfile, ComprehensiveLoyaltyTransaction } f
 import { auth } from '../../src/firebase/config';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Timestamp } from 'firebase/firestore';
+import { LoyaltyUser } from '../../src/types/loyalty';
+
+const isTimestamp = (value: unknown): value is Timestamp => {
+  return typeof value === 'object' && value !== null && 'toMillis' in value && 'toDate' in value;
+};
+
+const isDate = (value: unknown): value is Date => {
+  return value instanceof Date;
+};
+
+const getTimestampValue = (ts: unknown): number => {
+  if (isTimestamp(ts)) {
+    return ts.toMillis();
+  }
+  if (isDate(ts)) {
+    return ts.getTime();
+  }
+  return new Date(ts as string).getTime();
+};
 
 const LoyaltyScreen = () => {
   const router = useRouter();
@@ -50,7 +69,6 @@ const LoyaltyScreen = () => {
         
         setUserProfile(processedProfile);
         setPoints(processedProfile.availablePoints || 0);
-
         // Fetch loyalty transaction history from loyaltyTransactions collection
         try {
           // Get transactions from loyaltyTransactions collection
@@ -58,27 +76,35 @@ const LoyaltyScreen = () => {
           
           if (transactions && Array.isArray(transactions) && transactions.length > 0) {
             // Process transactions - ensure proper date handling
-            const processedTransactions = transactions.map(transaction => ({
-              ...transaction,
-              timestamp: transaction.transactionDetails.timestamp instanceof Timestamp 
-                ? transaction.transactionDetails.timestamp.toDate() 
-                : transaction.transactionDetails.timestamp,
-              createdAt: transaction.auditTrail.createdAt instanceof Timestamp 
-                ? transaction.auditTrail.createdAt.toDate() 
-                : transaction.auditTrail.createdAt,
-              updatedAt: transaction.auditTrail.updatedAt instanceof Timestamp 
-                ? transaction.auditTrail.updatedAt.toDate() 
-                : transaction.auditTrail.updatedAt
-            }));
+            const processedTransactions = transactions.map(transaction => {
+              // Safely access nested properties with optional chaining
+              const timestamp = transaction?.transactionDetails?.timestamp;
+              const auditTrail = transaction?.auditTrail || {};
+              
+              return {
+                ...transaction,
+                transactionDetails: {
+                  ...transaction.transactionDetails,
+                  timestamp: isTimestamp(timestamp)
+                    ? timestamp 
+                    : Timestamp.fromDate(isDate(timestamp) ? timestamp : new Date(timestamp as string))
+                },
+                auditTrail: {
+                  ...auditTrail,
+                  createdAt: isTimestamp(auditTrail?.createdAt)
+                    ? auditTrail.createdAt 
+                    : Timestamp.fromDate(isDate(auditTrail?.createdAt) ? auditTrail.createdAt : new Date(auditTrail?.createdAt as string)),
+                  updatedAt: isTimestamp(auditTrail?.updatedAt)
+                    ? auditTrail.updatedAt 
+                    : Timestamp.fromDate(isDate(auditTrail?.updatedAt) ? auditTrail.updatedAt : new Date(auditTrail?.updatedAt as string))
+                }
+              };
+            });
             
             // Sort by timestamp (newest first)
             processedTransactions.sort((a, b) => {
-              const timeA = a.transactionDetails.timestamp instanceof Date 
-                ? a.transactionDetails.timestamp.getTime() 
-                : new Date(a.transactionDetails.timestamp).getTime();
-              const timeB = b.transactionDetails.timestamp instanceof Date 
-                ? b.transactionDetails.timestamp.getTime() 
-                : new Date(b.transactionDetails.timestamp).getTime();
+              const timeA = getTimestampValue(a.transactionDetails.timestamp);
+              const timeB = getTimestampValue(b.transactionDetails.timestamp);
               return timeB - timeA;
             });
             
@@ -93,19 +119,28 @@ const LoyaltyScreen = () => {
         }
       } else {
         // Create new profile if none exists
-        const newProfile: UserLoyaltyProfile = {
+        const newProfile: Omit<LoyaltyUser, 'loyaltyPoints' | 'createdAt' | 'updatedAt' | 'totalOrders'> & { totalOrders?: number } = {
+          uid: auth.currentUser.uid,
+          displayName: auth.currentUser.displayName || 'Guest User',
+          email: auth.currentUser.email || undefined,
+          phone: auth.currentUser.phoneNumber || undefined,
+          totalOrders: 0
+        };
+        
+        // Create the profile in the database
+        await loyaltyService.createUserProfile(newProfile);
+        
+        // Set the local state with the new profile
+        setUserProfile({
           userId: auth.currentUser.uid,
+          userName: auth.currentUser.displayName || 'Guest User',
           availablePoints: 0,
           totalOrders: 0,
           totalSpent: 0,
           isFirstTimeUser: true,
           createdAt: new Date(),
           updatedAt: new Date()
-        };
-        
-        // Create the profile in the database
-        await loyaltyService.createLoyaltyProfile(newProfile);
-        setUserProfile(newProfile);
+        });
         setPoints(0);
         setLoyaltyTransactions([]);
       }
@@ -158,45 +193,53 @@ const LoyaltyScreen = () => {
 
   // Transform your comprehensive transactions to match LoyaltyTransaction component expectations
   const transformTransactionsForComponent = (transactions: ComprehensiveLoyaltyTransaction[]) => {
-  return transactions.map(transaction => {
-    const pointsAmount = transaction.loyaltyDetails.pointsEarned - transaction.loyaltyDetails.pointsRedeemed;
-    const orderNumber = transaction.orderId?.slice(-6) || 'Unknown';
-    const itemCount = transaction.orderDetails.items?.length || 0;
-    const orderTotal = transaction.orderDetails.finalAmount || 0;
-    
-    let description = '';
-    let type = '';
-    
-    if (pointsAmount > 0) {
-      // Points earned - should be GREEN with + sign
-      type = 'earned';
-      if (itemCount === 1) {
-        description = `Earned from your order • ₹${orderTotal}`;
+    return transactions.map(transaction => {
+      const pointsAmount = transaction.loyaltyDetails.pointsEarned - transaction.loyaltyDetails.pointsRedeemed;
+      const orderNumber = transaction.orderId?.slice(-6) || 'Unknown';
+      const itemCount = transaction.orderDetails?.items?.length || 0;
+      const orderTotal = transaction.orderDetails?.originalAmount || 0;
+      
+      const earnedPoints = transaction.loyaltyDetails.pointsEarned || 0;
+      const redeemedPoints = transaction.loyaltyDetails.pointsRedeemed || 0;
+      const netPoints = earnedPoints - redeemedPoints;
+
+      // Determine type based on points
+      let type: 'earned' | 'redeemed' | 'adjusted';
+      if (transaction.transactionDetails?.notes?.toLowerCase().includes('adjust')) {
+        type = 'adjusted';
+      } else if (netPoints > 0) {
+        type = 'earned';
       } else {
-        description = `Earned from ${itemCount} items • ₹${orderTotal}`;
+        type = 'redeemed';
       }
-    } else if (pointsAmount < 0) {
-      // Points redeemed - should be RED with - sign  
-      type = 'redeemed';
-      const pointsUsed = Math.abs(pointsAmount);
-      const discountAmount = pointsUsed * 0.1; // Adjust based on your conversion rate
-      description = `Redeemed for ₹${discountAmount.toFixed(0)} discount`;
-    } else {
-      type = 'neutral';
-      description = `Order completed • ₹${orderTotal}`;
-    }
-    
-    return {
-      id: transaction.id,
-      orderId: transaction.orderId,
-      points: Math.abs(pointsAmount), // Always show positive number
-      timestamp: transaction.transactionDetails.timestamp,
-      type: type,
-      description: description,
-      notes: transaction.transactionDetails.notes
-    };
-  });
-};
+      
+      // Build description based on transaction type
+      let description = '';
+      switch (type) {
+        case 'adjusted':
+          description = netPoints > 0 
+            ? `${netPoints} points added`
+            : `${Math.abs(netPoints)} points deducted`;
+          break;
+        case 'earned':
+          description = `+${netPoints} pts (Earned: ${earnedPoints}, Redeemed: ${redeemedPoints}) – ₹${orderTotal} order`;
+          break;
+        case 'redeemed':
+          description = `${netPoints} pts (Earned: ${earnedPoints}, Redeemed: ${redeemedPoints}) – ₹${orderTotal} order`;
+          break;
+      }
+      
+      return {
+        id: transaction.id,
+        orderId: transaction.orderId,
+        points: Math.abs(pointsAmount),
+        timestamp: transaction.transactionDetails?.timestamp,
+        type: type,
+        description: description,
+        notes: transaction.transactionDetails?.notes
+      };
+    });
+  };
 
   if (loading) {
     return (
@@ -261,7 +304,7 @@ const LoyaltyScreen = () => {
         </View>
 
         {/* Points Display */}
-        <LoyaltyPointsDisplay points={points} />
+        <LoyaltyPointsDisplay initialPoints={points} />
 
         {/* QR Code Button */}
         <TouchableOpacity 

@@ -13,12 +13,11 @@ import {
 import { useRouter } from 'expo-router';
 import { COLORS, FONTFAMILY, FONTSIZE, SPACING, BORDERRADIUS } from '../../src/theme/theme';
 import GradientBGIcon from '../../src/components/GradientBGIcon';
-import { LoyaltyService } from '../../src/services/loyaltyService';
 import { auth } from '../../src/firebase/config';
 import { signOut } from 'firebase/auth';
 import QRCode from 'react-native-qrcode-svg';
 import type { LoyaltyUser } from '../../src/types/loyalty';
-import { addDoc, collection, Timestamp, doc, getDoc, setDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, Timestamp } from 'firebase/firestore';
 import { db } from '../../src/firebase/config';
 import { MaterialIcons } from '@expo/vector-icons';
 
@@ -37,12 +36,12 @@ const LoyaltyQRCodeScreen = () => {
       Animated.sequence([
         Animated.timing(pulseAnim, {
           toValue: 1.05,
-          duration: 1000,
+          duration: 1500,
           useNativeDriver: true,
         }),
         Animated.timing(pulseAnim, {
           toValue: 1,
-          duration: 1000,
+          duration: 1500,
           useNativeDriver: true,
         }),
       ]).start(() => pulse());
@@ -63,7 +62,7 @@ const LoyaltyQRCodeScreen = () => {
         userId: userId,
         iat: Math.floor(Date.now() / 1000),
         exp: Math.floor(Date.now() / 1000) + (15 * 60), // 15 minutes expiry
-        purpose: 'loyalty_redemption'
+        purpose: 'loyalty_discount'
       };
 
       // Simple base64 encoding (use proper JWT signing in production)
@@ -99,7 +98,9 @@ const LoyaltyQRCodeScreen = () => {
           email: user.email || '',
           displayName: user.displayName || '',
           loyaltyPoints: userData.loyaltyPoints || 0,
-          membershipTier: userData.membershipTier || 'Bronze',
+          totalOrders: userData.totalOrders || 0,
+          totalSpent: userData.totalSpent || 0,
+          isFirstTimeUser: userData.isFirstTimeUser ?? true,
           createdAt: userData.createdAt || Timestamp.now(),
           updatedAt: userData.updatedAt || Timestamp.now()
         };
@@ -113,7 +114,9 @@ const LoyaltyQRCodeScreen = () => {
           email: user.email || '',
           displayName: user.displayName || '',
           loyaltyPoints: 0,
-          membershipTier: 'Bronze',
+          totalOrders: 0,
+          totalSpent: 0,
+          isFirstTimeUser: true,
           createdAt: now,
           updatedAt: now
         };
@@ -140,10 +143,7 @@ const LoyaltyQRCodeScreen = () => {
       setQrToken(generateSecureToken(loyaltyProfile.uid));
       
       // Refresh profile data
-      const updatedProfile = await LoyaltyService.getUserProfile(loyaltyProfile.uid);
-      if (updatedProfile) {
-        setLoyaltyProfile(updatedProfile);
-      }
+      await loadLoyaltyProfile();
     } catch (error) {
       console.error('Error refreshing QR code:', error);
       Alert.alert('Error', 'Failed to refresh QR code');
@@ -172,31 +172,6 @@ const LoyaltyQRCodeScreen = () => {
     } catch (error) {
       console.error('Error signing out:', error);
       Alert.alert('Error', 'Failed to sign out');
-    }
-  };
-
-  const getTierColor = (tier: string) => {
-    switch (tier) {
-      case 'Bronze': return '#CD7F32';
-      case 'Silver': return '#C0C0C0';
-      case 'Gold': return '#FFD700';
-      case 'Platinum': return '#E5E4E2';
-      default: return COLORS.primaryOrangeHex;
-    }
-  };
-
-  const getTierBenefits = (tier: string) => {
-    switch (tier) {
-      case 'Bronze':
-        return 'Earn 1 point per ₹10 spent • Max ₹20 discount';
-      case 'Silver':
-        return 'Earn 1.5 points per ₹10 spent • 5% discount • Max ₹50';
-      case 'Gold':
-        return 'Earn 2 points per ₹10 spent • 10% discount • Max ₹100';
-      case 'Platinum':
-        return 'Earn 3 points per ₹10 spent • 15% discount + ₹50 • Max ₹200';
-      default:
-        return '';
     }
   };
 
@@ -233,6 +208,8 @@ const LoyaltyQRCodeScreen = () => {
     );
   }
 
+  const maxDiscount = loyaltyProfile.loyaltyPoints; // 1 point = 1 rupee discount
+
   return (
     <View style={styles.ScreenContainer}>
       <ScrollView
@@ -258,10 +235,6 @@ const LoyaltyQRCodeScreen = () => {
         <View style={styles.UserHeaderContainer}>
           <Text style={styles.WelcomeText}>Hello,</Text>
           <Text style={styles.UserName}>{loyaltyProfile.displayName}</Text>
-          <View style={[styles.TierBadge, { backgroundColor: getTierColor(loyaltyProfile.membershipTier) }]}>
-            <MaterialIcons name="star" size={16} color={COLORS.primaryWhiteHex} />
-            <Text style={styles.TierText}>{loyaltyProfile.membershipTier} Member</Text>
-          </View>
         </View>
 
         {/* Points Display */}
@@ -270,7 +243,7 @@ const LoyaltyQRCodeScreen = () => {
             <Text style={styles.PointsLabel}>Available Points</Text>
             <Text style={styles.PointsValue}>{loyaltyProfile.loyaltyPoints}</Text>
             <Text style={styles.PointsSubtext}>
-              ≈ ₹{Math.floor(loyaltyProfile.loyaltyPoints * 0.1)} in rewards
+              Maximum Discount: ₹{maxDiscount}
             </Text>
           </View>
         </View>
@@ -278,7 +251,7 @@ const LoyaltyQRCodeScreen = () => {
         {/* QR Code Display */}
         <View style={styles.QRContainer}>
           <View style={styles.QRHeader}>
-            <Text style={styles.QRTitle}>Your Loyalty QR Code</Text>
+            <Text style={styles.QRTitle}>Show QR Code to Staff</Text>
             <TouchableOpacity 
               style={styles.RefreshButton} 
               onPress={refreshQRCode}
@@ -295,38 +268,77 @@ const LoyaltyQRCodeScreen = () => {
           <Animated.View style={[styles.QRCodeWrapper, { transform: [{ scale: pulseAnim }] }]}>
             <QRCode
               value={qrToken}
-              size={180}
+              size={200}
               backgroundColor={COLORS.primaryWhiteHex}
               color={COLORS.primaryBlackHex}
               logo={require('../../assets/icon.png')}
-              logoSize={30}
+              logoSize={40}
               logoBackgroundColor="transparent"
             />
           </Animated.View>
           
           <Text style={styles.QRInstructions}>
-            Show this QR code to staff to earn or redeem points
+            Staff will scan this code during billing to apply your discount automatically
           </Text>
           <Text style={styles.QRExpiry}>
-            Code refreshes automatically every 15 minutes
+            Code refreshes every 15 minutes for security
           </Text>
         </View>
 
-        {/* Tier Benefits */}
-        <View style={styles.BenefitsContainer}>
-          <Text style={styles.BenefitsTitle}>Your {loyaltyProfile.membershipTier} Benefits</Text>
-          <Text style={styles.BenefitsText}>{getTierBenefits(loyaltyProfile.membershipTier)}</Text>
+        {/* How It Works */}
+        <View style={styles.HowItWorksContainer}>
+          <Text style={styles.HowItWorksTitle}>How It Works</Text>
           
-          {loyaltyProfile.membershipTier !== 'Platinum' && (
-            <View style={styles.UpgradeHint}>
-              <MaterialIcons name="arrow-upward" size={16} color={COLORS.primaryOrangeHex} />
-              <Text style={styles.UpgradeText}>
-                {loyaltyProfile.membershipTier === 'Bronze' && 'Spend ₹5000 more to reach Silver tier'}
-                {loyaltyProfile.membershipTier === 'Silver' && 'Spend ₹10000 more to reach Gold tier'}
-                {loyaltyProfile.membershipTier === 'Gold' && 'Spend ₹20000 more to reach Platinum tier'}
-              </Text>
+          <View style={styles.StepContainer}>
+            <View style={styles.StepNumber}>
+              <Text style={styles.StepNumberText}>1</Text>
             </View>
-          )}
+            <View style={styles.StepContent}>
+              <Text style={styles.StepTitle}>Show QR Code</Text>
+              <Text style={styles.StepDescription}>Present this QR code to staff during checkout</Text>
+            </View>
+          </View>
+
+          <View style={styles.StepContainer}>
+            <View style={styles.StepNumber}>
+              <Text style={styles.StepNumberText}>2</Text>
+            </View>
+            <View style={styles.StepContent}>
+              <Text style={styles.StepTitle}>Automatic Discount</Text>
+              <Text style={styles.StepDescription}>Maximum available discount will be applied automatically</Text>
+            </View>
+          </View>
+
+          <View style={styles.StepContainer}>
+            <View style={styles.StepNumber}>
+              <Text style={styles.StepNumberText}>3</Text>
+            </View>
+            <View style={styles.StepContent}>
+              <Text style={styles.StepTitle}>Earn More Points</Text>
+              <Text style={styles.StepDescription}>Get 1 point for every ₹10 spent on final discounted amount</Text>
+            </View>
+          </View>
+        </View>
+
+        {/* Discount Rules */}
+        <View style={styles.RulesContainer}>
+          <Text style={styles.RulesTitle}>💡 Discount Rules</Text>
+          <View style={styles.RuleItem}>
+            <MaterialIcons name="check-circle" size={16} color={COLORS.primaryOrangeHex} />
+            <Text style={styles.RuleText}>1 Point = ₹1 Discount</Text>
+          </View>
+          <View style={styles.RuleItem}>
+            <MaterialIcons name="check-circle" size={16} color={COLORS.primaryOrangeHex} />
+            <Text style={styles.RuleText}>Maximum discount applied automatically</Text>
+          </View>
+          <View style={styles.RuleItem}>
+            <MaterialIcons name="check-circle" size={16} color={COLORS.primaryOrangeHex} />
+            <Text style={styles.RuleText}>Earn 1 point per ₹10 on final amount</Text>
+          </View>
+          <View style={styles.RuleItem}>
+            <MaterialIcons name="check-circle" size={16} color={COLORS.primaryOrangeHex} />
+            <Text style={styles.RuleText}>No minimum purchase required</Text>
+          </View>
         </View>
 
         {/* Quick Actions */}
@@ -336,9 +348,9 @@ const LoyaltyQRCodeScreen = () => {
             <Text style={styles.ActionButtonText}>Transaction History</Text>
           </TouchableOpacity>
           
-          <TouchableOpacity style={styles.ActionButton} onPress={() => router.push('/rewards-catalog')}>
-            <MaterialIcons name="redeem" size={24} color={COLORS.primaryOrangeHex} />
-            <Text style={styles.ActionButtonText}>Rewards Catalog</Text>
+          <TouchableOpacity style={styles.ActionButton} onPress={() => router.push('/HowToEarnScreen')}>
+            <MaterialIcons name="help-outline" size={24} color={COLORS.primaryOrangeHex} />
+            <Text style={styles.ActionButtonText}>How to Earn</Text>
           </TouchableOpacity>
         </View>
 
@@ -423,21 +435,7 @@ const styles = StyleSheet.create({
     fontFamily: FONTFAMILY.poppins_semibold,
     fontSize: FONTSIZE.size_24,
     color: COLORS.primaryWhiteHex,
-    marginVertical: SPACING.space_8,
-  },
-  TierBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: SPACING.space_15,
-    paddingVertical: SPACING.space_8,
-    borderRadius: BORDERRADIUS.radius_15,
     marginTop: SPACING.space_8,
-  },
-  TierText: {
-    fontFamily: FONTFAMILY.poppins_medium,
-    fontSize: FONTSIZE.size_14,
-    color: COLORS.primaryWhiteHex,
-    marginLeft: SPACING.space_8,
   },
   PointsContainer: {
     paddingHorizontal: SPACING.space_24,
@@ -458,14 +456,14 @@ const styles = StyleSheet.create({
   },
   PointsValue: {
     fontFamily: FONTFAMILY.poppins_bold,
-    fontSize: FONTSIZE.size_30,
+    fontSize: FONTSIZE.size_36,
     color: COLORS.primaryOrangeHex,
     marginVertical: SPACING.space_8,
   },
   PointsSubtext: {
-    fontFamily: FONTFAMILY.poppins_regular,
-    fontSize: FONTSIZE.size_12,
-    color: COLORS.primaryLightGreyHex,
+    fontFamily: FONTFAMILY.poppins_medium,
+    fontSize: FONTSIZE.size_14,
+    color: COLORS.primaryWhiteHex,
   },
   QRContainer: {
     alignItems: 'center',
@@ -490,9 +488,17 @@ const styles = StyleSheet.create({
   },
   QRCodeWrapper: {
     backgroundColor: COLORS.primaryWhiteHex,
-    padding: SPACING.space_15,
+    padding: SPACING.space_20,
     borderRadius: BORDERRADIUS.radius_15,
     marginBottom: SPACING.space_15,
+    elevation: 5,
+    shadowColor: COLORS.primaryBlackHex,
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
   },
   QRInstructions: {
     fontFamily: FONTFAMILY.poppins_medium,
@@ -500,6 +506,7 @@ const styles = StyleSheet.create({
     color: COLORS.primaryWhiteHex,
     textAlign: 'center',
     marginBottom: SPACING.space_8,
+    lineHeight: 20,
   },
   QRExpiry: {
     fontFamily: FONTFAMILY.poppins_regular,
@@ -507,38 +514,76 @@ const styles = StyleSheet.create({
     color: COLORS.primaryLightGreyHex,
     textAlign: 'center',
   },
-  BenefitsContainer: {
+  HowItWorksContainer: {
     margin: SPACING.space_15,
     padding: SPACING.space_20,
     backgroundColor: COLORS.primaryGreyHex,
     borderRadius: BORDERRADIUS.radius_15,
   },
-  BenefitsTitle: {
+  HowItWorksTitle: {
     fontFamily: FONTFAMILY.poppins_semibold,
     fontSize: FONTSIZE.size_16,
     color: COLORS.primaryWhiteHex,
-    marginBottom: SPACING.space_10,
+    marginBottom: SPACING.space_15,
+    textAlign: 'center',
   },
-  BenefitsText: {
-    fontFamily: FONTFAMILY.poppins_regular,
-    fontSize: FONTSIZE.size_14,
-    color: COLORS.primaryLightGreyHex,
-    lineHeight: 20,
-  },
-  UpgradeHint: {
+  StepContainer: {
     flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: SPACING.space_15,
-    padding: SPACING.space_12,
-    backgroundColor: 'rgba(255, 165, 0, 0.1)',
-    borderRadius: BORDERRADIUS.radius_10,
-    borderLeftWidth: 3,
-    borderLeftColor: COLORS.primaryOrangeHex,
+    alignItems: 'flex-start',
+    marginBottom: SPACING.space_15,
   },
-  UpgradeText: {
+  StepNumber: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: COLORS.primaryOrangeHex,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: SPACING.space_12,
+  },
+  StepNumberText: {
+    fontFamily: FONTFAMILY.poppins_semibold,
+    fontSize: FONTSIZE.size_12,
+    color: COLORS.primaryWhiteHex,
+  },
+  StepContent: {
+    flex: 1,
+  },
+  StepTitle: {
+    fontFamily: FONTFAMILY.poppins_medium,
+    fontSize: FONTSIZE.size_14,
+    color: COLORS.primaryWhiteHex,
+    marginBottom: SPACING.space_4,
+  },
+  StepDescription: {
     fontFamily: FONTFAMILY.poppins_regular,
     fontSize: FONTSIZE.size_12,
-    color: COLORS.primaryOrangeHex,
+    color: COLORS.primaryLightGreyHex,
+    lineHeight: 16,
+  },
+  RulesContainer: {
+    margin: SPACING.space_15,
+    padding: SPACING.space_20,
+    backgroundColor: 'rgba(255, 165, 0, 0.1)',
+    borderRadius: BORDERRADIUS.radius_15,
+    borderLeftWidth: 4,
+    borderLeftColor: COLORS.primaryOrangeHex,
+  },
+  RulesTitle: {
+    fontFamily: FONTFAMILY.poppins_semibold,
+    fontSize: FONTSIZE.size_16,
+    color: COLORS.primaryWhiteHex,
+    marginBottom: SPACING.space_15,
+  },
+  RuleItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: SPACING.space_8,
+  },
+  RuleText: {
+    fontFamily: FONTFAMILY.poppins_regular,
+    fontSize: FONTSIZE.size_14,
+    color: COLORS.primaryWhiteHex,
     marginLeft: SPACING.space_8,
     flex: 1,
   },

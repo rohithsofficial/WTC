@@ -3,13 +3,15 @@ import { Timestamp } from 'firebase/firestore';
 
 export interface LoyaltyUser {
   uid: string;
+  email: string;
   displayName: string;
-  email?: string;
   phone?: string;
   loyaltyPoints: number;
+  totalOrders: number;
+  totalSpent: number;
+  isFirstTimeUser: boolean;
   createdAt: Timestamp;
   updatedAt: Timestamp;
-  totalOrders: number;
   birthday?: string;
 }
 
@@ -70,6 +72,91 @@ export interface OrderBreakdown {
   pointsEarned: number;
   pointsUsed: number;
   discountType: 'flat_percentage' | 'points' | 'none' | 'first_time';
+}
+
+export interface OrderData {
+  id: string;
+  orderId: string;
+  userId: string;
+  items: any[];
+  totalAmount: number;
+  originalAmount: number;
+  orderStatus: string;
+  orderType: string;
+  tableNumber: string | null;
+  paymentMode: string;
+  paymentStatus: string;
+  description: string;
+  createdAt: Date | Timestamp;
+  baristaNotes: string | null;
+  isRewardEarned: boolean;
+  rating: number | null;
+  mood: string | null;
+  discountType: string;
+  pointsUsed: number;
+  discountValue: number;
+  finalAmountPaid: number;
+  loyaltyDetails: {
+    pointsBeforeOrder: number;
+    pointsEarned: number;
+    pointsRedeemed: number;
+    pointsAfterOrder: number;
+    discountApplied: {
+      type: string;
+      amount: number;
+      description: string;
+    };
+    amountDetails: {
+      originalAmount: number;
+      discountAmount: number;
+      finalAmount: number;
+    };
+  };
+}
+
+export interface ComprehensiveLoyaltyTransaction {
+  id: string;
+  userId: string;
+  userName: string;
+  orderId: string;
+  userDetails: {
+    phoneNumber: string;
+    email: string;
+    isFirstTimeUser: boolean;
+    totalOrdersBeforeThis: number;
+    totalSpentBeforeThis: number;
+  };
+  orderDetails: {
+    originalAmount: number;
+    discountType: string;
+    discountAmount: number;
+    finalAmount: number;
+    items: any[];
+    orderType: string;
+    tableNumber?: string;
+    baristaNotes?: string;
+  };
+  loyaltyDetails: {
+    pointsBeforeTransaction: number;
+    pointsEarned: number;
+    pointsRedeemed: number;
+    pointsAfterTransaction: number;
+    earningRate: number;
+  };
+  transactionDetails: {
+    timestamp: Timestamp;
+    paymentMode: string;
+    status: string;
+    staffId: string;
+    notes: string;
+  };
+  createdBy: string;
+  auditTrail?: {
+    createdAt: Timestamp;
+    updatedAt: Timestamp;
+    createdBy: string;
+    updatedBy: string;
+  };
 }
 
 export const LOYALTY_CONFIG: LoyaltyConfig = {

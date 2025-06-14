@@ -15,7 +15,9 @@ import {
   setDoc,
   limit,
   onSnapshot,
-  Unsubscribe
+  Unsubscribe,
+  Transaction,
+  increment
 } from 'firebase/firestore';
 import { db, auth } from '../firebase/config';
 import type { 
@@ -249,6 +251,53 @@ export class LoyaltyServiceClass {
   private readonly FLAT_DISCOUNT_PERCENTAGE = 10; // 10% flat discount
   private readonly FIRST_TIME_DISCOUNT = 100; // ₹100 off for first-time users
   private readonly MIN_ORDER_AMOUNT = 100; // Minimum order amount for discounts
+
+  // Add points earning rate as a class property
+  readonly pointsEarningRate: number = 1; // 1 point per rupee spent
+
+  // Get user's current loyalty points
+  async getUserPoints(userId: string): Promise<number> {
+    try {
+      if (!userId?.trim()) {
+        throw new Error('User ID is required');
+      }
+
+      // Check both collections
+      const userRef = doc(db, 'users', userId);
+      const loyaltyUserRef = doc(db, 'loyaltyUsers', userId);
+      
+      const [userDoc, loyaltyUserDoc] = await Promise.all([
+        getDoc(userRef),
+        getDoc(loyaltyUserRef)
+      ]);
+      
+      // Get points from both documents
+      const userPoints = userDoc.exists() ? userDoc.data().loyaltyPoints || 0 : 0;
+      const loyaltyPoints = loyaltyUserDoc.exists() ? loyaltyUserDoc.data().loyaltyPoints || 0 : 0;
+      
+      // If points are different, sync them
+      if (userPoints !== loyaltyPoints) {
+        const correctPoints = Math.max(userPoints, loyaltyPoints);
+        
+        // Update both collections with the correct points
+        const batch = writeBatch(db);
+        if (userDoc.exists()) {
+          batch.update(userRef, { loyaltyPoints: correctPoints });
+        }
+        if (loyaltyUserDoc.exists()) {
+          batch.update(loyaltyUserRef, { loyaltyPoints: correctPoints });
+        }
+        await batch.commit();
+        
+        return correctPoints;
+      }
+      
+      return userPoints;
+    } catch (error) {
+      console.error('Error fetching user points:', error);
+      throw new Error('Failed to fetch user points');
+    }
+  }
 
   // Add realtime listener for loyalty points
   subscribeToLoyaltyPoints(
@@ -609,45 +658,52 @@ export class LoyaltyServiceClass {
   // FIXED: Process order with proper first-time user handling
  async processOrder(
   userId: string,
-  orderAmount: number,
+  amount: number,
   finalAmount: number,
-  discountType: 'flat_percentage' | 'first_time' | 'points' | 'none',
+  discountType: string,
   pointsUsed: number = 0,
-  currentIsFirstTimeUser: boolean = false
+  isFirstTimeUser: boolean = false
 ): Promise<{ pointsEarned: number; newBalance: number }> {
   try {
     return await runTransaction(db, async (transaction) => {
+      // Get user data from both collections
       const userRef = doc(db, 'users', userId);
-      const userDoc = await transaction.get(userRef);
+      const loyaltyUserRef = doc(db, 'loyaltyUsers', userId);
+      
+      const [userDoc, loyaltyUserDoc] = await Promise.all([
+        transaction.get(userRef),
+        transaction.get(loyaltyUserRef)
+      ]);
 
       if (!userDoc.exists()) {
-        throw new Error('User profile not found');
+        throw new Error('User not found');
       }
 
       const userData = userDoc.data();
       const currentPoints = userData.loyaltyPoints || 0;
-      const totalOrders = userData.totalOrders || 0;
-      const totalSpent = userData.totalSpent || 0;
-
-      // FIXED: Calculate points earned based on final amount after discount
-      // This ensures points are earned on what customer actually pays
-      const pointsEarned = Math.round(finalAmount * this.POINTS_EARNING_RATE);
-
-      // FIXED: Calculate new balance correctly
-      // For flat_percentage and no discount: no points redeemed, only earned
-      // For points discount: points redeemed and earned
-      // For first_time: no points redeemed, only earned
+      
+      // Calculate points earned based on final amount
+      const pointsEarned = Math.floor(finalAmount * this.pointsEarningRate);
       const newBalance = currentPoints + pointsEarned - pointsUsed;
 
-      const updateData = {
+      // Update both collections
+      transaction.update(userRef, {
         loyaltyPoints: newBalance,
-        totalOrders: totalOrders + 1,
-        totalSpent: totalSpent + finalAmount,
+        totalOrders: increment(1),
+        totalSpent: increment(finalAmount),
         isFirstTimeUser: false,
         updatedAt: Timestamp.now()
-      };
+      });
 
-      transaction.update(userRef, updateData);
+      if (loyaltyUserDoc.exists()) {
+        transaction.update(loyaltyUserRef, {
+          loyaltyPoints: newBalance,
+          totalOrders: increment(1),
+          totalSpent: increment(finalAmount),
+          isFirstTimeUser: false,
+          updatedAt: Timestamp.now()
+        });
+      }
 
       return { pointsEarned, newBalance };
     });
@@ -1281,6 +1337,18 @@ export class LoyaltyServiceClass {
       console.error('Error fetching loyalty analytics:', error);
       throw new Error('Failed to fetch loyalty analytics');
     }
+  }
+
+  // Calculate maximum redeemable amount based on available points
+  calculateMaxRedeemableAmount(availablePoints: number, orderAmount: number): number {
+    // 1 point = 1 rupee discount
+    const maxDiscount = Math.min(availablePoints, orderAmount);
+    return Math.max(0, maxDiscount);
+  }
+
+  // Calculate points earned based on final amount
+  calculatePointsEarned(finalAmount: number): number {
+    return Math.floor(finalAmount * this.pointsEarningRate);
   }
 }
 

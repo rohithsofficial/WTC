@@ -89,16 +89,20 @@ const LoyaltyTransaction: React.FC<LoyaltyTransactionProps> = ({
   );
 
   const getTransactionTypeText = (type: any): string => {
-    switch (type) {
-      case 'earned':
-        return 'Points Earned';
-      case 'redeemed':
-        return 'Points Redeemed';
-      case 'bonus':
-        return 'Bonus Points';
-      default:
-        return 'Points Adjusted';
-    }
+     switch (type) {
+    case 'earned':
+      return '🟢 Points Added';
+    case 'redeemed':
+      return '🔴 Points Used';
+    case 'bonus':
+      return '🎁 Bonus Points';
+    case 'refund':
+      return '↩️ Points Refunded';
+    case 'adjustment':
+      return '⚙️ Points Adjusted';
+    default:
+      return 'Points Activity';
+     }
   };
 
   const isValidTransaction = (transaction: any): boolean => {

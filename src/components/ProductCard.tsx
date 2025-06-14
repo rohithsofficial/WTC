@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, Image, StyleSheet } from 'react-native';
 import { COLORS, FONTFAMILY, FONTSIZE, SPACING } from '../theme/theme';
+import { getImageSource } from '../utils/imageUtils';
 
 interface ProductCardProps {
   product: {
@@ -16,7 +17,7 @@ const ProductCard: React.FC<ProductCardProps> = ({ product }) => {
   return (
     <View style={styles.container}>
       <Image
-        source={{ uri: product.imagelink_square }}
+        source={getImageSource(product.imagelink_square)}
         style={styles.image}
         resizeMode="cover"
       />

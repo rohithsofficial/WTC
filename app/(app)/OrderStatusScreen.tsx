@@ -564,12 +564,12 @@ const OrderStatusScreen = () => {
   const renderLoyaltySection = () => {
     if (!orderDetails) return null;
 
-    const loyaltyDetails = orderDetails.loyaltyDetails;
-    const pointsEarned = loyaltyDetails?.pointsEarned || orderDetails.pointsEarned || 0;
-    const pointsRedeemed = loyaltyDetails?.pointsRedeemed || orderDetails.pointsRedeemed || 0;
+    // Get points from route params first, then fallback to order details
+    const pointsEarned = Number(params?.pointsEarned) || Number(orderDetails.loyaltyDetails?.pointsEarned) || Number(orderDetails.pointsEarned) || 0;
+    const pointsRedeemed = Number(params?.pointsRedeemed) || Number(orderDetails.loyaltyDetails?.pointsRedeemed) || Number(orderDetails.pointsRedeemed) || 0;
     const netPoints = pointsEarned - pointsRedeemed;
-    const pointsBeforeOrder = loyaltyDetails?.pointsBeforeOrder || 0;
-    const pointsAfterOrder = loyaltyDetails?.pointsAfterOrder || 0;
+    const pointsBeforeOrder = Number(orderDetails.loyaltyDetails?.pointsBeforeOrder) || 0;
+    const pointsAfterOrder = Number(orderDetails.loyaltyDetails?.pointsAfterOrder) || 0;
 
     return (
       <View style={styles.loyaltySection}>
@@ -592,7 +592,7 @@ const OrderStatusScreen = () => {
           <Text style={[styles.rewardText, { marginTop: SPACING.space_8 }]}>
             {netPoints > 0 ? "Keep earning points for rewards!" : "Thanks for using your points!"}
           </Text>
-          {loyaltyDetails && (
+          {(pointsBeforeOrder > 0 || pointsAfterOrder > 0) && (
             <View style={styles.pointsHistory}>
               <Text style={styles.pointsHistoryText}>
                 Points before order: {pointsBeforeOrder}

@@ -56,6 +56,7 @@ import {
   subscribeToNotifications,
 } from "../../src/firebase/notification-service";
 import { useAuth } from "../../src/context/AuthContext";
+import { getImageBackgroundSource } from '../../src/utils/imageUtils';
 
 // Add type definition for footer special offer
 interface FooterOffer {
@@ -543,7 +544,7 @@ const HomeScreen = () => {
       <View style={styles.bannerWrap}>
         <Animated.View style={{ opacity: fadeAnim }}>
           <ImageBackground
-            source={{ uri: banners[bannerIndex]?.imageUrl }}
+            source={getImageBackgroundSource(banners[bannerIndex]?.imageUrl)}
             style={styles.banner}
             resizeMode="cover"
           />
