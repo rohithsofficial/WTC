@@ -55,7 +55,8 @@ const hiddenScreens = [
   'HomeScreen1',
   'OffersScreen',
   'LoyaltyQRCodeScreen',
-  'ProductsScreen'
+  'ProductsScreen',
+  'HowToEarnScreen'
 ];
 
 const AppLayout = () => {
