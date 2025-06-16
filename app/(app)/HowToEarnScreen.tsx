@@ -191,7 +191,7 @@ const HowToEarnScreen = () => {
         <View style={styles.ActionsContainer}>
           <TouchableOpacity 
             style={styles.PrimaryActionButton} 
-            onPress={() => router.back()}
+            onPress={() => router.push('/LoyaltyQRCodeScreen')}
           >
             <MaterialIcons name="qr-code" size={24} color={COLORS.primaryWhiteHex} />
             <Text style={styles.PrimaryActionText}>Show My QR Code</Text>
@@ -199,7 +199,7 @@ const HowToEarnScreen = () => {
           
           <TouchableOpacity 
             style={styles.SecondaryActionButton} 
-            onPress={() => router.push('/transaction-history')}
+            onPress={() => router.push('/LoyaltyScreen')}
           >
             <MaterialIcons name="history" size={24} color={COLORS.primaryOrangeHex} />
             <Text style={styles.SecondaryActionText}>View History</Text>

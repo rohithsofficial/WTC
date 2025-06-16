@@ -12,35 +12,39 @@ import {
   FlatList,
   Platform,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useNavigation, useRouter } from "expo-router";
 import { COLORS, FONTFAMILY, FONTSIZE, SPACING } from '../../src/theme/theme';
 import { categoryService, productService } from '../../src/services/firebaseService';
-import { Category } from '../../src/types/database';
+import { Category, Product as DatabaseProduct } from '../../src/types/interfaces';
 import { MaterialIcons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useStore } from '../../src/store/store';
 import Slider from '@react-native-community/slider';
 
-// Enhanced Product type with featured flag
-interface Product {
-  id: string;
-  name: string;
-  description?: string;
-  categoryId: string;
-  imagelink_square: string;
-  imagelink_portrait?: string;
-  ingredients?: string[];
-  special_ingredient?: string;
-  prices: number[];
-  average_rating?: number;
-  ratings_count?: number;
+// Extended Product type with UI-specific properties
+interface Product extends DatabaseProduct {
   favourite?: boolean;
-  featured?: boolean; // New featured flag property
+  featured?: boolean;
+  offerprice?: number;
+  imagelink_portrait?: string;
+}
+
+// Type for raw category data from Firebase
+interface RawCategory {
+  id: string;
+  name?: string;
+  description?: string;
+  image?: string;
+  icon?: 'local-cafe' | 'coffee' | 'restaurant' | 'local-dining';
+  createdAt?: string;
 }
 
 const MenuScreen = () => {
   const router = useRouter();
+  const navigation = useNavigation();
   const { addToFavorites, removeFromFavorites, isFavorite } = useStore();
+  
+  // State variables
   const [categories, setCategories] = useState<Category[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
@@ -68,8 +72,18 @@ const MenuScreen = () => {
         productService.getAllProducts()
       ]);
       
-      setCategories(categoriesData);
-      setProducts(allProducts);
+      // Transform and validate category data
+      const validCategories: Category[] = (categoriesData as RawCategory[]).map(cat => ({
+        id: cat.id,
+        name: cat.name || 'Unnamed Category',
+        description: cat.description,
+        image: cat.image,
+        icon: cat.icon || 'local-cafe',
+        createdAt: cat.createdAt || new Date().toISOString()
+      }));
+      
+      setCategories(validCategories);
+      setProducts(allProducts as Product[]);
     } catch (err) {
       console.error('Error loading menu:', err);
       setError('Failed to load menu. Please try again.');
@@ -79,19 +93,19 @@ const MenuScreen = () => {
   };
 
   const getProductPrice = (product: Product) => {
-  if (product.prices && product.prices.length > 0) {
-    // Find the first valid price (not 0, null, or undefined)
-    const validPrice = product.prices.find(price => 
-      price !== null && 
-      price !== undefined && 
-      price > 0
-    );
-    
-    // Return the valid price or 0 as fallback
-    return validPrice || 0;
-  }
-  return 0;
-};
+    if (product.prices && product.prices.length > 0) {
+      // Find the first valid price (not 0, null, or undefined)
+      const validPrice = product.prices.find(price => 
+        price.price !== null && 
+        price.price !== undefined && 
+        parseFloat(price.price) > 0
+      );
+      
+      // Return the valid price or 0 as fallback
+      return validPrice ? parseFloat(validPrice.price) : 0;
+    }
+    return 0;
+  };
 
   // Filter products by search and category
   const filteredProducts = products.filter((p) => {
@@ -114,7 +128,7 @@ const MenuScreen = () => {
       // All ingredients
       (p.ingredients && p.ingredients.some(ingredient => ingredient.toLowerCase().includes(searchLower))) ||
       // Price (convert to string for searching)
-      p.prices.some(price => price.toString().includes(searchLower)) ||
+      p.prices.some(price => price.price.toString().includes(searchLower)) ||
       // Rating (if exists)
       (p.average_rating && p.average_rating.toString().includes(searchLower));
 
@@ -122,27 +136,27 @@ const MenuScreen = () => {
   });
 
   // Get featured products using the featured flag
- const getFeaturedProducts = () => {
-  // Filter products marked as featured and have valid price > 0
-  const featuredProducts = products.filter(product => 
-    product.featured === true && getProductPrice(product) > 0
-  );
+  const getFeaturedProducts = () => {
+    // Filter products marked as featured and have valid price > 0
+    const featuredProducts = products.filter(product => 
+      product.featured === true && getProductPrice(product) > 0
+    );
 
-  // If no valid featured products, fallback to top priced non-zero products
-  if (featuredProducts.length === 0) {
-    return products
-      .filter(product => getProductPrice(product) > 0) // remove zero-priced products
-      .sort((a, b) => {
-        const priceA = getProductPrice(a);
-        const priceB = getProductPrice(b);
-        return priceB - priceA;
-      })
-      .slice(0, showAllFeatured ? undefined : 5);
-  }
+    // If no valid featured products, fallback to top priced non-zero products
+    if (featuredProducts.length === 0) {
+      return products
+        .filter(product => getProductPrice(product) > 0) // remove zero-priced products
+        .sort((a, b) => {
+          const priceA = getProductPrice(a);
+          const priceB = getProductPrice(b);
+          return priceB - priceA;
+        })
+        .slice(0, showAllFeatured ? undefined : 5);
+    }
 
-  // Return top N featured products (with price > 0)
-  return showAllFeatured ? featuredProducts : featuredProducts.slice(0, 5);
-};
+    // Return top N featured products (with price > 0)
+    return showAllFeatured ? featuredProducts : featuredProducts.slice(0, 5);
+  };
 
   // Apply filters and sorting
   const getFilteredAndSortedProducts = () => {
@@ -155,19 +169,18 @@ const MenuScreen = () => {
     });
 
     // Apply sorting
-   filtered.sort((a, b) => {
-  switch (sortBy) {
-    case 'price_asc':
-      return getProductPrice(a) - getProductPrice(b);
-    case 'price_desc':
-      return getProductPrice(b) - getProductPrice(a);
-    case 'name':
-      return (a.name || '').localeCompare(b.name || '');
-    default:
-      return 0;
-  }
-});
-
+    filtered.sort((a, b) => {
+      switch (sortBy) {
+        case 'price_asc':
+          return getProductPrice(a) - getProductPrice(b);
+        case 'price_desc':
+          return getProductPrice(b) - getProductPrice(a);
+        case 'name':
+          return (a.name || '').localeCompare(b.name || '');
+        default:
+          return 0;
+      }
+    });
 
     return filtered;
   };
@@ -183,7 +196,7 @@ const MenuScreen = () => {
       onPress={() => setSelectedCategory(category.id)}
     >
       <MaterialIcons
-        name={category.icon ? category.icon : 'local-cafe'}
+        name={category.icon}
         size={20}
         color={selectedCategory === category.id ? COLORS.primaryWhiteHex : COLORS.primaryOrangeHex}
         style={{ marginRight: 6 }}
@@ -195,93 +208,91 @@ const MenuScreen = () => {
     </TouchableOpacity>
   );
 
-
-
   const renderProductCard = ({ item }: { item: Product }) => (
-  <TouchableOpacity
-    style={styles.productCard}
-    onPress={() => router.push({
-      pathname: '/(app)/products/[id]',
-      params: { id: item.id }
-    })}
-  >
-    <Image
-      source={getImageSource(item.imagelink_square)}
-      style={styles.productImage}
-      resizeMode="cover"
-      onError={() => {
-        // Optional: Handle image load error
-        console.log('Failed to load image for product:', item.name);
-      }}
-    />
     <TouchableOpacity
-      style={styles.favoriteButton}
-      onPress={() => {
-        if (isFavorite(item.id)) {
-          removeFromFavorites(item.id);
-        } else {
-          addToFavorites(item);
-        }
-      }}
+      style={styles.productCard}
+      onPress={() => router.push({
+        pathname: '/(app)/products/[id]',
+        params: { id: item.id }
+      })}
     >
-      <MaterialIcons
-        name={isFavorite(item.id) ? "favorite" : "favorite-border"}
-        size={24}
-        color={isFavorite(item.id) ? COLORS.primaryOrangeHex : COLORS.primaryGreyHex}
+      <Image
+        source={getImageSource(item.imagelink_square)}
+        style={styles.productImage}
+        resizeMode="cover"
+        onError={() => {
+          // Optional: Handle image load error
+          console.log('Failed to load image for product:', item.name);
+        }}
       />
+      <TouchableOpacity
+        style={styles.favoriteButton}
+        onPress={() => {
+          if (isFavorite(item.id)) {
+            removeFromFavorites(item.id);
+          } else {
+            addToFavorites(item);
+          }
+        }}
+      >
+        <MaterialIcons
+          name={isFavorite(item.id) ? "favorite" : "favorite-border"}
+          size={24}
+          color={isFavorite(item.id) ? COLORS.primaryOrangeHex : COLORS.primaryGreyHex}
+        />
+      </TouchableOpacity>
+      <View style={styles.productInfo}>
+        <Text style={styles.productName} numberOfLines={1}>{item.name}</Text>
+        <Text style={styles.productCategory} numberOfLines={1}>{categories.find(c => c.id === item.categoryId)?.name || ''}</Text>
+        <Text style={styles.productPrice}>₹{getProductPrice(item).toFixed(2)}</Text>
+      </View>
     </TouchableOpacity>
-    <View style={styles.productInfo}>
-      <Text style={styles.productName} numberOfLines={1}>{item.name}</Text>
-      <Text style={styles.productCategory} numberOfLines={1}>{categories.find(c => c.id === item.categoryId)?.name || ''}</Text>
-      <Text style={styles.productPrice}>₹{getProductPrice(item).toFixed(2)}</Text>
-    </View>
-  </TouchableOpacity>
-);
+  );
 
- const getImageSource = (imageUrl: string | undefined | null): { uri: string } | number => {
-  if (imageUrl && imageUrl.trim() !== '') {
-    return { uri: imageUrl };
-  }
-  return require('../../assets/app_images/fallback.jpg');
-};
+  const getImageSource = (imageUrl: string | undefined | null): { uri: string } | number => {
+    if (imageUrl && imageUrl.trim() !== '') {
+      return { uri: imageUrl };
+    }
+    return require('../../assets/app_images/fallback.jpg');
+  };
       
   // --- FEATURED PRODUCT CARD ---
   const renderFeaturedProductCard = (product: Product) => (
-  <TouchableOpacity
-    key={product.id}
-    style={styles.featuredProductCard}
-    onPress={() => router.push({
-      pathname: '/(app)/products/[id]',
-      params: { id: product.id }
-    })}
-  >
-    <Image
-      source={getImageSource(product.imagelink_square)}
-      style={styles.featuredProductImage}
-      resizeMode="cover"
-      onError={() => {
-        // Optional: Handle image load error
-        console.log('Failed to load featured image for product:', product.name);
-      }}
-    />
-    <View style={styles.featuredProductBadge}>
-      <Text style={styles.featuredProductBadgeText}>Featured</Text>
-    </View>
-    <View style={styles.featuredProductInfo}>
-      <Text style={styles.featuredProductName} numberOfLines={1}>{product.name}</Text>
-      <Text style={styles.featuredProductPrice}>
-        ₹{(getProductPrice(product) || product.offerprice || 0).toFixed(2)}
-      </Text>
-    </View>
-  </TouchableOpacity>
-);
+    <TouchableOpacity
+      key={product.id}
+      style={styles.featuredProductCard}
+      onPress={() => router.push({
+        pathname: '/(app)/products/[id]',
+        params: { id: product.id }
+      })}
+    >
+      <Image
+        source={getImageSource(product.imagelink_square)}
+        style={styles.featuredProductImage}
+        resizeMode="cover"
+        onError={() => {
+          // Optional: Handle image load error
+          console.log('Failed to load featured image for product:', product.name);
+        }}
+      />
+      <View style={styles.featuredProductBadge}>
+        <Text style={styles.featuredProductBadgeText}>Featured</Text>
+      </View>
+      <View style={styles.featuredProductInfo}>
+        <Text style={styles.featuredProductName} numberOfLines={1}>{product.name}</Text>
+        <Text style={styles.featuredProductPrice}>
+          ₹{(getProductPrice(product) || product.offerprice || 0).toFixed(2)}
+        </Text>
+      </View>
+    </TouchableOpacity>
+  );
 
-// Alternative approach using state for more control (optional)
-const [imageErrors, setImageErrors] = useState<Set<string>>(new Set());
+  // Alternative approach using state for more control (optional)
+  const [imageErrors, setImageErrors] = useState<Set<string>>(new Set());
 
-const handleImageError = (productId: string) => {
-  setImageErrors(prev => new Set([...prev, productId]));
-};
+  const handleImageError = (productId: string) => {
+    setImageErrors(prev => new Set([...prev, productId]));
+  };
 
   const renderContent = () => {
     if (loading) {
@@ -323,8 +334,6 @@ const handleImageError = (productId: string) => {
       );
     }
     
-   
-
     const filteredAndSortedProducts = getFilteredAndSortedProducts();
     const groupedProducts = filteredAndSortedProducts.reduce((acc, product) => {
       const category = categories.find(c => c.id === product.categoryId);
@@ -337,8 +346,6 @@ const handleImageError = (productId: string) => {
       return acc;
     }, {} as Record<string, Product[]>);
 
-    
-    
     return (
       <ScrollView>
         {/* Featured Products Section - Only show when not searching */}
@@ -468,7 +475,7 @@ const handleImageError = (productId: string) => {
         </TouchableOpacity>
       </View>
     </View>
-    );
+  );
 
   return (
     <SafeAreaView style={styles.screenContainer}>
@@ -478,7 +485,13 @@ const handleImageError = (productId: string) => {
       <View style={styles.mainHeader}>
         <TouchableOpacity 
           style={styles.backButton}
-          onPress={() => router.back()}
+          onPress={() => {
+            if (navigation.canGoBack()) {
+              navigation.goBack();
+            } else {
+              router.replace('/(app)/HomeScreen');
+            }
+          }}
         >
           <MaterialIcons name="arrow-back" size={24} color={COLORS.primaryBlackHex} />
         </TouchableOpacity>

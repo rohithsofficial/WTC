@@ -87,32 +87,50 @@ const LoyaltyQRCodeScreen = () => {
       }
 
       setLoading(true);
-      // Get user data from users collection
+      console.log('Loading profile for user:', user.uid);
+      
+      // Get user data from users collection with fresh data
       const userDocRef = doc(db, 'users', user.uid);
       const userDoc = await getDoc(userDocRef);
       
       if (userDoc.exists()) {
         const userData = userDoc.data();
+        console.log('Raw user data from Firestore:', userData);
+        
+        // Check for different possible field names for loyalty points
+        const loyaltyPoints = userData.loyaltyPoints || 
+                             userData.loyalty_points || 
+                             userData.points || 
+                             0;
+        
+        console.log('Extracted loyalty points:', loyaltyPoints);
+        console.log('Field loyaltyPoints:', userData.loyaltyPoints);
+        console.log('Field loyalty_points:', userData.loyalty_points);
+        console.log('Field points:', userData.points);
+        
         const profile: LoyaltyUser = {
           uid: user.uid,
           email: user.email || '',
-          displayName: user.displayName || '',
-          loyaltyPoints: userData.loyaltyPoints || 0,
+          displayName: user.displayName || userData.displayName || userData.name || 'User',
+          loyaltyPoints: loyaltyPoints,
           totalOrders: userData.totalOrders || 0,
           totalSpent: userData.totalSpent || 0,
           isFirstTimeUser: userData.isFirstTimeUser ?? true,
           createdAt: userData.createdAt || Timestamp.now(),
           updatedAt: userData.updatedAt || Timestamp.now()
         };
+        
+        console.log('Final profile object:', profile);
         setLoyaltyProfile(profile);
         setQrToken(generateSecureToken(profile.uid));
       } else {
+        console.log('No user document found, creating new profile');
         // Create a new user profile if one doesn't exist
         const now = Timestamp.now();
         const newProfile: LoyaltyUser = {
           uid: user.uid,
           email: user.email || '',
-          displayName: user.displayName || '',
+          displayName: user.displayName || 'User',
           loyaltyPoints: 0,
           totalOrders: 0,
           totalSpent: 0,
@@ -123,12 +141,13 @@ const LoyaltyQRCodeScreen = () => {
         
         // Add the profile to users collection
         await setDoc(userDocRef, newProfile);
+        console.log('Created new profile:', newProfile);
         setLoyaltyProfile(newProfile);
         setQrToken(generateSecureToken(newProfile.uid));
       }
     } catch (error) {
       console.error('Error loading loyalty profile:', error);
-      setError('Failed to load loyalty profile');
+      setError('Failed to load loyalty profile: ' + error.message);
     } finally {
       setLoading(false);
     }
@@ -139,10 +158,12 @@ const LoyaltyQRCodeScreen = () => {
     
     setRefreshing(true);
     try {
+      console.log('Refreshing QR code and profile data...');
+      
       // Generate new token
       setQrToken(generateSecureToken(loyaltyProfile.uid));
       
-      // Refresh profile data
+      // Refresh profile data from database
       await loadLoyaltyProfile();
     } catch (error) {
       console.error('Error refreshing QR code:', error);
@@ -150,6 +171,38 @@ const LoyaltyQRCodeScreen = () => {
     } finally {
       setRefreshing(false);
     }
+  };
+
+  // Manual refresh function for debugging
+  const debugRefresh = async () => {
+    console.log('=== DEBUG REFRESH ===');
+    const user = auth.currentUser;
+    if (!user) return;
+    
+    try {
+      const userDocRef = doc(db, 'users', user.uid);
+      const userDoc = await getDoc(userDocRef);
+      
+      if (userDoc.exists()) {
+        const userData = userDoc.data();
+        console.log('=== FRESH DATA FROM DATABASE ===');
+        console.log('Full document:', JSON.stringify(userData, null, 2));
+        console.log('loyaltyPoints field:', userData.loyaltyPoints);
+        console.log('Type of loyaltyPoints:', typeof userData.loyaltyPoints);
+        
+        // Show alert with current points from database
+        Alert.alert(
+          'Debug Info', 
+          `DB loyaltyPoints: ${userData.loyaltyPoints}\nType: ${typeof userData.loyaltyPoints}\nAll fields: ${Object.keys(userData).join(', ')}`
+        );
+      }
+    } catch (error) {
+      console.error('Debug refresh error:', error);
+      Alert.alert('Debug Error', error.message);
+    }
+    
+    // Also refresh the profile
+    await loadLoyaltyProfile();
   };
 
   useEffect(() => {
@@ -245,6 +298,13 @@ const LoyaltyQRCodeScreen = () => {
             <Text style={styles.PointsSubtext}>
               Maximum Discount: ₹{maxDiscount}
             </Text>
+            {/* Debug button - remove in production */}
+            <TouchableOpacity 
+              style={styles.debugButton} 
+              onPress={debugRefresh}
+            >
+              <Text style={styles.debugButtonText}>🔍 Debug Refresh</Text>
+            </TouchableOpacity>
           </View>
         </View>
 
@@ -343,7 +403,7 @@ const LoyaltyQRCodeScreen = () => {
 
         {/* Quick Actions */}
         <View style={styles.ActionsContainer}>
-          <TouchableOpacity style={styles.ActionButton} onPress={() => router.push('/transaction-history')}>
+          <TouchableOpacity style={styles.ActionButton} onPress={() => router.push('LoyaltyScreen')}>
             <MaterialIcons name="history" size={24} color={COLORS.primaryOrangeHex} />
             <Text style={styles.ActionButtonText}>Transaction History</Text>
           </TouchableOpacity>
@@ -463,6 +523,18 @@ const styles = StyleSheet.create({
   PointsSubtext: {
     fontFamily: FONTFAMILY.poppins_medium,
     fontSize: FONTSIZE.size_14,
+    color: COLORS.primaryWhiteHex,
+  },
+  debugButton: {
+    backgroundColor: 'rgba(255, 0, 0, 0.2)',
+    paddingHorizontal: SPACING.space_12,
+    paddingVertical: SPACING.space_8,
+    borderRadius: BORDERRADIUS.radius_10,
+    marginTop: SPACING.space_10,
+  },
+  debugButtonText: {
+    fontFamily: FONTFAMILY.poppins_regular,
+    fontSize: FONTSIZE.size_12,
     color: COLORS.primaryWhiteHex,
   },
   QRContainer: {

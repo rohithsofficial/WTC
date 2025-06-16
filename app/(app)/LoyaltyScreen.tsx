@@ -243,9 +243,37 @@ const LoyaltyScreen = () => {
 
   if (loading) {
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={COLORS.primaryOrangeHex} />
-        <Text style={styles.loadingText}>Loading your loyalty data...</Text>
+      <View style={styles.ScreenContainer}>
+        <View style={styles.HeaderContainer}>
+          <TouchableOpacity onPress={() => router.back()}>
+            <GradientBGIcon
+              name="left"
+              color={COLORS.primaryLightGreyHex}
+              size={FONTSIZE.size_16}
+            />
+          </TouchableOpacity>
+          <Text style={styles.HeaderText}>Loyalty Points</Text>
+          <TouchableOpacity onPress={() => router.push('/LoyaltyQRCodeScreen')}>
+            <MaterialIcons name="qr-code" size={24} color={COLORS.primaryWhiteHex} />
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.UserInfoContainer}>
+          <Text style={styles.WelcomeText}>Welcome!</Text>
+          <Text style={styles.TierText}>New Member</Text>
+        </View>
+
+        <LoyaltyPointsDisplay initialPoints={0} />
+
+        <View style={[styles.emptyStateContainer, { marginTop: SPACING.space_20 }]}>
+          <MaterialIcons name="stars" size={48} color={COLORS.primaryOrangeHex} />
+          <Text style={[styles.NoTransactionsText, { color: COLORS.primaryOrangeHex }]}>
+            Your Loyalty Points: 0
+          </Text>
+          <Text style={styles.emptyStateSubtext}>
+            Make your first purchase to start earning points!
+          </Text>
+        </View>
       </View>
     );
   }
@@ -337,6 +365,8 @@ const LoyaltyScreen = () => {
             }
             return '';
           }}
+          emptyStateMessage="No loyalty transactions yet"
+          emptyStateSubMessage="Complete your first order to start earning loyalty points!"
         />
       </ScrollView>
     </View>

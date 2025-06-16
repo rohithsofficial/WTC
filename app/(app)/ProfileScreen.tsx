@@ -235,7 +235,6 @@ const ProfileScreen = () => {
   // Staff menu items
   const staffMenuItems = [
     { title: 'Staff QR Scanner', icon: 'qr-code', onPress: openStaffQRScanner },
-    { title: 'Staff Loyalty Scanner', icon: 'star', onPress: openStaffLoyaltyScanner },
     { title: 'Staff Redemption', icon: 'gift', onPress: openStaffRedemption },
   ];
 

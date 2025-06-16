@@ -253,7 +253,7 @@ export class LoyaltyServiceClass {
   private readonly MIN_ORDER_AMOUNT = 100; // Minimum order amount for discounts
 
   // Add points earning rate as a class property
-  readonly pointsEarningRate: number = 1; // 1 point per rupee spent
+  readonly pointsEarningRate: number = 0.1; // 1 point ₹10 rupee spent
 
   // Get user's current loyalty points
   async getUserPoints(userId: string): Promise<number> {

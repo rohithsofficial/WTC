@@ -9,6 +9,8 @@ interface LoyaltyTransactionProps<T = any> {
   formatTransactionDate: (timestamp: any) => string;
   getTransactionColor: (transaction: T) => string;
   getTransactionPrefix: (transaction: T) => string;
+  emptyStateMessage?: string;
+  emptyStateSubMessage?: string;
 }
 
 const LoyaltyTransaction: React.FC<LoyaltyTransactionProps> = ({
@@ -18,6 +20,8 @@ const LoyaltyTransaction: React.FC<LoyaltyTransactionProps> = ({
   formatTransactionDate,
   getTransactionColor,
   getTransactionPrefix,
+  emptyStateMessage = "No recent activity",
+  emptyStateSubMessage = "Your loyalty points history will appear here"
 }) => {
   const styles3D = transactionStyles(COLORS);
 
@@ -25,9 +29,9 @@ const LoyaltyTransaction: React.FC<LoyaltyTransactionProps> = ({
     <View style={[styles.emptyStateContainer, styles3D.boxFloating]}>
       <View style={styles3D.content3D}>
         <MaterialIcons name="history" size={48} color={COLORS.primaryLightGreyHex} />
-        <Text style={styles.NoTransactionsText}>No recent activity</Text>
+        <Text style={styles.NoTransactionsText}>{emptyStateMessage}</Text>
         <Text style={styles.emptyStateSubtext}>
-          Your loyalty points history will appear here
+          {emptyStateSubMessage}
         </Text>
       </View>
     </View>

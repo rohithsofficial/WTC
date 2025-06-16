@@ -213,9 +213,9 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({ navigation }) => {
     const effectiveDiscountType = isFirstTimeUser ? 'first_time' : selectedDiscountType;
     const effectivePointsToRedeem = effectiveDiscountType === 'points' ? redemptionCalculation.pointsToRedeem : 0;
     
-    console.log('getOrderBreakdown - effectiveDiscountType:', effectiveDiscountType);
-    console.log('getOrderBreakdown - isFirstTimeUser:', isFirstTimeUser);
-    console.log('getOrderBreakdown - selectedDiscountType:', selectedDiscountType);
+    // console.log('getOrderBreakdown - effectiveDiscountType:', effectiveDiscountType);
+    // console.log('getOrderBreakdown - isFirstTimeUser:', isFirstTimeUser);
+    // console.log('getOrderBreakdown - selectedDiscountType:', selectedDiscountType);
     
     return loyaltyService.calculateOrderBreakdown(
       amount,
