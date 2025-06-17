@@ -1,4 +1,4 @@
-// app/(app)/StaffQRScannerScreen.tsx
+// app/(app)/StaffQRScannerScreen.tsx - FIXED BARCODE SUPPORT
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -18,10 +18,11 @@ import { CameraView, Camera } from 'expo-camera';
 import { useRouter } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
 import { COLORS, FONTFAMILY, FONTSIZE, SPACING, BORDERRADIUS } from '../../src/theme/theme';
-import { doc, getDoc, addDoc, collection, updateDoc, increment, Timestamp } from 'firebase/firestore';
+import { doc, getDoc, addDoc, collection, updateDoc, increment, Timestamp, query, where, getDocs } from 'firebase/firestore';
 import { db, auth } from '../../src/firebase/config';
 import { loyaltyService, ComprehensiveLoyaltyTransaction } from '../../src/services/loyaltyService';
 import { OrderData } from '../../src/types/offlineOrderData';
+import * as Brightness from 'expo-brightness';
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
@@ -67,6 +68,56 @@ const StaffQRScannerScreen = () => {
   const [transactionComplete, setTransactionComplete] = useState(false);
   const [cameraKey, setCameraKey] = useState(0);
   const [staffInfo, setStaffInfo] = useState<StaffInfo | null>(null);
+  const [scanMode, setScanMode] = useState<'qr' | 'barcode'>('qr');
+  const [originalBrightness, setOriginalBrightness] = useState<number | null>(null);
+
+  // FIXED: Enhanced brightness management with proper Android handling
+  const increaseBrightness = async () => {
+    try {
+      if (Platform.OS === 'android') {
+        // On Android, we'll use a more reliable approach
+        await Brightness.setBrightnessAsync(1.0);
+        console.log('Screen brightness increased for scanning (Android)');
+      } else {
+        // On iOS, we can safely get and store the original brightness
+        const currentBrightness = await Brightness.getBrightnessAsync();
+        setOriginalBrightness(currentBrightness);
+        await Brightness.setBrightnessAsync(1.0);
+        console.log('Screen brightness increased for scanning (iOS)');
+      }
+    } catch (error) {
+      console.error('Error increasing brightness:', error);
+      // Fallback to a safe brightness value
+      try {
+        await Brightness.setBrightnessAsync(0.9);
+      } catch (fallbackError) {
+        console.error('Fallback brightness setting failed:', fallbackError);
+      }
+    }
+  };
+
+  const restoreBrightness = async () => {
+    try {
+      if (Platform.OS === 'android') {
+        // On Android, restore to a default brightness
+        await Brightness.setBrightnessAsync(0.5);
+        console.log('Screen brightness restored (Android)');
+      } else if (originalBrightness !== null) {
+        // On iOS, restore to the original brightness
+        await Brightness.setBrightnessAsync(originalBrightness);
+        setOriginalBrightness(null);
+        console.log('Screen brightness restored (iOS)');
+      }
+    } catch (error) {
+      console.error('Error restoring brightness:', error);
+      // Fallback to a safe brightness value
+      try {
+        await Brightness.setBrightnessAsync(0.5);
+      } catch (fallbackError) {
+        console.error('Fallback brightness restoration failed:', fallbackError);
+      }
+    }
+  };
 
   useEffect(() => {
     const getCameraPermissions = async () => {
@@ -88,7 +139,6 @@ const StaffQRScannerScreen = () => {
               email: staffData.email || auth.currentUser.email || ''
             });
           } else {
-            // Fallback if staff document doesn't exist
             setStaffInfo({
               displayName: auth.currentUser.displayName || 'Staff',
               employeeId: auth.currentUser.uid.slice(-6).toUpperCase(),
@@ -98,7 +148,6 @@ const StaffQRScannerScreen = () => {
         }
       } catch (error) {
         console.error('Error fetching staff info:', error);
-        // Set basic fallback info
         setStaffInfo({
           displayName: 'Staff',
           employeeId: auth.currentUser?.uid.slice(-6).toUpperCase() || 'STAFF',
@@ -109,108 +158,280 @@ const StaffQRScannerScreen = () => {
 
     getCameraPermissions();
     getStaffInfo();
+    increaseBrightness();
+
+    return () => {
+      restoreBrightness();
+    };
   }, []);
 
-// Enhanced refresh camera function
-  const refreshCamera = () => {
-  console.log('Refreshing camera...');
-  setScanned(false);
-  setLoading(false);
-  setCameraKey(prev => prev + 1);
-};
-
-// 5. Test QR Code Generation (for testing purposes)
-const generateTestQRData = (userId: string): string => {
-  // Option 1: Simple format
-  return userId;
-  
-  // Option 2: JSON format
-  // return JSON.stringify({ userId, timestamp: Date.now() });
-  
-  // Option 3: JWT-like format (simplified)
-  // const payload = { userId, exp: Math.floor(Date.now() / 1000) + 3600 };
-  // return `header.${btoa(JSON.stringify(payload))}.signature`;
-};
-
-// 6. Debug function to test with manual input
-const testWithManualUserId = async (testUserId: string) => {
-  console.log('Testing with manual userId:', testUserId);
-  await handleBarCodeScanned({ 
-    type: 'qr', 
-    data: testUserId 
-  });
-};
-
-// Usage in your component:
-// Add this button temporarily for testing
-const TestButton = () => (
-  <TouchableOpacity 
-    style={styles.testButton}
-    onPress={() => testWithManualUserId('your_test_user_id_here')}
-  >
-    <Text style={styles.testButtonText}>Test with Sample User</Text>
-  </TouchableOpacity>
-);
-
-  const validateQRToken = (data: string): string | null => {
+  // FIXED: Enhanced barcode token decoding with proper database queries
+ const decodeBarcodeToken = async (barcodeData: string): Promise<string | null> => {
   try {
-    console.log('Scanned QR data:', data); // Debug log
+    console.log('🔍 Starting barcode decode for:', barcodeData);
+    console.log('📊 Barcode length:', barcodeData.length);
     
-    // Handle different QR code formats
-    
-    // Format 1: JWT Token
-    if (data.includes('.') && data.split('.').length === 3) {
+    // Strategy 1: Direct barcode token lookup (PRIMARY - matches your generation logic)
+    try {
+      console.log('🎯 Strategy 1: Checking currentBarcodeToken field...');
+      const barcodeQuery = query(
+        collection(db, 'users'), 
+        where('currentBarcodeToken', '==', barcodeData)
+      );
+      const barcodeSnapshot = await getDocs(barcodeQuery);
+      
+      if (!barcodeSnapshot.empty) {
+        const userId = barcodeSnapshot.docs[0].id;
+        console.log('✅ SUCCESS: Found user by currentBarcodeToken:', userId);
+        return userId;
+      } else {
+        console.log('❌ No user found with currentBarcodeToken:', barcodeData);
+      }
+    } catch (error) {
+      console.error('🚨 Error in Strategy 1 (currentBarcodeToken):', error);
+    }
+
+    // Strategy 2: Check barcodeHistory collection (SECONDARY - for expired tokens)
+    try {
+      console.log('🎯 Strategy 2: Checking barcodeHistory collection...');
+      const historyQuery = query(
+        collection(db, 'barcodeHistory'),
+        where('barcode', '==', barcodeData),
+        where('expiryTime', '>', Timestamp.now())
+      );
+      const historySnapshot = await getDocs(historyQuery);
+      
+      if (!historySnapshot.empty) {
+        const userId = historySnapshot.docs[0].data().userId;
+        console.log('✅ SUCCESS: Found user in barcodeHistory:', userId);
+        return userId;
+      } else {
+        console.log('❌ No active barcode found in history for:', barcodeData);
+      }
+    } catch (error) {
+      console.error('🚨 Error in Strategy 2 (barcodeHistory):', error);
+    }
+
+    // Strategy 3: EAN-13 format handling (for standard barcode formats)
+    if (barcodeData.length === 13 && /^\d{13}$/.test(barcodeData)) {
+      console.log('🎯 Strategy 3: Processing as EAN-13...');
       try {
-        const parts = data.split('.');
-        const payload = JSON.parse(atob(parts[1]));
-        console.log('JWT Payload:', payload); // Debug log
+        const variations = [
+          barcodeData,
+          barcodeData.substring(0, 12), // Without check digit
+          barcodeData.substring(1), // Without first digit
+          barcodeData.substring(1, 12) // Without first and last digit
+        ];
+
+        for (const variation of variations) {
+          console.log(`🔄 Trying EAN-13 variation: ${variation}`);
+          const eanQuery = query(
+            collection(db, 'users'), 
+            where('loyaltyCardNumber', '==', variation)
+          );
+          const eanSnapshot = await getDocs(eanQuery);
+          
+          if (!eanSnapshot.empty) {
+            const userId = eanSnapshot.docs[0].id;
+            console.log('✅ SUCCESS: Found user by EAN-13 variation:', variation, 'UserId:', userId);
+            return userId;
+          }
+        }
+        console.log('❌ No user found with any EAN-13 variations');
+      } catch (error) {
+        console.error('🚨 Error in Strategy 3 (EAN-13):', error);
+      }
+    }
+
+    // Strategy 4: UPC-E format handling
+    if (barcodeData.length === 8 && /^\d{8}$/.test(barcodeData)) {
+      console.log('🎯 Strategy 4: Processing as UPC-E...');
+      try {
+        const upcA = convertUPC_EtoUPC_A(barcodeData);
+        console.log('🔄 Converted UPC-E to UPC-A:', upcA);
         
-        if (payload.userId && payload.exp && payload.exp > Date.now() / 1000) {
-          return payload.userId;
+        const upcQuery = query(
+          collection(db, 'users'), 
+          where('loyaltyCardNumber', '==', upcA)
+        );
+        const upcSnapshot = await getDocs(upcQuery);
+        
+        if (!upcSnapshot.empty) {
+          const userId = upcSnapshot.docs[0].id;
+          console.log('✅ SUCCESS: Found user by UPC-A conversion:', userId);
+          return userId;
         }
-      } catch (jwtError) {
-        console.log('JWT parsing failed, trying other formats');
+      } catch (error) {
+        console.error('🚨 Error in Strategy 4 (UPC-E):', error);
       }
     }
-    
-    // Format 2: Direct userId (for testing)
-    if (data.length > 10 && (data.includes('user_') || data.startsWith('uid_'))) {
-      return data;
+
+    // Strategy 5: Direct loyaltyCardNumber lookup
+    try {
+      console.log('🎯 Strategy 5: Checking loyaltyCardNumber field...');
+      const loyaltyQuery = query(
+        collection(db, 'users'), 
+        where('loyaltyCardNumber', '==', barcodeData)
+      );
+      const loyaltySnapshot = await getDocs(loyaltyQuery);
+      
+      if (!loyaltySnapshot.empty) {
+        const userId = loyaltySnapshot.docs[0].id;
+        console.log('✅ SUCCESS: Found user by loyaltyCardNumber:', userId);
+        return userId;
+      } else {
+        console.log('❌ No user found with loyaltyCardNumber:', barcodeData);
+      }
+    } catch (error) {
+      console.error('🚨 Error in Strategy 5 (loyaltyCardNumber):', error);
     }
-    
-    // Format 3: JSON format
-    if (data.startsWith('{') && data.endsWith('}')) {
+
+    // Strategy 6: Phone number lookup (for numeric barcodes)
+    if (/^\d{10,12}$/.test(barcodeData)) {
+      console.log('🎯 Strategy 6: Checking as phone number...');
       try {
-        const parsed = JSON.parse(data);
-        if (parsed.userId || parsed.uid || parsed.id) {
-          return parsed.userId || parsed.uid || parsed.id;
+        const phoneVariations = [
+          barcodeData,
+          `+91${barcodeData}`,
+          `91${barcodeData}`
+        ];
+
+        for (const phoneNum of phoneVariations) {
+          console.log(`🔄 Trying phone variation: ${phoneNum}`);
+          const phoneQuery = query(
+            collection(db, 'users'), 
+            where('phoneNumber', '==', phoneNum)
+          );
+          const phoneSnapshot = await getDocs(phoneQuery);
+          
+          if (!phoneSnapshot.empty) {
+            const userId = phoneSnapshot.docs[0].id;
+            console.log('✅ SUCCESS: Found user by phone number:', phoneNum, 'UserId:', userId);
+            return userId;
+          }
         }
-      } catch (jsonError) {
-        console.log('JSON parsing failed');
+        console.log('❌ No user found with any phone number variations');
+      } catch (error) {
+        console.error('🚨 Error in Strategy 6 (phone):', error);
       }
     }
+
+    // FINAL: Log all attempted strategies
+    console.log('🚫 DECODE FAILED - All strategies exhausted for barcode:', barcodeData);
+    console.log('📝 Strategies attempted:');
+    console.log('   1. currentBarcodeToken field lookup');
+    console.log('   2. barcodeHistory collection lookup');
+    console.log('   3. EAN-13 format variations');
+    console.log('   4. UPC-E to UPC-A conversion');
+    console.log('   5. loyaltyCardNumber field lookup');
+    console.log('   6. Phone number variations');
     
-    // Format 4: URL format (like loyalty://user/123456)
-    if (data.includes('://') || data.includes('user/') || data.includes('loyalty/')) {
-      const userIdMatch = data.match(/(?:user[/_]|loyalty[/_]|uid[/_])([a-zA-Z0-9_-]+)/i);
-      if (userIdMatch && userIdMatch[1]) {
-        return userIdMatch[1];
-      }
-    }
-    
-    // Format 5: Simple alphanumeric ID (minimum 8 characters)
-    if (/^[a-zA-Z0-9_-]{8,}$/.test(data)) {
-      return data;
-    }
-    
-    console.log('No valid format found for QR data:', data);
     return null;
     
   } catch (error) {
-    console.error('QR validation error:', error);
+    console.error('🔥 CRITICAL: Barcode decoding crashed:', error);
     return null;
   }
 };
+
+
+  // Helper function to convert UPC-E to UPC-A format
+  const convertUPC_EtoUPC_A = (upcE: string): string => {
+    if (upcE.length !== 8) return upcE;
+    
+    const lastDigit = upcE[7];
+    const middleDigits = upcE.substring(1, 7);
+    
+    let upcA = '';
+    switch (lastDigit) {
+      case '0':
+      case '1':
+      case '2':
+        upcA = `${middleDigits.substring(0, 2)}${lastDigit}0000${middleDigits.substring(2)}`;
+        break;
+      case '3':
+        upcA = `${middleDigits.substring(0, 3)}00000${middleDigits.substring(3)}`;
+        break;
+      case '4':
+        upcA = `${middleDigits.substring(0, 4)}00000${middleDigits.substring(4)}`;
+        break;
+      default:
+        upcA = `${middleDigits}0000${lastDigit}`;
+    }
+    
+    return `0${upcA}`; // Add leading zero for UPC-A format
+  };
+
+  const refreshCamera = () => {
+    console.log('Refreshing camera...');
+    setScanned(false);
+    setLoading(false);
+    setCameraKey(prev => prev + 1);
+  };
+
+  const toggleScanMode = () => {
+    setScanMode(prev => prev === 'qr' ? 'barcode' : 'qr');
+    refreshCamera();
+  };
+
+  // FIXED: Enhanced QR token validation with better error handling
+  const validateQRToken = (data: string): string | null => {
+    try {
+      console.log('Validating QR data:', data, 'Mode:', scanMode);
+      
+      // JWT Token format
+      if (data.includes('.') && data.split('.').length === 3) {
+        try {
+          const parts = data.split('.');
+          const payload = JSON.parse(atob(parts[1]));
+          console.log('JWT Payload:', payload);
+          
+          if (payload.userId && payload.exp && payload.exp > Date.now() / 1000) {
+            return payload.userId;
+          }
+        } catch (jwtError) {
+          console.log('JWT parsing failed, trying other formats');
+        }
+      }
+      
+      // Direct userId format
+      if (data.length > 10 && (data.includes('user_') || data.startsWith('uid_'))) {
+        return data;
+      }
+      
+      // JSON format
+      if (data.startsWith('{') && data.endsWith('}')) {
+        try {
+          const parsed = JSON.parse(data);
+          if (parsed.userId || parsed.uid || parsed.id) {
+            return parsed.userId || parsed.uid || parsed.id;
+          }
+        } catch (jsonError) {
+          console.log('JSON parsing failed');
+        }
+      }
+      
+      // URL format
+      if (data.includes('://') || data.includes('user/') || data.includes('loyalty/')) {
+        const userIdMatch = data.match(/(?:user[/_]|loyalty[/_]|uid[/_])([a-zA-Z0-9_-]+)/i);
+        if (userIdMatch && userIdMatch[1]) {
+          return userIdMatch[1];
+        }
+      }
+      
+      // Simple alphanumeric ID
+      if (/^[a-zA-Z0-9_-]{8,}$/.test(data)) {
+        return data;
+      }
+      
+      console.log('No valid QR format found for scanned data:', data);
+      return null;
+      
+    } catch (error) {
+      console.error('QR token validation error:', error);
+      return null;
+    }
+  };
 
   const generateReadableOrderId = (): string => {
     const timestamp = Date.now().toString().slice(-6);
@@ -218,186 +439,298 @@ const TestButton = () => (
     return `OFF${timestamp}${randomSuffix}`;
   };
 
+  // FIXED: Enhanced barcode scanning with proper response handling
   const handleBarCodeScanned = async ({ type, data }: { type: string; data: string }) => {
-  console.log('QR Code scanned:', { type, data }); // Debug log
-  
-  if (scanned) {
-    console.log('Already processing a scan, ignoring...');
-    return;
-  }
-  
-  setScanned(true);
-  setLoading(true);
-  
-  try {
-    const userId = validateQRToken(data);
-    console.log('Extracted userId:', userId); // Debug log
-    
-    if (!userId) {
+    try {
+      // Validate input parameters
+      if (!type || !data) {
+        console.log('⚠️ Invalid scan data received:', { type, data });
+        return;
+      }
+
+      console.log('📱 Code scanned:', { type, data, scanMode });
+      
+      if (!data || data.trim() === '') {
+        console.log('⚠️ Empty barcode data received');
+        Alert.alert('Scan Error', 'Empty barcode detected. Please try scanning again.');
+        return;
+      }
+
+      if (scanned) {
+        console.log('🔒 Already processing a scan, ignoring...');
+        return;
+      }
+
+      setScanned(true);
+      let userId: string | null = null;
+      
+      if (scanMode === 'barcode') {
+        console.log('🏷️ Processing as barcode...');
+        
+        // Enhanced barcode format validation with null checks
+        const isValidBarcode = (barcode: string, barcodeType: string): boolean => {
+          if (!barcode || !barcodeType) return false;
+
+          try {
+            switch (barcodeType.toLowerCase()) {
+              case 'codabar':
+                // Codabar can contain numbers, letters A-D, and special characters
+                return /^[A-D][0-9\-:/.+$]+[A-D]$/.test(barcode);
+              case 'code128':
+                // Code 128 can contain any ASCII character
+                return /^[\x00-\x7F]+$/.test(barcode);
+              case 'code39':
+                // Code 39 can contain numbers, uppercase letters, and some special characters
+                return /^[0-9A-Z\-\.\s\$\/\+\%]+$/.test(barcode);
+              case 'ean13':
+              case 'ean8':
+              case 'upc_e':
+              case 'upc_a':
+                // EAN/UPC formats must be numeric
+                return /^\d+$/.test(barcode);
+              default:
+                // For unknown formats, accept alphanumeric with common separators
+                return /^[0-9A-Za-z\-\.\s]+$/.test(barcode);
+            }
+          } catch (error) {
+            console.error('Error validating barcode format:', error);
+            return false;
+          }
+        };
+
+        if (!isValidBarcode(data, type)) {
+          throw new Error(`Invalid barcode format for type ${type}. Please ensure the barcode is properly formatted.`);
+        }
+
+        // Log the exact barcode being processed
+        console.log(`🔍 Decoding barcode: "${data}" (type: ${type}, length: ${data.length})`);
+        
+        userId = await decodeBarcodeToken(data);
+        
+        if (!userId) {
+          console.log('💥 Barcode decoding failed completely');
+          throw new Error(`No customer found for barcode: "${data}". Please ensure the customer has generated a valid barcode from their app.`);
+        }
+      } else {
+        console.log('📄 Processing as QR code...');
+        userId = validateQRToken(data);
+        
+        if (!userId) {
+          console.log('💥 QR validation failed');
+          throw new Error('Invalid QR code. Please ensure the customer has a valid loyalty account.');
+        }
+      }
+      
+      console.log('🎯 Extracted userId:', userId);
+      
+      if (!userId) {
+        throw new Error('Could not identify customer. Please try scanning again.');
+      }
+
+      console.log('👤 Fetching customer data for userId:', userId);
+      
+      const userDocRef = doc(db, 'users', userId);
+      const userDoc = await getDoc(userDocRef);
+      
+      if (!userDoc.exists()) {
+        console.log('👻 Customer document not found in database');
+        throw new Error(`Customer account not found for ID: ${userId}. Please ensure they have a valid loyalty account.`);
+      }
+
+      const userData = userDoc.data();
+      if (!userData) {
+        throw new Error('Invalid customer data received from database.');
+      }
+
+      console.log('📋 Customer data fetched successfully:', {
+        name: userData.displayName || userData.name,
+        points: userData.loyaltyPoints,
+        phone: userData.phoneNumber
+      });
+      
+      const customer: CustomerData = {
+        displayName: userData.displayName || userData.name || 'Customer',
+        userName: userData.userName || '',
+        phoneNumber: userData.phoneNumber || '',
+        email: userData.email || '',
+        loyaltyPoints: userData.loyaltyPoints || 0,
+        totalSpent: userData.totalSpent || 0,
+        totalOrders: userData.totalOrders || 0,
+        isFirstTimeUser: userData.isFirstTimeUser ?? true
+      };
+      
+      setCustomerData(customer);
+      setShowBillInput(true);
+      
+      console.log('✅ Successfully processed scan for:', customer.displayName);
+
+    } catch (error: any) {
+      console.error('🚨 Error processing scan:', error);
+      
+      // More specific error messages
+      let errorMessage = error.message || 'Unknown error occurred';
+      
+      if (errorMessage.includes('Invalid barcode format')) {
+        errorMessage = `Barcode format error: The scanned barcode (${type}) is not in a supported format. Please try scanning again.`;
+      } else if (errorMessage.includes('No customer found')) {
+        errorMessage = `Customer not found for barcode "${data}". Please ensure:\n• Customer has generated barcode from their app\n• Barcode is not expired\n• Customer has an active loyalty account`;
+      }
+      
       Alert.alert(
-        'Invalid QR Code',
-        'This QR code is not recognized. Please ask the customer to refresh their QR code and try again.',
+        'Scan Failed',
+        errorMessage,
         [
           { 
-            text: 'Scan Again', 
+            text: 'OK', 
             onPress: () => {
               setScanned(false);
-              setLoading(false);
-              refreshCamera();
+              setCustomerData(null);
+              setShowBillInput(false);
             }
-          },
-          { 
-            text: 'Cancel', 
-            onPress: () => {
-              setLoading(false);
-              router.back();
-            }
-          },
+          }
         ]
       );
+    }
+  };
+
+  const handleBillSubmit = async () => {
+    if (!billAmount || !customerData || !scannedUserId) {
+      Alert.alert('Error', 'Please enter bill amount');
       return;
     }
 
-    console.log('Fetching customer data for userId:', userId);
-    
-    // Get customer details
-    const userDocRef = doc(db, 'users', userId);
-    const userDoc = await getDoc(userDocRef);
-    
-    if (!userDoc.exists()) {
-      console.log('Customer document not found');
-      throw new Error('Customer not found in database');
+    const amount = parseFloat(billAmount);
+    if (amount <= 0) {
+      Alert.alert('Error', 'Bill amount must be greater than 0');
+      return;
     }
 
-    const userData = userDoc.data();
-    console.log('Customer data fetched:', userData);
-    
-    const customer: CustomerData = {
-      displayName: userData.displayName || userData.name || 'Customer',
-      userName: userData.userName || '',
-      phoneNumber: userData.phoneNumber || '',
-      email: userData.email || '',
-      loyaltyPoints: userData.loyaltyPoints || 0,
-      totalSpent: userData.totalSpent || 0,
-      totalOrders: userData.totalOrders || 0,
-      isFirstTimeUser: userData.isFirstTimeUser ?? true
+    setLoading(true);
+    try {
+      const userDocRef = doc(db, 'users', scannedUserId);
+      const userDoc = await getDoc(userDocRef);
+      
+      if (!userDoc.exists()) {
+        throw new Error('Customer data not found');
+      }
+      
+      const freshUserData = userDoc.data();
+      const availablePoints = freshUserData.loyaltyPoints || 0;
+      
+      const pointsDiscount = loyaltyService.calculateMaxRedeemableAmount(availablePoints, amount);
+      const customerPays = amount - pointsDiscount;
+      const pointsEarned = Math.floor(customerPays / 10);
+      const pointsUsed = pointsDiscount;
+      const newPointsBalance = availablePoints - pointsUsed + pointsEarned;
+
+      const updatedCustomerData = {
+        ...customerData,
+        loyaltyPoints: availablePoints
+      };
+
+      const preview: TransactionPreview = {
+        customerData: updatedCustomerData,
+        billAmount: amount,
+        availablePoints,
+        pointsDiscount,
+        customerPays,
+        pointsUsed,
+        pointsEarned,
+        newPointsBalance
+      };
+
+      setTransactionPreview(preview);
+      setCustomerData(updatedCustomerData);
+      setShowConfirmation(true);
+      setShowBillInput(false);
+
+    } catch (error) {
+      console.error('Error calculating discount:', error);
+      Alert.alert('Error', 'Could not calculate discount. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Enhanced Camera Component with better response handling
+  const CameraComponent = () => {
+    const [cameraError, setCameraError] = useState<string | null>(null);
+
+    const handleCameraError = (error: Error) => {
+      console.error('Camera error:', error);
+      setCameraError(error.message);
     };
 
-    setScannedUserId(userId);
-    setCustomerData(customer);
-    setShowBillInput(true);
-    
-    console.log('Successfully processed QR scan');
+    const handleCameraReady = () => {
+      setCameraError(null);
+    };
 
-  } catch (error) {
-    console.error('Error processing QR scan:', error);
-    Alert.alert(
-      'Error',
-      `Could not load customer details: ${error.message}. Please try scanning again.`,
-      [
-        { 
-          text: 'Scan Again', 
-          onPress: () => {
-            setScanned(false);
-            setLoading(false);
-            refreshCamera();
-          }
-        },
-        { 
-          text: 'Cancel', 
-          onPress: () => {
-            setLoading(false);
-            router.back();
-          }
-        },
-      ]
+    if (cameraError) {
+      return (
+        <View style={styles.cameraErrorContainer}>
+          <MaterialIcons name="error-outline" size={48} color={COLORS.primaryOrangeHex} />
+          <Text style={styles.cameraErrorText}>Camera Error</Text>
+          <Text style={styles.cameraErrorSubtext}>{cameraError}</Text>
+          <TouchableOpacity 
+            style={styles.refreshButton}
+            onPress={() => {
+              setCameraError(null);
+              refreshCamera();
+            }}
+          >
+            <MaterialIcons name="refresh" size={24} color={COLORS.primaryWhiteHex} />
+            <Text style={styles.refreshButtonText}>Refresh Camera</Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+
+    return (
+      <View style={styles.cameraContainer}>
+        <CameraView
+          key={cameraKey}
+          style={styles.camera}
+          facing="back"
+          barcodeScannerSettings={{
+            barcodeTypes: [
+              'qr',
+              'ean13',
+              'ean8',
+              'upc_e',
+              'code128',
+              'code39',
+              'code93',
+              'itf14',
+              'codabar'
+            ]
+          }}
+          onBarcodeScanned={handleBarCodeScanned}
+          onCameraReady={() => {
+            setCameraError(null);
+            console.log('Camera is ready');
+          }}
+        />
+        
+        <View style={styles.scannerOverlay}>
+          <View style={styles.scannerFrame} />
+        </View>
+        
+        {loading && (
+          <View style={styles.loadingOverlay}>
+            <ActivityIndicator size="large" color={COLORS.primaryOrangeHex} />
+            <Text style={styles.loadingText}>Processing...</Text>
+          </View>
+        )}
+
+        <TouchableOpacity 
+          style={styles.cameraRefreshButton}
+          onPress={refreshCamera}
+        >
+          <MaterialIcons name="refresh" size={24} color={COLORS.primaryWhiteHex} />
+        </TouchableOpacity>
+      </View>
     );
-  } finally {
-    setLoading(false);
-  }
-};
-
- const handleBillSubmit = async () => {
-  if (!billAmount || !customerData || !scannedUserId) {
-    Alert.alert('Error', 'Please enter bill amount');
-    return;
-  }
-
-  const amount = parseFloat(billAmount);
-  if (amount <= 0) {
-    Alert.alert('Error', 'Bill amount must be greater than 0');
-    return;
-  }
-
-  setLoading(true);
-  try {
-    // Get fresh customer data directly from Firestore to ensure accuracy
-    const userDocRef = doc(db, 'users', scannedUserId);
-    const userDoc = await getDoc(userDocRef);
-    
-    if (!userDoc.exists()) {
-      throw new Error('Customer data not found');
-    }
-    
-    const freshUserData = userDoc.data();
-    const availablePoints = freshUserData.loyaltyPoints || 0;
-    
-    // Calculate discount using the fresh points data
-    const pointsDiscount = loyaltyService.calculateMaxRedeemableAmount(availablePoints, amount);
-    
-    // Calculate final amount customer pays
-    const customerPays = amount - pointsDiscount;
-    
-    // Fixed points calculation: 1 point for every 10 rupees spent (after discount)
-    const pointsEarned = Math.floor(customerPays / 10);
-    
-    // Calculate new points balance
-    const pointsUsed = pointsDiscount; // 1 point = ₹1
-    const newPointsBalance = availablePoints - pointsUsed + pointsEarned;
-
-    // Update customer data with fresh points
-    const updatedCustomerData = {
-      ...customerData,
-      loyaltyPoints: availablePoints
-    };
-
-    const preview: TransactionPreview = {
-      customerData: updatedCustomerData,
-      billAmount: amount,
-      availablePoints,
-      pointsDiscount,
-      customerPays,
-      pointsUsed,
-      pointsEarned,
-      newPointsBalance
-    };
-
-    setTransactionPreview(preview);
-    setCustomerData(updatedCustomerData); // Update the customer data state as well
-    setShowConfirmation(true);
-    setShowBillInput(false);
-
-  } catch (error) {
-    console.error('Error calculating discount:', error);
-    Alert.alert('Error', 'Could not calculate discount. Please try again.');
-  } finally {
-    setLoading(false);
-  }
-};
-
-//  Updated Camera Component with better barcode settings
-
-  const CameraComponent = () => (
-  <CameraView
-    key={cameraKey}
-    style={styles.camera}
-    facing="back"
-    onBarcodeScanned={scanned ? undefined : handleBarCodeScanned}
-    barcodeScannerSettings={{
-      barcodeTypes: ['qr', 'pdf417', 'aztec', 'code128', 'code39', 'datamatrix'],
-    }}
-  />
-);
+  };
 
   const createOfflineOrder = async (preview: TransactionPreview): Promise<string> => {
     try {
@@ -409,7 +742,7 @@ const TestButton = () => (
         id: autoGeneratedId,
         orderId: orderId,
         userId: scannedUserId!,
-        items: [], // Empty for offline orders
+        items: [],
         totalAmount: preview.billAmount,
         originalAmount: preview.billAmount,
         orderStatus: 'completed',
@@ -446,9 +779,7 @@ const TestButton = () => (
         isOfflineOrder: true
       };
 
-      // Save order to database
       await addDoc(collection(db, 'orders'), orderData);
-      
       return orderId;
     } catch (error) {
       console.error('Error creating offline order:', error);
@@ -476,7 +807,7 @@ const TestButton = () => (
           discountType: 'points',
           discountAmount: preview.pointsDiscount,
           finalAmount: preview.customerPays,
-          items: [], // Empty for offline orders
+          items: [],
           orderType: 'offline',
           tableNumber: '',
           baristaNotes: ''
@@ -498,7 +829,6 @@ const TestButton = () => (
         createdBy: auth.currentUser?.uid || 'system'
       };
 
-      // Save loyalty transaction
       await addDoc(collection(db, 'loyaltyTransactions'), loyaltyTransactionData);
     } catch (error) {
       console.error('Error creating loyalty transaction:', error);
@@ -517,7 +847,6 @@ const TestButton = () => (
         loyaltyPoints: preview.newPointsBalance,
         updatedAt: currentTimestamp
       });
-
     } catch (error) {
       console.error('Error updating customer profile:', error);
       throw error;
@@ -529,24 +858,15 @@ const TestButton = () => (
 
     setLoading(true);
     try {
-      // Create order record
       const orderId = await createOfflineOrder(transactionPreview);
-      
-      // Create loyalty transaction record
       await createLoyaltyTransaction(transactionPreview, orderId);
-      
-      // Update customer profile
       await updateCustomerProfile(transactionPreview);
       
       setTransactionComplete(true);
       setShowConfirmation(false);
-
     } catch (error) {
       console.error('Transaction error:', error);
-      Alert.alert(
-        'Transaction Failed',
-        'Something went wrong. Please try again.'
-      );
+      Alert.alert('Transaction Failed', 'Something went wrong. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -556,7 +876,7 @@ const TestButton = () => (
     setScanned(false);
     setScannedUserId(null);
     setCustomerData(null);
-    setBillAmount(''); // Clear amount after successful transaction
+    setBillAmount('');
     setShowBillInput(false);
     setShowConfirmation(false);
     setTransactionPreview(null);
@@ -566,7 +886,6 @@ const TestButton = () => (
 
   const handleBackPress = () => {
     if (showBillInput) {
-      // If on bill input screen, go back to scanner
       setShowBillInput(false);
       setScanned(false);
       setCustomerData(null);
@@ -574,14 +893,11 @@ const TestButton = () => (
       setBillAmount('');
       refreshCamera();
     } else if (showConfirmation) {
-      // If on confirmation screen, go back to bill input
       setShowConfirmation(false);
       setShowBillInput(true);
     } else if (transactionComplete) {
-      // If transaction complete, start new scan
       startNewScan();
     } else {
-      // Default: go back to previous screen
       router.back();
     }
   };
@@ -599,7 +915,7 @@ const TestButton = () => (
     return (
       <SafeAreaView style={styles.container}>
         <StatusBar barStyle="light-content" backgroundColor={COLORS.primaryBlackHex} />
-        <Text style={styles.text}>Camera access needed to scan QR codes</Text>
+        <Text style={styles.text}>Camera access needed to scan codes</Text>
         <TouchableOpacity style={styles.button} onPress={() => router.back()}>
           <Text style={styles.buttonText}>Go Back</Text>
         </TouchableOpacity>
@@ -618,7 +934,7 @@ const TestButton = () => (
         </TouchableOpacity>
         
         <View style={styles.headerCenter}>
-          <Text style={styles.headerTitle}>Staff QR Scanner</Text>
+          <Text style={styles.headerTitle}>Staff Code Scanner</Text>
           {staffInfo && (
             <View style={styles.staffInfo}>
               <Text style={styles.staffName}>{staffInfo.displayName}</Text>
@@ -633,14 +949,39 @@ const TestButton = () => (
           </TouchableOpacity>
         )}
       </View>
+
+      {/* Scan Mode Toggle */}
+      {!showBillInput && !showConfirmation && !transactionComplete && (
+        <View style={styles.scanModeContainer}>
+          <TouchableOpacity 
+            style={[styles.scanModeButton, scanMode === 'qr' && styles.activeScanMode]}
+            onPress={() => scanMode !== 'qr' && toggleScanMode()}
+          >
+            <MaterialIcons name="qr-code" size={20} color={scanMode === 'qr' ? COLORS.primaryWhiteHex : COLORS.primaryOrangeHex} />
+            <Text style={[styles.scanModeText, scanMode === 'qr' && styles.activeScanModeText]}>QR Code</Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity 
+            style={[styles.scanModeButton, scanMode === 'barcode' && styles.activeScanMode]}
+            onPress={() => scanMode !== 'barcode' && toggleScanMode()}
+          >
+            <MaterialIcons name="view-headline" size={20} color={scanMode === 'barcode' ? COLORS.primaryWhiteHex : COLORS.primaryOrangeHex} />
+            <Text style={[styles.scanModeText, scanMode === 'barcode' && styles.activeScanModeText]}>Barcode</Text>
+          </TouchableOpacity>
+        </View>
+      )}
       
-      {/* Instructions - Only show once */}
+      {/* Instructions */}
       {!showBillInput && !showConfirmation && !transactionComplete && (
         <View style={styles.instructions}>
-          <MaterialIcons name="qr-code-scanner" size={32} color={COLORS.primaryWhiteHex} />
+          <MaterialIcons 
+            name={scanMode === 'qr' ? "qr-code-scanner" : "view-headline"} 
+            size={32} 
+            color={COLORS.primaryWhiteHex} 
+          />
           <Text style={styles.instructionTitle}>Ready to Scan</Text>
           <Text style={styles.instructionText}>
-            Ask customer to show their QR code
+            Ask customer to show their {scanMode === 'qr' ? 'QR code' : 'barcode'}
           </Text>
           <Text style={styles.subInstructionText}>
             Points discount will be applied automatically
@@ -659,200 +1000,170 @@ const TestButton = () => (
         </View>
       )}
 
-      {/* QR Code Scanner */}
+      {/* Code Scanner */}
       {!showBillInput && !showConfirmation && !transactionComplete && (
-        <View style={styles.cameraContainer}>
-          <CameraView
-            key={cameraKey}
-            style={styles.camera}
-            facing="back"
-            onBarcodeScanned={scanned ? undefined : handleBarCodeScanned}
-            barcodeScannerSettings={{
-              barcodeTypes: ['qr', 'pdf417'],
-            }}
-          />
-          
-          <View style={styles.overlay}>
-            <View style={styles.scanArea} />
-            <Text style={styles.scanInstruction}>
-              Position QR code within the frame
-            </Text>
-          </View>
-
-          <TouchableOpacity 
-            style={styles.refreshButton}
-            onPress={refreshCamera}
-          >
-            <MaterialIcons name="refresh" size={24} color={COLORS.primaryWhiteHex} />
-          </TouchableOpacity>
-        </View>
+        <CameraComponent />
       )}
 
-      {/* Bill Amount Input */}
+      {/* Bill Input Screen */}
       {showBillInput && customerData && (
-        <ScrollView style={styles.inputContainer}>
-          <View style={styles.customerInfoCard}>
-            <Text style={styles.customerName}>{customerData.displayName}</Text>
-            <View style={styles.pointsContainer}>
-              <MaterialIcons name="stars" size={20} color={COLORS.primaryOrangeHex} />
-              <Text style={styles.customerPoints}>Points Available: ₹{customerData.loyaltyPoints}</Text>
+        <ScrollView style={styles.billInputContainer}>
+          <View style={styles.customerCard}>
+            <View style={styles.customerHeader}>
+              <MaterialIcons name="person" size={24} color={COLORS.primaryOrangeHex} />
+              <Text style={styles.customerName}>{customerData.displayName}</Text>
+            </View>
+            
+            <View style={styles.customerDetails}>
+              {customerData.phoneNumber && (
+                <Text style={styles.customerDetail}>📱 {customerData.phoneNumber}</Text>
+              )}
+              {customerData.email && (
+                <Text style={styles.customerDetail}>✉️ {customerData.email}</Text>
+              )}
+              <Text style={styles.loyaltyPoints}>
+                💎 Available Points: {customerData.loyaltyPoints}
+              </Text>
             </View>
           </View>
 
-          <View style={styles.inputSection}>
-            <Text style={styles.inputLabel}>Enter Bill Amount</Text>
-            <View style={styles.amountInputContainer}>
-              <Text style={styles.currencySymbol}>₹</Text>
-              <TextInput
-                style={styles.amountInput}
-                value={billAmount}
-                onChangeText={setBillAmount}
-                placeholder="0.00"
-                keyboardType="numeric"
-                autoFocus={true}
-              />
-            </View>
+          <View style={styles.billInputCard}>
+            <Text style={styles.billInputTitle}>Enter Bill Amount</Text>
+            <TextInput
+              style={styles.billInput}
+              value={billAmount}
+              onChangeText={setBillAmount}
+              placeholder="0.00"
+              placeholderTextColor={COLORS.primaryLightGreyHex}
+              keyboardType="numeric"
+              autoFocus
+            />
+            <Text style={styles.currencyLabel}>₹</Text>
+          </View>
+
+          <TouchableOpacity
+            style={[styles.calculateButton, (!billAmount || loading) && styles.disabledButton]}
+            onPress={handleBillSubmit}
+            disabled={!billAmount || loading}
+          >
+            {loading ? (
+              <ActivityIndicator size="small" color={COLORS.primaryWhiteHex} />
+            ) : (
+              <Text style={styles.calculateButtonText}>Calculate Discount</Text>
+            )}
+          </TouchableOpacity>
+        </ScrollView>
+      )}
+
+      {/* Transaction Confirmation */}
+      {showConfirmation && transactionPreview && (
+        <ScrollView style={styles.confirmationContainer}>
+          <View style={styles.confirmationCard}>
+            <Text style={styles.confirmationTitle}>Transaction Summary</Text>
             
-            <View style={styles.discountInfo}>
-              <MaterialIcons name="info-outline" size={16} color={COLORS.primaryOrangeHex} />
-              <Text style={styles.discountInfoText}>
-                Maximum points discount will be applied automatically
+            <View style={styles.customerSummary}>
+              <Text style={styles.customerSummaryName}>{transactionPreview.customerData.displayName}</Text>
+              <Text style={styles.customerSummaryPoints}>
+                Available Points: {transactionPreview.availablePoints}
               </Text>
             </View>
+
+            <View style={styles.amountBreakdown}>
+              <View style={styles.breakdownRow}>
+                <Text style={styles.breakdownLabel}>Bill Amount:</Text>
+                <Text style={styles.breakdownValue}>₹{transactionPreview.billAmount.toFixed(2)}</Text>
+              </View>
+              
+              {transactionPreview.pointsDiscount > 0 && (
+                <View style={styles.breakdownRow}>
+                  <Text style={[styles.breakdownLabel, styles.discountLabel]}>Points Discount:</Text>
+                  <Text style={[styles.breakdownValue, styles.discountValue]}>
+                    -₹{transactionPreview.pointsDiscount.toFixed(2)}
+                  </Text>
+                </View>
+              )}
+              
+              <View style={[styles.breakdownRow, styles.totalRow]}>
+                <Text style={styles.totalLabel}>Customer Pays:</Text>
+                <Text style={styles.totalValue}>₹{transactionPreview.customerPays.toFixed(2)}</Text>
+              </View>
+            </View>
+
+            <View style={styles.pointsBreakdown}>
+              <Text style={styles.pointsTitle}>Points Transaction</Text>
+              
+              {transactionPreview.pointsUsed > 0 && (
+                <View style={styles.pointsRow}>
+                  <Text style={styles.pointsLabel}>Points Used:</Text>
+                  <Text style={[styles.pointsValue, styles.pointsUsed]}>
+                    -{transactionPreview.pointsUsed}
+                  </Text>
+                </View>
+              )}
+              
+              <View style={styles.pointsRow}>
+                <Text style={styles.pointsLabel}>Points Earned:</Text>
+                <Text style={[styles.pointsValue, styles.pointsEarned]}>
+                  +{transactionPreview.pointsEarned}
+                </Text>
+              </View>
+              
+              <View style={[styles.pointsRow, styles.newBalanceRow]}>
+                <Text style={styles.pointsLabel}>New Balance:</Text>
+                <Text style={styles.newBalanceValue}>{transactionPreview.newPointsBalance}</Text>
+              </View>
+            </View>
+          </View>
+
+          <View style={styles.confirmationButtons}>
+            <TouchableOpacity
+              style={styles.cancelButton}
+              onPress={() => setShowConfirmation(false)}
+            >
+              <Text style={styles.cancelButtonText}>Cancel</Text>
+            </TouchableOpacity>
             
             <TouchableOpacity
-              style={[styles.processButton, loading && styles.disabledButton]}
-              onPress={handleBillSubmit}
+              style={[styles.confirmButton, loading && styles.disabledButton]}
+              onPress={processTransaction}
               disabled={loading}
             >
               {loading ? (
-                <ActivityIndicator color={COLORS.primaryWhiteHex} />
+                <ActivityIndicator size="small" color={COLORS.primaryWhiteHex} />
               ) : (
-                <Text style={styles.processButtonText}>Calculate Discount</Text>
+                <Text style={styles.confirmButtonText}>Confirm Transaction</Text>
               )}
             </TouchableOpacity>
           </View>
         </ScrollView>
       )}
 
-      {/* Confirmation Screen */}
-      {showConfirmation && transactionPreview && (
-        <ScrollView style={styles.confirmationContainer}>
-          <View style={styles.confirmationCard}>
-            <Text style={styles.confirmationTitle}>Confirm Sale</Text>
-            
-            <View style={styles.customerInfo}>
-              <Text style={styles.customerName}>{transactionPreview.customerData.displayName}</Text>
-              <Text style={styles.currentPoints}>Available Points: ₹{transactionPreview.availablePoints}</Text>
-            </View>
-
-            <View style={styles.transactionDetails}>
-              <View style={styles.detailRow}>
-                <Text style={styles.detailLabel}>Bill Amount:</Text>
-                <Text style={styles.detailValue}>₹{transactionPreview.billAmount.toFixed(2)}</Text>
-              </View>
-              
-              <View style={styles.detailRow}>
-                <Text style={styles.detailLabel}>Points Discount:</Text>
-                <Text style={[styles.detailValue, styles.discountValue]}>
-                  -₹{transactionPreview.pointsDiscount.toFixed(2)}
-                </Text>
-              </View>
-              
-              <View style={styles.detailRow}>
-                <Text style={styles.detailLabel}>Points Used:</Text>
-                <Text style={styles.detailValue}>{transactionPreview.pointsUsed}</Text>
-              </View>
-              
-              <View style={styles.detailRow}>
-                <Text style={styles.detailLabel}>Points Earned:</Text>
-                <Text style={[styles.detailValue, styles.pointsEarnedValue]}>
-                  +{transactionPreview.pointsEarned}
-                </Text>
-              </View>
-              
-              <View style={styles.detailRow}>
-                <Text style={styles.detailLabel}>New Points Balance:</Text>
-                <Text style={styles.detailValue}>{transactionPreview.newPointsBalance}</Text>
-              </View>
-              
-              <View style={styles.divider} />
-              <View style={styles.finalAmountRow}>
-                <Text style={styles.finalAmountLabel}>Customer Pays:</Text>
-                <Text style={styles.finalAmountValue}>
-                  ₹{transactionPreview.customerPays.toFixed(2)}
-                </Text>
-              </View>
-            </View>
-
-            <View style={styles.confirmationButtons}>
-              <TouchableOpacity 
-                style={styles.cancelButton} 
-                onPress={() => setShowConfirmation(false)}
-              >
-                <Text style={styles.cancelButtonText}>Back</Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity
-                style={[styles.confirmButton, loading && styles.disabledButton]}
-                onPress={processTransaction}
-                disabled={loading}
-              >
-                {loading ? (
-                  <ActivityIndicator color={COLORS.primaryWhiteHex} />
-                ) : (
-                  <Text style={styles.confirmButtonText}>Complete Sale</Text>
-                )}
-              </TouchableOpacity>
-            </View>
-          </View>
-        </ScrollView>
-      )}
-
-      {/* Transaction Complete Screen */}
+      {/* Transaction Complete */}
       {transactionComplete && transactionPreview && (
-        <ScrollView style={styles.resultContainer}>
-          <View style={styles.resultCard}>
-            <View style={styles.successResult}>
-              <MaterialIcons name="check-circle" size={48} color="#4CAF50" />
-              <Text style={styles.successTitle}>Sale Completed!</Text>
-              
-              <View style={styles.customerInfo}>
-                <Text style={styles.customerName}>{transactionPreview.customerData.displayName}</Text>
-              </View>
-
-              <View style={styles.transactionSummary}>
-                <View style={styles.detailRow}>
-                  <Text style={styles.detailLabel}>Bill Amount:</Text>
-                  <Text style={styles.detailValue}>₹{transactionPreview.billAmount.toFixed(2)}</Text>
-                </View>
-                <View style={styles.detailRow}>
-                  <Text style={styles.detailLabel}>Points Discount:</Text>
-                  <Text style={[styles.detailValue, styles.discountValue]}>
-                    -₹{transactionPreview.pointsDiscount.toFixed(2)}
-                  </Text>
-                </View>
-                <View style={styles.detailRow}>
-                  <Text style={styles.detailLabel}>Points Earned:</Text>
-                  <Text style={[styles.detailValue, styles.pointsEarnedValue]}>
-                    +{transactionPreview.pointsEarned}
-                  </Text>
-                </View>
-                <View style={styles.divider} />
-                <View style={styles.finalAmountRow}>
-                  <Text style={styles.finalAmountLabel}>Customer Paid:</Text>
-                  <Text style={styles.finalAmountValue}>
-                    ₹{transactionPreview.customerPays.toFixed(2)}
-                  </Text>
-                </View>
-              </View>
-            </View>
+        <View style={styles.successContainer}>
+          <View style={styles.successCard}>
+            <MaterialIcons name="check-circle" size={64} color={COLORS.primaryGreenHex} />
+            <Text style={styles.successTitle}>Transaction Complete!</Text>
             
-            <TouchableOpacity style={styles.newTransactionButton} onPress={startNewScan}>
-              <Text style={styles.newTransactionButtonText}>Process Next Sale</Text>
-            </TouchableOpacity>
+            <View style={styles.successSummary}>
+              <Text style={styles.successCustomer}>{transactionPreview.customerData.displayName}</Text>
+              <Text style={styles.successAmount}>Paid: ₹{transactionPreview.customerPays.toFixed(2)}</Text>
+              {transactionPreview.pointsDiscount > 0 && (
+                <Text style={styles.successDiscount}>
+                  Saved: ₹{transactionPreview.pointsDiscount.toFixed(2)} with points
+                </Text>
+              )}
+              <Text style={styles.successNewBalance}>
+                New Points Balance: {transactionPreview.newPointsBalance}
+              </Text>
+            </View>
           </View>
-        </ScrollView>
+
+          <TouchableOpacity style={styles.newScanButton} onPress={startNewScan}>
+            <MaterialIcons name="qr-code-scanner" size={24} color={COLORS.primaryWhiteHex} />
+            <Text style={styles.newScanButtonText}>Scan Next Customer</Text>
+          </TouchableOpacity>
+        </View>
       )}
     </SafeAreaView>
   );
@@ -868,26 +1179,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: SPACING.space_20,
-    paddingVertical: SPACING.space_15,
-    paddingTop: Platform.OS === 'ios' ? SPACING.space_15 : SPACING.space_20, // Extra padding for status bar
+    paddingVertical: SPACING.space_16,
     backgroundColor: COLORS.primaryWhiteHex,
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
     borderBottomWidth: 1,
-    borderBottomColor: '#E0E0E0',
+    borderBottomColor: COLORS.primaryLightGreyHex,
   },
   backButton: {
     padding: SPACING.space_8,
-    borderRadius: BORDERRADIUS.radius_10,
-    backgroundColor: '#F5F5F5',
   },
   headerCenter: {
     flex: 1,
     alignItems: 'center',
-    marginHorizontal: SPACING.space_15,
   },
   headerTitle: {
     fontSize: FONTSIZE.size_18,
@@ -910,143 +1212,196 @@ const styles = StyleSheet.create({
   },
   resetButton: {
     padding: SPACING.space_8,
-    borderRadius: BORDERRADIUS.radius_10,
-    backgroundColor: '#FFF3E0',
+  },
+  scanModeContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    paddingHorizontal: SPACING.space_20,
+    paddingVertical: SPACING.space_12,
+  },
+  scanModeButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: SPACING.space_16,
+    paddingVertical: SPACING.space_8,
+    marginHorizontal: SPACING.space_8,
+    borderRadius: BORDERRADIUS.radius_20,
+    borderWidth: 1,
+    borderColor: COLORS.primaryOrangeHex,
+  },
+  activeScanMode: {
+    backgroundColor: COLORS.primaryOrangeHex,
+  },
+  scanModeText: {
+    fontSize: FONTSIZE.size_12,
+    fontFamily: FONTFAMILY.poppins_medium,
+    color: COLORS.primaryOrangeHex,
+    marginLeft: SPACING.space_4,
+  },
+  activeScanModeText: {
+    color: COLORS.primaryWhiteHex,
+  },
+  instructions: {
+    alignItems: 'center',
+    paddingHorizontal: SPACING.space_20,
+    paddingVertical: SPACING.space_20,
+  },
+  instructionTitle: {
+    fontSize: FONTSIZE.size_18,
+    fontFamily: FONTFAMILY.poppins_semibold,
+    color: COLORS.primaryWhiteHex,
+    marginTop: SPACING.space_12,
+  },
+  instructionText: {
+    fontSize: FONTSIZE.size_14,
+    fontFamily: FONTFAMILY.poppins_regular,
+    color: COLORS.primaryLightGreyHex,
+    textAlign: 'center',
+    marginTop: SPACING.space_8,
+  },
+  subInstructionText: {
+    fontSize: FONTSIZE.size_12,
+    fontFamily: FONTFAMILY.poppins_regular,
+    color: COLORS.primaryGreyHex,
+    textAlign: 'center',
+    marginTop: SPACING.space_4,
+  },
+  scanAgainButton: {
+    marginTop: SPACING.space_16,
+    paddingHorizontal: SPACING.space_20,
+    paddingVertical: SPACING.space_8,
+    borderRadius: BORDERRADIUS.radius_15,
+    borderWidth: 1,
+    borderColor: COLORS.primaryOrangeHex,
+  },
+  scanAgainText: {
+    fontSize: FONTSIZE.size_12,
+    fontFamily: FONTFAMILY.poppins_medium,
+    color: COLORS.primaryOrangeHex,
   },
   cameraContainer: {
     flex: 1,
-    position: 'relative',
-    marginTop: SPACING.space_10, // Additional margin to avoid overlap
+    margin: SPACING.space_20,
+    borderRadius: BORDERRADIUS.radius_20,
+    overflow: 'hidden',
   },
   camera: {
     flex: 1,
   },
-  overlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
+  scannerOverlay: {
+    ...StyleSheet.absoluteFillObject,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  scanArea: {
+  scannerFrame: {
     width: 250,
     height: 250,
     borderWidth: 2,
     borderColor: COLORS.primaryOrangeHex,
-    borderRadius: BORDERRADIUS.radius_20,
+    borderRadius: BORDERRADIUS.radius_15,
     backgroundColor: 'transparent',
   },
-  scanInstruction: {
-    color: COLORS.primaryWhiteHex,
-    fontSize: FONTSIZE.size_16,
+  loadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: COLORS.primaryBlackRGBA,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    fontSize: FONTSIZE.size_14,
     fontFamily: FONTFAMILY.poppins_medium,
-    marginTop: SPACING.space_20,
-    textAlign: 'center',
-    backgroundColor: 'rgba(0,0,0,0.7)',
-    paddingHorizontal: SPACING.space_20,
-    paddingVertical: SPACING.space_10,
-    borderRadius: BORDERRADIUS.radius_10,
+    color: COLORS.primaryWhiteHex,
+    marginTop: SPACING.space_12,
   },
-  refreshButton: {
-    position: 'absolute',
-    bottom: SPACING.space_30,
-    right: SPACING.space_30,
-    backgroundColor: COLORS.primaryOrangeHex,
-    borderRadius: BORDERRADIUS.radius_25,
-    padding: SPACING.space_15,
-    elevation: 3,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-  },
-  inputContainer: {
+  billInputContainer: {
     flex: 1,
     backgroundColor: COLORS.primaryWhiteHex,
   },
-  customerInfoCard: {
-    backgroundColor: '#F8F9FA',
+  customerCard: {
     margin: SPACING.space_20,
     padding: SPACING.space_20,
+    backgroundColor: COLORS.primaryWhiteHex,
     borderRadius: BORDERRADIUS.radius_15,
+    elevation: 3,
+    shadowColor: COLORS.primaryBlackHex,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+  },
+  customerHeader: {
+    flexDirection: 'row',
     alignItems: 'center',
+    marginBottom: SPACING.space_12,
   },
   customerName: {
-    fontSize: FONTSIZE.size_20,
+    fontSize: FONTSIZE.size_18,
     fontFamily: FONTFAMILY.poppins_semibold,
     color: COLORS.primaryBlackHex,
-    marginBottom: SPACING.space_8,
-  },
-  pointsContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  customerPoints: {
-    fontSize: FONTSIZE.size_16,
-    fontFamily: FONTFAMILY.poppins_medium,
-    color: COLORS.primaryOrangeHex,
     marginLeft: SPACING.space_8,
   },
-  inputSection: {
-    padding: SPACING.space_20,
+  customerDetails: {
+    marginTop: SPACING.space_8,
   },
-  inputLabel: {
+  customerDetail: {
+    fontSize: FONTSIZE.size_14,
+    fontFamily: FONTFAMILY.poppins_regular,
+    color: COLORS.primaryGreyHex,
+    marginBottom: SPACING.space_4,
+  },
+  loyaltyPoints: {
+    fontSize: FONTSIZE.size_16,
+    fontFamily: FONTFAMILY.poppins_semibold,
+    color: COLORS.primaryOrangeHex,
+    marginTop: SPACING.space_8,
+  },
+  billInputCard: {
+    margin: SPACING.space_20,
+    marginTop: 0,
+    padding: SPACING.space_20,
+    backgroundColor: COLORS.primaryWhiteHex,
+    borderRadius: BORDERRADIUS.radius_15,
+    elevation: 3,
+    shadowColor: COLORS.primaryBlackHex,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    position: 'relative',
+  },
+  billInputTitle: {
     fontSize: FONTSIZE.size_16,
     fontFamily: FONTFAMILY.poppins_semibold,
     color: COLORS.primaryBlackHex,
-    marginBottom: SPACING.space_15,
+    marginBottom: SPACING.space_12,
+  },
+  billInput: {
+    fontSize: FONTSIZE.size_24,
+    fontFamily: FONTFAMILY.poppins_semibold,
+    color: COLORS.primaryBlackHex,
+    borderBottomWidth: 2,
+    borderBottomColor: COLORS.primaryOrangeHex,
+    paddingVertical: SPACING.space_12,
+    paddingLeft: SPACING.space_20,
     textAlign: 'center',
   },
-  amountInputContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#F5F5F5',
-    borderRadius: BORDERRADIUS.radius_15,
-    paddingHorizontal: SPACING.space_20,
-    marginBottom: SPACING.space_15,
-    borderWidth: 2,
-    borderColor: COLORS.primaryOrangeHex,
-  },
-  currencySymbol: {
+  currencyLabel: {
+    position: 'absolute',
+    left: SPACING.space_20,
+    bottom: SPACING.space_32,
     fontSize: FONTSIZE.size_24,
     fontFamily: FONTFAMILY.poppins_semibold,
-    color: COLORS.primaryBlackHex,
-    marginRight: SPACING.space_10,
+    color: COLORS.primaryGreyHex,
   },
-  amountInput: {
-    flex: 1,
-    fontSize: FONTSIZE.size_24,
-    fontFamily: FONTFAMILY.poppins_medium,
-    color: COLORS.primaryBlackHex,
-    paddingVertical: SPACING.space_15,
-  },
-  discountInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#FFF3E0',
-    padding: SPACING.space_12,
-    borderRadius: BORDERRADIUS.radius_10,
-    marginBottom: SPACING.space_20,
-  },
-  discountInfoText: {
-    fontSize: FONTSIZE.size_12,
-    fontFamily: FONTFAMILY.poppins_regular,
-    color: COLORS.primaryOrangeHex,
-    marginLeft: SPACING.space_8,
-    flex: 1,
-  },
-  processButton: {
+  calculateButton: {
     backgroundColor: COLORS.primaryOrangeHex,
-    paddingVertical: SPACING.space_15,
+    marginHorizontal: SPACING.space_20,
+    paddingVertical: SPACING.space_16,
     borderRadius: BORDERRADIUS.radius_15,
     alignItems: 'center',
   },
   disabledButton: {
-    opacity: 0.6,
+    backgroundColor: COLORS.primaryGreyHex,
   },
-  processButtonText: {
+  calculateButtonText: {
     fontSize: FONTSIZE.size_16,
     fontFamily: FONTFAMILY.poppins_semibold,
     color: COLORS.primaryWhiteHex,
@@ -1057,14 +1412,14 @@ const styles = StyleSheet.create({
   },
   confirmationCard: {
     margin: SPACING.space_20,
+    padding: SPACING.space_20,
     backgroundColor: COLORS.primaryWhiteHex,
-    borderRadius: BORDERRADIUS.radius_20,
-    padding: SPACING.space_24,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 5,
+    borderRadius: BORDERRADIUS.radius_15,
+    elevation: 3,
+    shadowColor: COLORS.primaryBlackHex,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
   },
   confirmationTitle: {
     fontSize: FONTSIZE.size_20,
@@ -1073,95 +1428,132 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: SPACING.space_20,
   },
-  customerInfo: {
+  customerSummary: {
     alignItems: 'center',
     marginBottom: SPACING.space_20,
-    paddingBottom: SPACING.space_15,
+    paddingBottom: SPACING.space_16,
     borderBottomWidth: 1,
-    borderBottomColor: '#E0E0E0',
+    borderBottomColor: COLORS.primaryLightGreyHex,
   },
-  currentPoints: {
+  customerSummaryName: {
+    fontSize: FONTSIZE.size_18,
+    fontFamily: FONTFAMILY.poppins_semibold,
+    color: COLORS.primaryBlackHex,
+  },
+  customerSummaryPoints: {
     fontSize: FONTSIZE.size_14,
-    fontFamily: FONTFAMILY.poppins_medium,
+    fontFamily: FONTFAMILY.poppins_regular,
     color: COLORS.primaryOrangeHex,
     marginTop: SPACING.space_4,
   },
-  transactionDetails: {
-    marginBottom: SPACING.space_24,
+  amountBreakdown: {
+    marginBottom: SPACING.space_20,
   },
-  detailRow: {
+  breakdownRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
     paddingVertical: SPACING.space_8,
   },
-  // Continuing from where the code was cut off...
-
-  detailLabel: {
+  breakdownLabel: {
     fontSize: FONTSIZE.size_14,
     fontFamily: FONTFAMILY.poppins_regular,
     color: COLORS.primaryGreyHex,
-    flex: 1,
   },
-  detailValue: {
+  breakdownValue: {
     fontSize: FONTSIZE.size_14,
     fontFamily: FONTFAMILY.poppins_semibold,
     color: COLORS.primaryBlackHex,
   },
+  discountLabel: {
+    color: COLORS.primaryGreenHex,
+  },
   discountValue: {
-    color: '#4CAF50',
+    color: COLORS.primaryGreenHex,
   },
-  pointsEarnedValue: {
-    color: COLORS.primaryOrangeHex,
-  },
-  divider: {
-    height: 1,
-    backgroundColor: '#E0E0E0',
-    marginVertical: SPACING.space_12,
-  },
-  finalAmountRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: '#FFF3E0',
-    paddingVertical: SPACING.space_12,
-    paddingHorizontal: SPACING.space_15,
-    borderRadius: BORDERRADIUS.radius_10,
+  totalRow: {
+    borderTopWidth: 1,
+    borderTopColor: COLORS.primaryLightGreyHex,
     marginTop: SPACING.space_8,
+    paddingTop: SPACING.space_12,
   },
-  finalAmountLabel: {
+  totalLabel: {
     fontSize: FONTSIZE.size_16,
     fontFamily: FONTFAMILY.poppins_semibold,
     color: COLORS.primaryBlackHex,
   },
-  finalAmountValue: {
+  totalValue: {
     fontSize: FONTSIZE.size_18,
+    fontFamily: FONTFAMILY.poppins_bold,
+    color: COLORS.primaryOrangeHex,
+  },
+  pointsBreakdown: {
+    backgroundColor: COLORS.secondaryLightGreyHex,
+    padding: SPACING.space_16,
+    borderRadius: BORDERRADIUS.radius_10,
+  },
+  pointsTitle: {
+    fontSize: FONTSIZE.size_16,
+    fontFamily: FONTFAMILY.poppins_semibold,
+    color: COLORS.primaryBlackHex,
+    marginBottom: SPACING.space_12,
+    textAlign: 'center',
+  },
+  pointsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: SPACING.space_4,
+  },
+  pointsLabel: {
+    fontSize: FONTSIZE.size_14,
+    fontFamily: FONTFAMILY.poppins_regular,
+    color: COLORS.primaryGreyHex,
+  },
+  pointsValue: {
+    fontSize: FONTSIZE.size_14,
+    fontFamily: FONTFAMILY.poppins_semibold,
+  },
+  pointsUsed: {
+    color: COLORS.primaryRedHex,
+  },
+  pointsEarned: {
+    color: COLORS.primaryGreenHex,
+  },
+  newBalanceRow: {
+    borderTopWidth: 1,
+    borderTopColor: COLORS.primaryLightGreyHex,
+    marginTop: SPACING.space_8,
+    paddingTop: SPACING.space_8,
+  },
+  newBalanceValue: {
+    fontSize: FONTSIZE.size_16,
     fontFamily: FONTFAMILY.poppins_bold,
     color: COLORS.primaryOrangeHex,
   },
   confirmationButtons: {
     flexDirection: 'row',
-    gap: SPACING.space_15,
+    marginHorizontal: SPACING.space_20,
+    marginBottom: SPACING.space_20,
   },
   cancelButton: {
     flex: 1,
-    backgroundColor: '#F5F5F5',
-    paddingVertical: SPACING.space_15,
+    paddingVertical: SPACING.space_16,
+    marginRight: SPACING.space_8,
     borderRadius: BORDERRADIUS.radius_15,
-    alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#E0E0E0',
+    borderColor: COLORS.primaryGreyHex,
+    alignItems: 'center',
   },
   cancelButtonText: {
     fontSize: FONTSIZE.size_16,
-    fontFamily: FONTFAMILY.poppins_medium,
-    color: COLORS.primaryBlackHex,
+    fontFamily: FONTFAMILY.poppins_semibold,
+    color: COLORS.primaryGreyHex,
   },
   confirmButton: {
-    flex: 2,
-    backgroundColor: COLORS.primaryOrangeHex,
-    paddingVertical: SPACING.space_15,
+    flex: 1,
+    paddingVertical: SPACING.space_16,
+    marginLeft: SPACING.space_8,
     borderRadius: BORDERRADIUS.radius_15,
+    backgroundColor: COLORS.primaryOrangeHex,
     alignItems: 'center',
   },
   confirmButtonText: {
@@ -1169,104 +1561,138 @@ const styles = StyleSheet.create({
     fontFamily: FONTFAMILY.poppins_semibold,
     color: COLORS.primaryWhiteHex,
   },
-  resultContainer: {
+  successContainer: {
     flex: 1,
     backgroundColor: COLORS.primaryWhiteHex,
-  },
-  resultCard: {
-    margin: SPACING.space_20,
-    backgroundColor: COLORS.primaryWhiteHex,
-    borderRadius: BORDERRADIUS.radius_20,
-    padding: SPACING.space_24,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 5,
-  },
-  successResult: {
+    justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: SPACING.space_24,
+  },
+  successCard: {
+    alignItems: 'center',
+    backgroundColor: COLORS.primaryWhiteHex,
+    padding: SPACING.space_30,
+    margin: SPACING.space_20,
+    borderRadius: BORDERRADIUS.radius_20,
+    elevation: 5,
+    shadowColor: COLORS.primaryBlackHex,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
   },
   successTitle: {
     fontSize: FONTSIZE.size_24,
     fontFamily: FONTFAMILY.poppins_bold,
-    color: '#4CAF50',
-    marginTop: SPACING.space_15,
+    color: COLORS.primaryGreenHex,
+    marginTop: SPACING.space_16,
     marginBottom: SPACING.space_20,
   },
-  transactionSummary: {
-    width: '100%',
-    backgroundColor: '#F8F9FA',
-    borderRadius: BORDERRADIUS.radius_15,
-    padding: SPACING.space_20,
-  },
-  newTransactionButton: {
-    backgroundColor: COLORS.primaryOrangeHex,
-    paddingVertical: SPACING.space_15,
-    borderRadius: BORDERRADIUS.radius_15,
+  successSummary: {
     alignItems: 'center',
   },
-  newTransactionButtonText: {
-    fontSize: FONTSIZE.size_16,
+  successCustomer: {
+    fontSize: FONTSIZE.size_18,
     fontFamily: FONTFAMILY.poppins_semibold,
-    color: COLORS.primaryWhiteHex,
-  },
-  instructions: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: 'rgba(0,0,0,0.8)',
-    paddingHorizontal: SPACING.space_20,
-    paddingVertical: SPACING.space_30,
-    alignItems: 'center',
-  },
-  instructionText: {
-    color: COLORS.primaryWhiteHex,
-    fontSize: FONTSIZE.size_16,
-    fontFamily: FONTFAMILY.poppins_semibold,
-    textAlign: 'center',
+    color: COLORS.primaryBlackHex,
     marginBottom: SPACING.space_8,
   },
-  subInstructionText: {
-    color: COLORS.primaryWhiteHex,
-    fontSize: FONTSIZE.size_14,
-    fontFamily: FONTFAMILY.poppins_regular,
-    textAlign: 'center',
-    opacity: 0.8,
+  successAmount: {
+    fontSize: FONTSIZE.size_20,
+    fontFamily: FONTFAMILY.poppins_bold,
+    color: COLORS.primaryOrangeHex,
+    marginBottom: SPACING.space_4,
   },
-  scanAgainButton: {
-    marginTop: SPACING.space_15,
-    paddingHorizontal: SPACING.space_20,
-    paddingVertical: SPACING.space_10,
-    backgroundColor: COLORS.primaryOrangeHex,
-    borderRadius: BORDERRADIUS.radius_10,
-  },
-  scanAgainText: {
-    color: COLORS.primaryWhiteHex,
+  successDiscount: {
     fontSize: FONTSIZE.size_14,
     fontFamily: FONTFAMILY.poppins_medium,
+    color: COLORS.primaryGreenHex,
+    marginBottom: SPACING.space_8,
+  },
+  successNewBalance: {
+    fontSize: FONTSIZE.size_16,
+    fontFamily: FONTFAMILY.poppins_semibold,
+    color: COLORS.primaryBlackHex,
+  },
+  newScanButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.primaryOrangeHex,
+    paddingHorizontal: SPACING.space_30,
+    paddingVertical: SPACING.space_16,
+    borderRadius: BORDERRADIUS.radius_15,
+    marginTop: SPACING.space_20,
+  },
+  newScanButtonText: {
+    fontSize: FONTSIZE.size_16,
+    fontFamily: FONTFAMILY.poppins_semibold,
+    color: COLORS.primaryWhiteHex,
+    marginLeft: SPACING.space_8,
   },
   text: {
     fontSize: FONTSIZE.size_16,
     fontFamily: FONTFAMILY.poppins_regular,
     color: COLORS.primaryWhiteHex,
     textAlign: 'center',
-    marginVertical: SPACING.space_20,
+    margin: SPACING.space_20,
   },
   button: {
     backgroundColor: COLORS.primaryOrangeHex,
-    paddingVertical: SPACING.space_15,
     paddingHorizontal: SPACING.space_30,
+    paddingVertical: SPACING.space_16,
     borderRadius: BORDERRADIUS.radius_15,
-    alignItems: 'center',
-    marginHorizontal: SPACING.space_20,
+    alignSelf: 'center',
   },
   buttonText: {
     fontSize: FONTSIZE.size_16,
     fontFamily: FONTFAMILY.poppins_semibold,
     color: COLORS.primaryWhiteHex,
+  },
+  cameraErrorContainer: {
+    flex: 1,
+    backgroundColor: COLORS.primaryBlackHex,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: SPACING.space_20,
+  },
+  cameraErrorText: {
+    fontSize: FONTSIZE.size_18,
+    fontFamily: FONTFAMILY.poppins_semibold,
+    color: COLORS.primaryWhiteHex,
+    marginTop: SPACING.space_12,
+  },
+  cameraErrorSubtext: {
+    fontSize: FONTSIZE.size_14,
+    fontFamily: FONTFAMILY.poppins_regular,
+    color: COLORS.primaryLightGreyHex,
+    textAlign: 'center',
+    marginTop: SPACING.space_8,
+  },
+  refreshButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.primaryOrangeHex,
+    paddingHorizontal: SPACING.space_20,
+    paddingVertical: SPACING.space_12,
+    borderRadius: BORDERRADIUS.radius_15,
+    marginTop: SPACING.space_20,
+  },
+  refreshButtonText: {
+    fontSize: FONTSIZE.size_14,
+    fontFamily: FONTFAMILY.poppins_semibold,
+    color: COLORS.primaryWhiteHex,
+    marginLeft: SPACING.space_8,
+  },
+  cameraRefreshButton: {
+    position: 'absolute',
+    top: SPACING.space_16,
+    right: SPACING.space_16,
+    backgroundColor: COLORS.primaryOrangeHex,
+    padding: SPACING.space_12,
+    borderRadius: BORDERRADIUS.radius_25,
+    elevation: 5,
+    shadowColor: COLORS.primaryBlackHex,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
   },
 });
 

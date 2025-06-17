@@ -27,24 +27,39 @@ export default {
       }
     },
     android: {
+      // "adaptiveIcon": {
+      //   "foregroundImage": "./assets/adaptive-icon.png",
+      //   "backgroundColor": "#FFFFFF"
+      // },
       permissions: [
         "CAMERA",
         "READ_EXTERNAL_STORAGE",
-        "WRITE_EXTERNAL_STORAGE"
+        "WRITE_EXTERNAL_STORAGE",
+        "android.permission.CAMERA",
+        "android.permission.WRITE_SETTINGS",
+        "android.permission.SYSTEM_ALERT_WINDOW",
+        "android.permission.WAKE_LOCK"
       ],
       package: "com.rohithofficial.wtccoffee",
     },
     plugins: [
-      "expo-router",
-      "expo-barcode-scanner",
-      [
-        "expo-image-picker",
-        {
-          photosPermission: "Allow $(PRODUCT_NAME) to access your photos to let you share them with your friends.",
-          cameraPermission: "Allow $(PRODUCT_NAME) to access your camera to let you take photos for your profile."
-        }
-      ]
-    ],
+  "expo-router",
+  "expo-barcode-scanner",
+  [
+    "expo-image-picker",
+    {
+      photosPermission: "Allow $(PRODUCT_NAME) to access your photos to let you share them with your friends.",
+      cameraPermission: "Allow $(PRODUCT_NAME) to access your camera to let you take photos for your profile."
+    }
+  ],
+  [
+    "expo-brightness",
+    {
+      "permissions": ["WRITE_SETTINGS"]
+    }
+  ]
+],
+
     scheme: "wtc",
     extra: {
       eas: {
