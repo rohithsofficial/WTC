@@ -19,7 +19,7 @@ export default {
     },
     assetBundlePatterns: ["**/*"],
     ios: {
-       bundleIdentifier: "com.rohithofficial.wtccoffee",
+      bundleIdentifier: "com.rohithofficial.wtccoffee",
       supportsTablet: true,
       infoPlist: {
         NSPhotoLibraryUsageDescription: "Allow $(PRODUCT_NAME) to access your photos to let you share them with your friends.",
@@ -40,26 +40,40 @@ export default {
         "android.permission.SYSTEM_ALERT_WINDOW",
         "android.permission.WAKE_LOCK"
       ],
-      package: "com.rohithofficial.wtccoffee",
+      package: "com.rohithofficial.wtccoffee"
     },
     plugins: [
-  "expo-router",
-  "expo-barcode-scanner",
-  [
-    "expo-image-picker",
-    {
-      photosPermission: "Allow $(PRODUCT_NAME) to access your photos to let you share them with your friends.",
-      cameraPermission: "Allow $(PRODUCT_NAME) to access your camera to let you take photos for your profile."
-    }
-  ],
-  [
-    "expo-brightness",
-    {
-      "permissions": ["WRITE_SETTINGS"]
-    }
-  ]
-],
-
+      "expo-router",
+      "expo-barcode-scanner",
+      [
+        "expo-image-picker",
+        {
+          photosPermission: "Allow $(PRODUCT_NAME) to access your photos to let you share them with your friends.",
+          cameraPermission: "Allow $(PRODUCT_NAME) to access your camera to let you take photos for your profile."
+        }
+      ],
+      [
+        "expo-brightness",
+        {
+          "permissions": ["WRITE_SETTINGS"]
+        }
+      ],
+      // Add build properties plugin for SDK compatibility
+      [
+        "expo-build-properties",
+        {
+          android: {
+            compileSdkVersion: 35,
+            targetSdkVersion: 35,
+            buildToolsVersion: "35.0.0",
+            minSdkVersion: 24
+          },
+          ios: {
+            deploymentTarget: "15.1"
+          }
+        }
+      ]
+    ],
     scheme: "wtc",
     extra: {
       eas: {

@@ -194,3 +194,6 @@ web-build/
 
 # notes
 notes.txt
+
+# Personal troubleshooting guides (keep private)
+android-build-fixes.txt

@@ -1,0 +1,59 @@
+diff --git a/node_modules/@unimodules/core/android/build.gradle b/node_modules/@unimodules/core/android/build.gradle
+index 00a3dea..a3f8886 100644
+--- a/node_modules/@unimodules/core/android/build.gradle
++++ b/node_modules/@unimodules/core/android/build.gradle
+@@ -1,6 +1,6 @@
+ apply plugin: 'com.android.library'
+ apply plugin: 'kotlin-android'
+-apply plugin: 'maven'
++// Removed deprecated maven plugin
+ 
+ group = 'org.unimodules'
+ version = '7.2.0'
+@@ -20,33 +20,10 @@ buildscript {
+   }
+ }
+ 
+-//Upload android library to maven with javadoc and android sources
+-configurations {
+-  deployerJars
+-}
+-
+-//Creating sources with comments
+-task androidSourcesJar(type: Jar) {
+-  classifier = 'sources'
+-  from android.sourceSets.main.java.srcDirs
+-}
+-
+-//Put the androidSources and javadoc to the artifacts
+-artifacts {
+-  archives androidSourcesJar
+-}
+-
+-uploadArchives {
+-  repositories {
+-    mavenDeployer {
+-      configuration = configurations.deployerJars
+-      repository(url: mavenLocal().url)
+-    }
+-  }
+-}
++//Removed maven upload configuration
+ 
+ android {
+-  compileSdkVersion safeExtGet("compileSdkVersion", 30)
++  compileSdkVersion safeExtGet("compileSdkVersion", 35)
+ 
+   compileOptions {
+     sourceCompatibility JavaVersion.VERSION_1_8
+@@ -54,8 +31,8 @@ android {
+   }
+ 
+   defaultConfig {
+-    minSdkVersion safeExtGet("minSdkVersion", 21)
+-    targetSdkVersion safeExtGet("targetSdkVersion", 30)
++    minSdkVersion safeExtGet("minSdkVersion", 24)
++    targetSdkVersion safeExtGet("targetSdkVersion", 35)
+     consumerProguardFiles 'proguard-rules.pro'
+     versionCode 20
+     versionName "7.2.0"

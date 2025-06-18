@@ -1,0 +1,24 @@
+diff --git a/node_modules/lottie-react-native/android/build.gradle b/node_modules/lottie-react-native/android/build.gradle
+index 095c090..21e0362 100644
+--- a/node_modules/lottie-react-native/android/build.gradle
++++ b/node_modules/lottie-react-native/android/build.gradle
+@@ -41,7 +41,7 @@ android {
+         println "DEPRECATION WARNING: The `namespace` property is not available in your version of AGP. Please upgrade to AGP 4.2+."
+     }
+ 
+-    compileSdk getExtOrDefault('compileSdkVersion', 31)
++    compileSdk getExtOrDefault('compileSdkVersion', 35)
+ 
+     // Used to override the NDK path/version on internal CI or by allowing
+     // users to customize the NDK path/version from their root project (e.g. for M1 support)
+@@ -53,8 +53,8 @@ android {
+     }
+ 
+     defaultConfig {
+-        minSdkVersion getExtOrDefault('minSdkVersion', 21)
+-        targetSdkVersion getExtOrDefault('targetSdkVersion', 31)
++        minSdkVersion getExtOrDefault('minSdkVersion', 24)
++        targetSdkVersion getExtOrDefault('targetSdkVersion', 35)
+         buildConfigField "boolean", "IS_NEW_ARCHITECTURE_ENABLED", isNewArchitectureEnabled().toString()
+ 
+         ndk {
