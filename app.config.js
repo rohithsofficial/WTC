@@ -1,13 +1,13 @@
 import 'dotenv/config';
-
+                    
 export default {
   expo: {
     name: "WTC COFFEE SHOP",
-    slug: "react-native-firebase", // ✅ use kebab-case (no spaces/underscores)
+    slug: "react-native-firebase",
     platforms: ["ios", "android", "web"],
     version: "1.0.0",
     orientation: "portrait",
-    sdkVersion: "53.0.0",
+    sdkVersion: "53.0.0", // Updated to match package.json
     icon: "./assets/icon.png",
     splash: {
       image: "./assets/splash.png",
@@ -27,10 +27,6 @@ export default {
       }
     },
     android: {
-      // "adaptiveIcon": {
-      //   "foregroundImage": "./assets/adaptive-icon.png",
-      //   "backgroundColor": "#FFFFFF"
-      // },
       permissions: [
         "CAMERA",
         "READ_EXTERNAL_STORAGE",
@@ -58,7 +54,6 @@ export default {
           "permissions": ["WRITE_SETTINGS"]
         }
       ],
-      // Add build properties plugin for SDK compatibility
       [
         "expo-build-properties",
         {

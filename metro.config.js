@@ -1,10 +1,11 @@
-// metro.config.js
-const { getDefaultConfig } = require('@expo/metro-config');
+const { getDefaultConfig } = require('expo/metro-config');
+const path = require('path');
 
 const config = getDefaultConfig(__dirname);
 
-// Fix Firebase `.cjs` and `exports` issues
-config.resolver.sourceExts.push('cjs');
-config.resolver.unstable_enablePackageExports = false;
+// Force metro to resolve modules from project directory first
+config.resolver.nodeModulesPaths = [
+  path.resolve(__dirname, 'node_modules'),
+];
 
 module.exports = config;
