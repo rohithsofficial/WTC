@@ -2,8 +2,8 @@ import 'dotenv/config';
 
 export default {
   expo: {
-    name: "WTC COFFEE SHOP",
-    slug: "react-native-firebase", // ✅ use kebab-case (no spaces/underscores)
+    name: "WTC_COFFEE_SHOP",
+    slug: "Westerrain_Terrain", // ✅ use kebab-case (no spaces/underscores)
     platforms: ["ios", "android", "web"],
     version: "1.0.0",
     orientation: "portrait",

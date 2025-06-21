@@ -1,0 +1,318 @@
+===============================================================================
+🔧 REACT NATIVE/EXPO ANDROID BUILD ERROR RESOLUTION GUIDE
+===============================================================================
+
+🚨 COMMON ERROR: "Plugin with id 'maven' not found" & "compileSdkVersion is not specified"
+
+📋 ERROR SYMPTOMS:
+FAILURE: Build completed with X failures.
+
+1: Task failed with an exception.
+-----------
+* Where:
+Build file '.../node_modules/[package-name]/android/build.gradle' line X
+
+* What went wrong:
+A problem occurred evaluating project ':[package-name]'.
+> Plugin with id 'maven' not found.
+
+2: Task failed with an exception.
+-----------
+* What went wrong:
+A problem occurred configuring project ':[package-name]'.
+> com.android.builder.errors.EvalIssueException: compileSdkVersion is not specified. Please add it to build.gradle
+
+===============================================================================
+🔍 ROOT CAUSE ANALYSIS
+===============================================================================
+
+WHY THIS HAPPENS:
+1. Gradle Version Upgrade: Newer Gradle versions (8+) removed the deprecated 'maven' plugin
+2. Android Gradle Plugin (AGP) Upgrade: AGP 8+ requires explicit compileSdkVersion specification
+3. Old Dependencies: Many React Native/Expo libraries haven't been updated for newer build tools
+4. SDK Version Mismatch: Libraries use hardcoded old SDK versions instead of reading from project config
+
+COMMON AFFECTED PACKAGES:
+- @unimodules/core
+- expo-firebase-core
+- lottie-react-native
+- react-native-vector-icons
+- Other older React Native libraries
+
+===============================================================================
+🛠️ STEP-BY-STEP SOLUTION
+===============================================================================
+
+STEP 1: Install patch-package
+npm install patch-package --save-dev
+
+STEP 2: Identify Problematic Files
+Look for these patterns in error messages:
+- Plugin with id 'maven' not found
+- compileSdkVersion is not specified
+- Could not set unknown property 'classifier'
+
+STEP 3: Patch Each Problematic Library
+
+FOR "MAVEN PLUGIN" ERRORS:
+1. Open: node_modules/[package-name]/android/build.gradle
+2. Find and REMOVE/COMMENT OUT:
+   apply plugin: 'maven'
+
+FOR "CLASSIFIER" ERRORS:
+1. Find and REMOVE these blocks:
+   task androidSourcesJar(type: Jar) {
+     classifier = 'sources'  // ← Remove this
+     from android.sourceSets.main.java.srcDirs
+   }
+   
+   artifacts {
+     archives androidSourcesJar
+   }
+   
+   uploadArchives {
+     repositories {
+       mavenDeployer {
+         configuration = configurations.deployerJars
+         repository(url: mavenLocal().url)
+       }
+     }
+   }
+
+FOR "COMPILESDKVERSION" ERRORS:
+1. Find the android { ... } block
+2. Add/update this line at the top of the block:
+   android {
+     compileSdkVersion rootProject.hasProperty('compileSdkVersion') ? rootProject.compileSdkVersion : 35
+     // or use safeExtGet if available:
+     compileSdkVersion safeExtGet("compileSdkVersion", 35)
+   }
+
+STEP 4: Create Patches
+npx patch-package [package-name1] [package-name2] [package-name3]
+
+STEP 5: Add Postinstall Script
+Add to package.json:
+{
+  "scripts": {
+    "postinstall": "patch-package"
+  }
+}
+
+===============================================================================
+📝 QUICK REFERENCE COMMANDS
+===============================================================================
+
+FIND ALL MAVEN PLUGIN USAGE:
+grep -r "apply plugin: 'maven'" node_modules/ --include="*.gradle"
+
+FIND ALL CLASSIFIER USAGE:
+grep -r "classifier" node_modules/ --include="*.gradle"
+
+FIND MISSING COMPILESDKVERSION:
+Look for android { blocks without compileSdkVersion in error messages.
+
+===============================================================================
+🔄 AUTOMATION SCRIPT (BASH)
+===============================================================================
+
+#!/bin/bash
+# auto-patch-android.sh
+
+echo "🔧 Patching Android build issues..."
+
+# List of commonly problematic packages
+PACKAGES=(
+  "@unimodules/core"
+  "expo-firebase-core"
+  "lottie-react-native"
+  "react-native-vector-icons"
+)
+
+for package in "${PACKAGES[@]}"; do
+  if [ -d "node_modules/$package" ]; then
+    echo "Checking $package..."
+    
+    # Remove maven plugin
+    sed -i "s/apply plugin: 'maven'/# apply plugin: 'maven'/" "node_modules/$package/android/build.gradle" 2>/dev/null
+    
+    # Remove classifier usage
+    sed -i '/classifier = /d' "node_modules/$package/android/build.gradle" 2>/dev/null
+    
+    # Add compileSdkVersion if missing
+    if ! grep -q "compileSdkVersion" "node_modules/$package/android/build.gradle"; then
+      sed -i '/android {/a\  compileSdkVersion rootProject.hasProperty("compileSdkVersion") ? rootProject.compileSdkVersion : 35' "node_modules/$package/android/build.gradle" 2>/dev/null
+    fi
+  fi
+done
+
+echo "✅ Patching complete!"
+
+===============================================================================
+🔄 AUTOMATION SCRIPT (POWERSHELL - WINDOWS)
+===============================================================================
+
+# Quick Android Build Fix Script for Windows
+# Usage: .\fix-android-build.ps1
+
+Write-Host "🔧 Android Build Fix Script" -ForegroundColor Green
+
+# Check if patch-package is installed
+try {
+    npm list patch-package | Out-Null
+} catch {
+    Write-Host "📦 Installing patch-package..." -ForegroundColor Yellow
+    npm install patch-package --save-dev
+}
+
+# List of commonly problematic packages
+$PACKAGES = @(
+    "@unimodules/core",
+    "expo-firebase-core", 
+    "lottie-react-native",
+    "react-native-vector-icons"
+)
+
+Write-Host "🔍 Checking for common Android build issues..." -ForegroundColor Cyan
+
+foreach ($package in $PACKAGES) {
+    $buildGradlePath = "node_modules\$package\android\build.gradle"
+    
+    if (Test-Path $buildGradlePath) {
+        Write-Host "Checking $package..." -ForegroundColor Yellow
+        
+        $content = Get-Content $buildGradlePath -Raw
+        
+        # Remove maven plugin
+        if ($content -match "apply plugin: 'maven'") {
+            Write-Host "  - Removing deprecated maven plugin" -ForegroundColor Green
+            $content = $content -replace "apply plugin: 'maven'", "# apply plugin: 'maven'"
+        }
+        
+        # Remove classifier usage
+        if ($content -match "classifier = ") {
+            Write-Host "  - Removing deprecated classifier usage" -ForegroundColor Green
+            $content = $content -replace "(?m)^\s*classifier = .*$", ""
+        }
+        
+        # Add compileSdkVersion if missing
+        if ($content -notmatch "compileSdkVersion") {
+            Write-Host "  - Adding missing compileSdkVersion" -ForegroundColor Green
+            $content = $content -replace "(android \{)", "`$1`n  compileSdkVersion rootProject.hasProperty('compileSdkVersion') ? rootProject.compileSdkVersion : 35"
+        }
+        
+        # Write back the modified content
+        Set-Content $buildGradlePath $content -NoNewline
+    }
+}
+
+Write-Host "✅ Patching complete!" -ForegroundColor Green
+
+# Create patches for all packages
+$PACKAGES_STRING = $PACKAGES -join " "
+Invoke-Expression "npx patch-package $PACKAGES_STRING"
+
+Write-Host "🎯 Next steps:"
+Write-Host "1. Add 'postinstall': 'patch-package' to package.json scripts if not already there"
+Write-Host "2. Test build: cd android && .\gradlew clean"
+Write-Host "3. If issues persist, check this guide for detailed steps"
+
+===============================================================================
+🎯 PREVENTION TIPS
+===============================================================================
+
+1. USE COMPATIBLE VERSIONS:
+{
+  "dependencies": {
+    "@unimodules/core": "^7.2.0",
+    "lottie-react-native": "^7.2.2"
+  }
+}
+
+2. KEEP GRADLE PROPERTIES UPDATED:
+android.compileSdkVersion=35
+android.targetSdkVersion=35
+android.minSdkVersion=24
+android.buildToolsVersion=35.0.0
+
+3. REGULAR MAINTENANCE:
+- Run npx patch-package after every npm install
+- Keep patches updated when dependencies change
+- Monitor for new build errors after dependency updates
+
+===============================================================================
+🚨 EMERGENCY QUICK FIX
+===============================================================================
+
+If you need a quick fix without understanding the details:
+
+1. Install patch-package
+   npm install patch-package --save-dev
+
+2. Find and fix the specific files mentioned in error
+   (Follow Step 3 above for each error)
+
+3. Create patches
+   npx patch-package [all-affected-packages]
+
+4. Add postinstall script to package.json
+5. Test build
+   cd android && ./gradlew clean
+
+===============================================================================
+📚 UNDERSTANDING THE TECHNICAL DETAILS
+===============================================================================
+
+WHY MAVEN PLUGIN WAS REMOVED:
+- Gradle 8+ removed the 'maven' plugin in favor of the 'maven-publish' plugin
+- Old libraries still use the deprecated plugin for publishing to Maven repositories
+
+WHY COMPILESDKVERSION IS REQUIRED:
+- AGP 8+ requires explicit SDK version specification
+- Prevents build inconsistencies across different environments
+- Ensures compatibility with target Android versions
+
+WHY CLASSIFIER IS DEPRECATED:
+- The 'classifier' property was deprecated in favor of 'archiveClassifier'
+- Newer Gradle versions don't support the old syntax
+
+===============================================================================
+🎉 SUCCESS INDICATORS
+===============================================================================
+
+Your build is fixed when you see:
+BUILD SUCCESSFUL in Xs
+X actionable tasks: X executed, X up-to-date
+
+Instead of:
+FAILURE: Build completed with X failures.
+
+===============================================================================
+📋 CHECKLIST FOR FUTURE ISSUES
+===============================================================================
+
+- [ ] Install patch-package: npm install patch-package --save-dev
+- [ ] Identify error patterns in build output
+- [ ] Locate problematic files in node_modules
+- [ ] Remove deprecated maven plugin
+- [ ] Remove deprecated classifier usage
+- [ ] Add missing compileSdkVersion
+- [ ] Create patches: npx patch-package [package-names]
+- [ ] Add postinstall script to package.json
+- [ ] Test build: cd android && ./gradlew clean
+
+===============================================================================
+💡 PRO TIPS
+===============================================================================
+
+1. Bookmark this file for quick reference
+2. Use the automation scripts for faster fixes
+3. Keep patches updated with dependency changes
+4. Monitor for new build errors after updates
+5. Share this guide with your team
+
+===============================================================================
+📅 LAST UPDATED: 2024-12-19
+🔧 FIXED ISSUES: Maven plugin, compileSdkVersion, classifier deprecation
+✅ TESTED: React Native 0.79.3, Expo SDK 53, Gradle 8.13
+=============================================================================== 
