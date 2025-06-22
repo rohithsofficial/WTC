@@ -14,11 +14,11 @@ import {
 import { Stack, router } from 'expo-router';
 import { FontAwesome } from '@expo/vector-icons';
 import { COLORS, FONTFAMILY, FONTSIZE, SPACING, BORDERRADIUS } from '../../src/theme/theme';
-import { auth, firebaseConfig } from '../../src/firebase/firebase-config';
+import { auth, firebaseConfig } from '../../src/firebase/config';
 import { PhoneAuthProvider, signInWithCredential, updateProfile } from 'firebase/auth';
 import { FirebaseRecaptchaVerifierModal } from 'expo-firebase-recaptcha';
 import { collection, query, where, getDocs, doc, setDoc } from 'firebase/firestore';
-import { db } from '../../src/firebase/firebase-config';
+import { db } from '../../src/firebase/config';
 import StyledAlert from '../../src/components/StyledAlert';
 
 export default function PhoneAuth() {

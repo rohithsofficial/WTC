@@ -1,29 +1,18 @@
 // src/firebase/config.ts
-
 import { initializeApp, FirebaseApp, getApps } from 'firebase/app';
-import { initializeAuth, getReactNativePersistence, Auth, getAuth } from 'firebase/auth';
+import { getAuth, Auth } from 'firebase/auth';
 import { getFirestore, Firestore } from 'firebase/firestore';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getStorage, FirebaseStorage } from 'firebase/storage';
 
-import {
-  FIREBASE_API_KEY,
-  FIREBASE_AUTH_DOMAIN,
-  FIREBASE_PROJECT_ID,
-  FIREBASE_STORAGE_BUCKET,
-  FIREBASE_MESSAGING_SENDER_ID,
-  FIREBASE_APP_ID,
-  FIREBASE_MEASUREMENT_ID,
-} from '@env';
-
-// ✅ Directly use your .env variables
+// Firebase config
 const firebaseConfig = {
-  apiKey: FIREBASE_API_KEY,
-  authDomain: FIREBASE_AUTH_DOMAIN,
-  projectId: FIREBASE_PROJECT_ID,
-  storageBucket: FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: FIREBASE_MESSAGING_SENDER_ID,
-  appId: FIREBASE_APP_ID,
-  measurementId: FIREBASE_MEASUREMENT_ID,
+  apiKey: "AIzaSyAWopSV8beuX9HY3GaezbCENx1RijJSaPE",
+  authDomain: "wtc-application-710fa.firebaseapp.com",
+  projectId: "wtc-application-710fa",
+  storageBucket: "wtc-application-710fa.firebasestorage.app",
+  messagingSenderId: "369861087422",
+  appId: "1:369861087422:web:fdb63d157c8f40ab6fceef",
+  measurementId: "G-B49SJXM861"
 };
 
 // Initialize Firebase only once
@@ -36,19 +25,9 @@ if (getApps().length === 0) {
   console.log('Using existing Firebase app');
 }
 
-// Initialize Auth with AsyncStorage persistence
-let auth: Auth;
-try {
-  auth = initializeAuth(app, {
-    persistence: getReactNativePersistence(AsyncStorage),
-  });
-  console.log('Firebase Auth initialized with AsyncStorage persistence');
-} catch (error: any) {
-  // If auth is already initialized (e.g. on hot reload), fallback to getAuth
-  auth = getAuth(app);
-}
-
-// Setup Firestore
+// Initialize services
+const auth: Auth = getAuth(app);
 const db: Firestore = getFirestore(app);
+const storage: FirebaseStorage = getStorage(app);
 
-export { app, auth, db, firebaseConfig };
+export { app, auth, db, storage, firebaseConfig };

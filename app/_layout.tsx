@@ -1,9 +1,12 @@
+// _layout.tsx
+import '../src/firebase/config'; // Move this to the TOP
 import 'react-native-gesture-handler';
 import { Stack } from 'expo-router';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { CartProvider } from '@/src/store/CartContext';
+import { CartProvider } from '../src/store/CartContext';
 import { StyleSheet } from 'react-native';
+
 
 export default function RootLayout() {
   return (

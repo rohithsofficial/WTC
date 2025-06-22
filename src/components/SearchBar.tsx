@@ -25,6 +25,7 @@ import {
   addDoc,
   getFirestore
 } from 'firebase/firestore';
+import { db } from '../firebase/config';
 
 const CoffeeSearchBar = ({
   onProductSelect,
@@ -42,7 +43,7 @@ const CoffeeSearchBar = ({
   const [showResults, setShowResults] = useState(false);
 
   const inputRef = useRef(null);
-  const db = firebaseDb || getFirestore();
+  const firestoreDb = firebaseDb || db;
   const searchDelayRef = useRef(null);
 
   useEffect(() => {
@@ -70,7 +71,7 @@ const CoffeeSearchBar = ({
 
     setIsLoading(true);
     try {
-      const productsRef = collection(db, collectionName);
+      const productsRef = collection(firestoreDb, collectionName);
       const searchTextLower = searchText.toLowerCase();
       const searchTextUpper = searchTextLower + '\uf8ff';
 

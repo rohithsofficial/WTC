@@ -1,9 +1,10 @@
-import firestore from '@react-native-firebase/firestore';
+import { db } from '../firebase/config';
+import { collection, doc, setDoc, getDocs } from 'firebase/firestore';
 
 export const initializeDatabase = async () => {
   try {
     // Check if categories already exist
-    const categoriesSnapshot = await firestore().collection('categories').get();
+    const categoriesSnapshot = await getDocs(collection(db, 'categories'));
     
     if (categoriesSnapshot.empty) {
       // Add categories
@@ -15,7 +16,7 @@ export const initializeDatabase = async () => {
       ];
 
       for (const category of categories) {
-        await firestore().collection('categories').doc(category.id).set(category);
+        await setDoc(doc(db, 'categories', category.id), category);
       }
 
       // Add products
@@ -59,7 +60,7 @@ export const initializeDatabase = async () => {
       ];
 
       for (const product of products) {
-        await firestore().collection('products').doc(product.id).set(product);
+        await setDoc(doc(db, 'products', product.id), product);
       }
 
       console.log('Database initialized successfully');
