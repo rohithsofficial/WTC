@@ -1,6 +1,6 @@
-// src/firebase/config.ts
 import { initializeApp, FirebaseApp, getApps } from 'firebase/app';
-import { getAuth, Auth } from 'firebase/auth';
+import { initializeAuth, getReactNativePersistence, Auth } from 'firebase/auth';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getFirestore, Firestore } from 'firebase/firestore';
 import { getStorage, FirebaseStorage } from 'firebase/storage';
 
@@ -25,8 +25,12 @@ if (getApps().length === 0) {
   console.log('Using existing Firebase app');
 }
 
-// Initialize services
-const auth: Auth = getAuth(app);
+// ✅ Use AsyncStorage-based persistence for React Native Auth
+const auth: Auth = initializeAuth(app, {
+  persistence: getReactNativePersistence(AsyncStorage),
+});
+
+// Other services
 const db: Firestore = getFirestore(app);
 const storage: FirebaseStorage = getStorage(app);
 
