@@ -1,3 +1,4 @@
+//app/(app)/category/[category].tsx
 import React from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, Image, StatusBar, Platform, TextInput, ScrollView } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -8,8 +9,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { categoryService } from '../../../src/services/firebaseService';
 import { useEffect, useState } from 'react';
 import Slider from '@react-native-community/slider';
-import { Category } from '../../../src/types/database';
 
+// Updated interface to match the actual data structure
 interface Product {
   id: string;
   name: string;
@@ -19,6 +20,7 @@ interface Product {
   imagelink_portrait?: string;
   ingredients?: string[];
   special_ingredient?: string;
+  // Updated to handle both number array and object array
   prices: number[];
   average_rating?: number;
   ratings_count?: number;
@@ -61,17 +63,39 @@ const ProductCategoryScreen = () => {
       (p.description && p.description.toLowerCase().includes(searchLower)) ||
       (p.special_ingredient && p.special_ingredient.toLowerCase().includes(searchLower)) ||
       (p.ingredients && p.ingredients.some(ingredient => ingredient.toLowerCase().includes(searchLower))) ||
-      p.prices.some(price => price.toString().includes(searchLower)) ||
+      p.prices.some(priceObj => priceObj.price.toString().includes(searchLower)) ||
       (p.average_rating && p.average_rating.toString().includes(searchLower));
     return matchesSearch;
   });
 
-  // Featured products for this category
-  const getProductPrice = (product: Product) => product.prices && product.prices.length > 0 ? product.prices[0] : 0;
+  // Fixed: Updated getProductPrice function to handle the correct data structure
+  const getProductPrice = (product: Product): number => {
+  if (Array.isArray(product.prices)) {
+    // Handle case where prices is an array of numbers [184, 0, 0]
+    if (typeof product.prices[0] === 'number') {
+      const validPrices = product.prices
+        .filter((price: any) => typeof price === 'number' && price > 0);
+      return validPrices.length > 0 ? validPrices[0] : 0;
+    }
+    
+    // Handle case where prices is an array of objects [{ size: "small", price: "184", currency: "₹" }]
+    if (typeof product.prices[0] === 'object' && product.prices[0].price !== undefined) {
+      const validPrices = product.prices
+        .map((priceObj: any) => parseFloat(priceObj.price))
+        .filter(price => !isNaN(price) && price > 0);
+      return validPrices.length > 0 ? validPrices[0] : 0;
+    }
+  }
+  return 0;
+};
+
+
   function hasFeatured(product: any): product is Product & { featured: boolean } {
     return typeof product === 'object' && 'featured' in product;
   }
+  
   const featuredProducts = products.filter(product => hasFeatured(product) && !!product.featured);
+  
   const getFeaturedProducts = (): Product[] => {
     return showAllFeatured ? featuredProducts : featuredProducts.slice(0, 5);
   };
@@ -98,14 +122,13 @@ const ProductCategoryScreen = () => {
     return filtered;
   };
 
-
   // Helper function to get image source with fallback
-const getImageSource = (imageUrl: string | undefined | null): { uri: string } | number => {
-  if (imageUrl && imageUrl.trim() !== '') {
-    return { uri: imageUrl };
-  }
-  return require('../../../assets/app_images/fallback.jpg');
-};
+  const getImageSource = (imageUrl: string | undefined | null): { uri: string } | number => {
+    if (imageUrl && imageUrl.trim() !== '') {
+      return { uri: imageUrl };
+    }
+    return require('../../../assets/app_images/fallback.jpg');
+  };
 
   // --- Featured Product Card ---
   const renderFeaturedProductCard = (product: Product) => (
@@ -343,7 +366,8 @@ const getImageSource = (imageUrl: string | undefined | null): { uri: string } | 
               </TouchableOpacity>
               <View style={styles.productInfo}>
                 <Text style={styles.productName} numberOfLines={1}>{item.name}</Text>
-                <Text style={styles.productPrice}>₹{item.prices[0].toFixed(2)}</Text>
+                {/* Fixed: Use getProductPrice function instead of direct array access */}
+                <Text style={styles.productPrice}>₹{getProductPrice(item).toFixed(2)}</Text>
               </View>
             </TouchableOpacity>
           )}
@@ -683,4 +707,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default ProductCategoryScreen; 
+export default ProductCategoryScreen;

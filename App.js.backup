@@ -2,19 +2,8 @@ import 'react-native-gesture-handler';
 import React, { useEffect, useState } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
-
-// Import Firebase initialization first
-import './src/firebase/config';
-import { auth, db } from './src/firebase/config';
-import { onAuthStateChanged } from 'firebase/auth';
-import { doc, getDoc } from 'firebase/firestore';
-
-// import { LoginScreen, HomeScreen, RegistrationScreen } from './src/screens';
-// import LoadScreen from './src/screens/LoadScreen/LoadScreen';
-
 import { decode, encode } from 'base-64';
 if (!global.btoa) { global.btoa = encode }
-if (!global.atob) { global.atob = decode }
 
 const Stack = createStackNavigator();
 

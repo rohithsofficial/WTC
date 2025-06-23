@@ -1,3 +1,5 @@
+import 'dotenv/config';
+
 export default ({ config }) => ({
   ...config,
   name: "WTC COFFEE SHOP",
@@ -38,36 +40,36 @@ export default ({ config }) => ({
     package: "com.rohithofficial.wtccoffee"
   },
   plugins: [
-  "expo-router",
-  "expo-barcode-scanner",
-  [
-    "expo-image-picker",
-    {
-      photosPermission: "Allow $(PRODUCT_NAME) to access your photos to let you share them with your friends.",
-      cameraPermission: "Allow $(PRODUCT_NAME) to access your camera to let you take photos for your profile."
-    }
-  ],
-  [
-    "expo-brightness",
-    {
-      permissions: ["WRITE_SETTINGS"]
-    }
-  ],
-  [
-    "expo-build-properties",
-    {
-      android: {
-        compileSdkVersion: 35,
-        targetSdkVersion: 35,
-        buildToolsVersion: "35.0.0",
-        minSdkVersion: 24
-      },
-      ios: {
-        deploymentTarget: "15.1"
+    "expo-router",
+    "expo-barcode-scanner",
+    [
+      "expo-image-picker",
+      {
+        photosPermission: "Allow $(PRODUCT_NAME) to access your photos to let you share them with your friends.",
+        cameraPermission: "Allow $(PRODUCT_NAME) to access your camera to let you take photos for your profile."
       }
-    }
-  ]
-],
+    ],
+    [
+      "expo-brightness",
+      {
+        permissions: ["WRITE_SETTINGS"]
+      }
+    ],
+    [
+      "expo-build-properties",
+      {
+        android: {
+          compileSdkVersion: 35,
+          targetSdkVersion: 35,
+          buildToolsVersion: "35.0.0",
+          minSdkVersion: 24
+        },
+        ios: {
+          deploymentTarget: "15.1"
+        }
+      }
+    ]
+  ],
   scheme: "wtc",
   extra: {
     eas: {
