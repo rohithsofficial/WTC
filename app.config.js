@@ -2,8 +2,9 @@ import 'dotenv/config';
 
 export default {
   expo: {
-    name: "WTC_COFFEE_SHOP",
-    slug: "Westerrain_Terrain", // ✅ use kebab-case (no spaces/underscores)
+    name: "wtcApp",
+    slug: "react-native-firebase", // ✅ Fixed: removed invalid character, use kebab-case
+    owner: "rohithofficial", // ✅ Added: required by EAS
     platforms: ["ios", "android", "web"],
     version: "1.0.0",
     orientation: "portrait",
@@ -43,23 +44,22 @@ export default {
       package: "com.rohithofficial.wtccoffee",
     },
     plugins: [
-  "expo-router",
-  "expo-barcode-scanner",
-  [
-    "expo-image-picker",
-    {
-      photosPermission: "Allow $(PRODUCT_NAME) to access your photos to let you share them with your friends.",
-      cameraPermission: "Allow $(PRODUCT_NAME) to access your camera to let you take photos for your profile."
-    }
-  ],
-  [
-    "expo-brightness",
-    {
-      "permissions": ["WRITE_SETTINGS"]
-    }
-  ]
-],
-
+      "expo-router",
+      "expo-barcode-scanner",
+      [
+        "expo-image-picker",
+        {
+          photosPermission: "Allow $(PRODUCT_NAME) to access your photos to let you share them with your friends.",
+          cameraPermission: "Allow $(PRODUCT_NAME) to access your camera to let you take photos for your profile."
+        }
+      ],
+      [
+        "expo-brightness",
+        {
+          "permissions": ["WRITE_SETTINGS"]
+        }
+      ]
+    ],
     scheme: "wtc",
     extra: {
       eas: {

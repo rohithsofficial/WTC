@@ -1,4 +1,4 @@
-// app/(app)/StaffQRScannerScreen.tsx - FIXED BARCODE SUPPORT
+// app/(app)/StaffQRScannerScreen.tsx
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -68,7 +68,6 @@ const StaffQRScannerScreen = () => {
   const [transactionComplete, setTransactionComplete] = useState(false);
   const [cameraKey, setCameraKey] = useState(0);
   const [staffInfo, setStaffInfo] = useState<StaffInfo | null>(null);
-  const [scanMode, setScanMode] = useState<'qr' | 'barcode'>('qr');
   const [originalBrightness, setOriginalBrightness] = useState<number | null>(null);
 
   // FIXED: Enhanced brightness management with proper Android handling
@@ -165,203 +164,6 @@ const StaffQRScannerScreen = () => {
     };
   }, []);
 
-  // FIXED: Enhanced barcode token decoding with proper database queries
- const decodeBarcodeToken = async (barcodeData: string): Promise<string | null> => {
-  try {
-    console.log('🔍 Starting barcode decode for:', barcodeData);
-    console.log('📊 Barcode length:', barcodeData.length);
-    
-    // Strategy 1: Direct barcode token lookup (PRIMARY - matches your generation logic)
-    try {
-      console.log('🎯 Strategy 1: Checking currentBarcodeToken field...');
-      const barcodeQuery = query(
-        collection(db, 'users'), 
-        where('currentBarcodeToken', '==', barcodeData)
-      );
-      const barcodeSnapshot = await getDocs(barcodeQuery);
-      
-      if (!barcodeSnapshot.empty) {
-        const userId = barcodeSnapshot.docs[0].id;
-        console.log('✅ SUCCESS: Found user by currentBarcodeToken:', userId);
-        return userId;
-      } else {
-        console.log('❌ No user found with currentBarcodeToken:', barcodeData);
-      }
-    } catch (error) {
-      console.error('🚨 Error in Strategy 1 (currentBarcodeToken):', error);
-    }
-
-    // Strategy 2: Check barcodeHistory collection (SECONDARY - for expired tokens)
-    try {
-      console.log('🎯 Strategy 2: Checking barcodeHistory collection...');
-      const historyQuery = query(
-        collection(db, 'barcodeHistory'),
-        where('barcode', '==', barcodeData),
-        where('expiryTime', '>', Timestamp.now())
-      );
-      const historySnapshot = await getDocs(historyQuery);
-      
-      if (!historySnapshot.empty) {
-        const userId = historySnapshot.docs[0].data().userId;
-        console.log('✅ SUCCESS: Found user in barcodeHistory:', userId);
-        return userId;
-      } else {
-        console.log('❌ No active barcode found in history for:', barcodeData);
-      }
-    } catch (error) {
-      console.error('🚨 Error in Strategy 2 (barcodeHistory):', error);
-    }
-
-    // Strategy 3: EAN-13 format handling (for standard barcode formats)
-    if (barcodeData.length === 13 && /^\d{13}$/.test(barcodeData)) {
-      console.log('🎯 Strategy 3: Processing as EAN-13...');
-      try {
-        const variations = [
-          barcodeData,
-          barcodeData.substring(0, 12), // Without check digit
-          barcodeData.substring(1), // Without first digit
-          barcodeData.substring(1, 12) // Without first and last digit
-        ];
-
-        for (const variation of variations) {
-          console.log(`🔄 Trying EAN-13 variation: ${variation}`);
-          const eanQuery = query(
-            collection(db, 'users'), 
-            where('loyaltyCardNumber', '==', variation)
-          );
-          const eanSnapshot = await getDocs(eanQuery);
-          
-          if (!eanSnapshot.empty) {
-            const userId = eanSnapshot.docs[0].id;
-            console.log('✅ SUCCESS: Found user by EAN-13 variation:', variation, 'UserId:', userId);
-            return userId;
-          }
-        }
-        console.log('❌ No user found with any EAN-13 variations');
-      } catch (error) {
-        console.error('🚨 Error in Strategy 3 (EAN-13):', error);
-      }
-    }
-
-    // Strategy 4: UPC-E format handling
-    if (barcodeData.length === 8 && /^\d{8}$/.test(barcodeData)) {
-      console.log('🎯 Strategy 4: Processing as UPC-E...');
-      try {
-        const upcA = convertUPC_EtoUPC_A(barcodeData);
-        console.log('🔄 Converted UPC-E to UPC-A:', upcA);
-        
-        const upcQuery = query(
-          collection(db, 'users'), 
-          where('loyaltyCardNumber', '==', upcA)
-        );
-        const upcSnapshot = await getDocs(upcQuery);
-        
-        if (!upcSnapshot.empty) {
-          const userId = upcSnapshot.docs[0].id;
-          console.log('✅ SUCCESS: Found user by UPC-A conversion:', userId);
-          return userId;
-        }
-      } catch (error) {
-        console.error('🚨 Error in Strategy 4 (UPC-E):', error);
-      }
-    }
-
-    // Strategy 5: Direct loyaltyCardNumber lookup
-    try {
-      console.log('🎯 Strategy 5: Checking loyaltyCardNumber field...');
-      const loyaltyQuery = query(
-        collection(db, 'users'), 
-        where('loyaltyCardNumber', '==', barcodeData)
-      );
-      const loyaltySnapshot = await getDocs(loyaltyQuery);
-      
-      if (!loyaltySnapshot.empty) {
-        const userId = loyaltySnapshot.docs[0].id;
-        console.log('✅ SUCCESS: Found user by loyaltyCardNumber:', userId);
-        return userId;
-      } else {
-        console.log('❌ No user found with loyaltyCardNumber:', barcodeData);
-      }
-    } catch (error) {
-      console.error('🚨 Error in Strategy 5 (loyaltyCardNumber):', error);
-    }
-
-    // Strategy 6: Phone number lookup (for numeric barcodes)
-    if (/^\d{10,12}$/.test(barcodeData)) {
-      console.log('🎯 Strategy 6: Checking as phone number...');
-      try {
-        const phoneVariations = [
-          barcodeData,
-          `+91${barcodeData}`,
-          `91${barcodeData}`
-        ];
-
-        for (const phoneNum of phoneVariations) {
-          console.log(`🔄 Trying phone variation: ${phoneNum}`);
-          const phoneQuery = query(
-            collection(db, 'users'), 
-            where('phoneNumber', '==', phoneNum)
-          );
-          const phoneSnapshot = await getDocs(phoneQuery);
-          
-          if (!phoneSnapshot.empty) {
-            const userId = phoneSnapshot.docs[0].id;
-            console.log('✅ SUCCESS: Found user by phone number:', phoneNum, 'UserId:', userId);
-            return userId;
-          }
-        }
-        console.log('❌ No user found with any phone number variations');
-      } catch (error) {
-        console.error('🚨 Error in Strategy 6 (phone):', error);
-      }
-    }
-
-    // FINAL: Log all attempted strategies
-    console.log('🚫 DECODE FAILED - All strategies exhausted for barcode:', barcodeData);
-    console.log('📝 Strategies attempted:');
-    console.log('   1. currentBarcodeToken field lookup');
-    console.log('   2. barcodeHistory collection lookup');
-    console.log('   3. EAN-13 format variations');
-    console.log('   4. UPC-E to UPC-A conversion');
-    console.log('   5. loyaltyCardNumber field lookup');
-    console.log('   6. Phone number variations');
-    
-    return null;
-    
-  } catch (error) {
-    console.error('🔥 CRITICAL: Barcode decoding crashed:', error);
-    return null;
-  }
-};
-
-
-  // Helper function to convert UPC-E to UPC-A format
-  const convertUPC_EtoUPC_A = (upcE: string): string => {
-    if (upcE.length !== 8) return upcE;
-    
-    const lastDigit = upcE[7];
-    const middleDigits = upcE.substring(1, 7);
-    
-    let upcA = '';
-    switch (lastDigit) {
-      case '0':
-      case '1':
-      case '2':
-        upcA = `${middleDigits.substring(0, 2)}${lastDigit}0000${middleDigits.substring(2)}`;
-        break;
-      case '3':
-        upcA = `${middleDigits.substring(0, 3)}00000${middleDigits.substring(3)}`;
-        break;
-      case '4':
-        upcA = `${middleDigits.substring(0, 4)}00000${middleDigits.substring(4)}`;
-        break;
-      default:
-        upcA = `${middleDigits}0000${lastDigit}`;
-    }
-    
-    return `0${upcA}`; // Add leading zero for UPC-A format
-  };
-
   const refreshCamera = () => {
     console.log('Refreshing camera...');
     setScanned(false);
@@ -369,15 +171,10 @@ const StaffQRScannerScreen = () => {
     setCameraKey(prev => prev + 1);
   };
 
-  const toggleScanMode = () => {
-    setScanMode(prev => prev === 'qr' ? 'barcode' : 'qr');
-    refreshCamera();
-  };
-
   // FIXED: Enhanced QR token validation with better error handling
   const validateQRToken = (data: string): string | null => {
     try {
-      console.log('Validating QR data:', data, 'Mode:', scanMode);
+      console.log('Validating QR data:', data);
       
       // JWT Token format
       if (data.includes('.') && data.split('.').length === 3) {
@@ -439,20 +236,11 @@ const StaffQRScannerScreen = () => {
     return `OFF${timestamp}${randomSuffix}`;
   };
 
-  // FIXED: Enhanced barcode scanning with proper response handling
-  const handleBarCodeScanned = async ({ type, data }: { type: string; data: string }) => {
+  const handleQRCodeScanned = async ({ data }: { data: string }) => {
     try {
-      // Validate input parameters
-      if (!type || !data) {
-        console.log('⚠️ Invalid scan data received:', { type, data });
-        return;
-      }
-
-      console.log('📱 Code scanned:', { type, data, scanMode });
-      
       if (!data || data.trim() === '') {
-        console.log('⚠️ Empty barcode data received');
-        Alert.alert('Scan Error', 'Empty barcode detected. Please try scanning again.');
+        console.log('⚠️ Empty QR code data received');
+        Alert.alert('Scan Error', 'Empty QR code detected. Please try scanning again.');
         return;
       }
 
@@ -462,78 +250,23 @@ const StaffQRScannerScreen = () => {
       }
 
       setScanned(true);
-      let userId: string | null = null;
-      
-      if (scanMode === 'barcode') {
-        console.log('🏷️ Processing as barcode...');
-        
-        // Enhanced barcode format validation with null checks
-        const isValidBarcode = (barcode: string, barcodeType: string): boolean => {
-          if (!barcode || !barcodeType) return false;
+      setLoading(true);
 
-          try {
-            switch (barcodeType.toLowerCase()) {
-              case 'codabar':
-                // Codabar can contain numbers, letters A-D, and special characters
-                return /^[A-D][0-9\-:/.+$]+[A-D]$/.test(barcode);
-              case 'code128':
-                // Code 128 can contain any ASCII character
-                return /^[\x00-\x7F]+$/.test(barcode);
-              case 'code39':
-                // Code 39 can contain numbers, uppercase letters, and some special characters
-                return /^[0-9A-Z\-\.\s\$\/\+\%]+$/.test(barcode);
-              case 'ean13':
-              case 'ean8':
-              case 'upc_e':
-              case 'upc_a':
-                // EAN/UPC formats must be numeric
-                return /^\d+$/.test(barcode);
-              default:
-                // For unknown formats, accept alphanumeric with common separators
-                return /^[0-9A-Za-z\-\.\s]+$/.test(barcode);
-            }
-          } catch (error) {
-            console.error('Error validating barcode format:', error);
-            return false;
-          }
-        };
-
-        if (!isValidBarcode(data, type)) {
-          throw new Error(`Invalid barcode format for type ${type}. Please ensure the barcode is properly formatted.`);
-        }
-
-        // Log the exact barcode being processed
-        console.log(`🔍 Decoding barcode: "${data}" (type: ${type}, length: ${data.length})`);
-        
-        userId = await decodeBarcodeToken(data);
-        
-        if (!userId) {
-          console.log('💥 Barcode decoding failed completely');
-          throw new Error(`No customer found for barcode: "${data}". Please ensure the customer has generated a valid barcode from their app.`);
-        }
-      } else {
-        console.log('📄 Processing as QR code...');
-        userId = validateQRToken(data);
-        
-        if (!userId) {
-          console.log('💥 QR validation failed');
-          throw new Error('Invalid QR code. Please ensure the customer has a valid loyalty account.');
-        }
-      }
-      
-      console.log('🎯 Extracted userId:', userId);
+      console.log('📄 Processing as QR code...');
+      const userId = validateQRToken(data);
       
       if (!userId) {
-        throw new Error('Could not identify customer. Please try scanning again.');
+        throw new Error('Invalid QR code. Please ensure the customer has a valid loyalty account.');
       }
 
+      console.log('🎯 Extracted userId:', userId);
+      setScannedUserId(userId);
+
       console.log('👤 Fetching customer data for userId:', userId);
-      
       const userDocRef = doc(db, 'users', userId);
       const userDoc = await getDoc(userDocRef);
       
       if (!userDoc.exists()) {
-        console.log('👻 Customer document not found in database');
         throw new Error(`Customer account not found for ID: ${userId}. Please ensure they have a valid loyalty account.`);
       }
 
@@ -541,13 +274,13 @@ const StaffQRScannerScreen = () => {
       if (!userData) {
         throw new Error('Invalid customer data received from database.');
       }
-
+      
       console.log('📋 Customer data fetched successfully:', {
         name: userData.displayName || userData.name,
         points: userData.loyaltyPoints,
         phone: userData.phoneNumber
       });
-      
+
       const customer: CustomerData = {
         displayName: userData.displayName || userData.name || 'Customer',
         userName: userData.userName || '',
@@ -561,24 +294,13 @@ const StaffQRScannerScreen = () => {
       
       setCustomerData(customer);
       setShowBillInput(true);
-      
       console.log('✅ Successfully processed scan for:', customer.displayName);
 
     } catch (error: any) {
       console.error('🚨 Error processing scan:', error);
-      
-      // More specific error messages
-      let errorMessage = error.message || 'Unknown error occurred';
-      
-      if (errorMessage.includes('Invalid barcode format')) {
-        errorMessage = `Barcode format error: The scanned barcode (${type}) is not in a supported format. Please try scanning again.`;
-      } else if (errorMessage.includes('No customer found')) {
-        errorMessage = `Customer not found for barcode "${data}". Please ensure:\n• Customer has generated barcode from their app\n• Barcode is not expired\n• Customer has an active loyalty account`;
-      }
-      
       Alert.alert(
         'Scan Failed',
-        errorMessage,
+        error.message || 'An unknown error occurred. Please try again.',
         [
           { 
             text: 'OK', 
@@ -590,6 +312,8 @@ const StaffQRScannerScreen = () => {
           }
         ]
       );
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -704,7 +428,7 @@ const StaffQRScannerScreen = () => {
               'codabar'
             ]
           }}
-          onBarcodeScanned={handleBarCodeScanned}
+          onBarcodeScanned={scanned ? undefined : handleQRCodeScanned}
           onCameraReady={() => {
             setCameraError(null);
             console.log('Camera is ready');
@@ -950,38 +674,17 @@ const StaffQRScannerScreen = () => {
         )}
       </View>
 
-      {/* Scan Mode Toggle */}
-      {!showBillInput && !showConfirmation && !transactionComplete && (
-        <View style={styles.scanModeContainer}>
-          <TouchableOpacity 
-            style={[styles.scanModeButton, scanMode === 'qr' && styles.activeScanMode]}
-            onPress={() => scanMode !== 'qr' && toggleScanMode()}
-          >
-            <MaterialIcons name="qr-code" size={20} color={scanMode === 'qr' ? COLORS.primaryWhiteHex : COLORS.primaryOrangeHex} />
-            <Text style={[styles.scanModeText, scanMode === 'qr' && styles.activeScanModeText]}>QR Code</Text>
-          </TouchableOpacity>
-          
-          <TouchableOpacity 
-            style={[styles.scanModeButton, scanMode === 'barcode' && styles.activeScanMode]}
-            onPress={() => scanMode !== 'barcode' && toggleScanMode()}
-          >
-            <MaterialIcons name="view-headline" size={20} color={scanMode === 'barcode' ? COLORS.primaryWhiteHex : COLORS.primaryOrangeHex} />
-            <Text style={[styles.scanModeText, scanMode === 'barcode' && styles.activeScanModeText]}>Barcode</Text>
-          </TouchableOpacity>
-        </View>
-      )}
-      
       {/* Instructions */}
       {!showBillInput && !showConfirmation && !transactionComplete && (
         <View style={styles.instructions}>
           <MaterialIcons 
-            name={scanMode === 'qr' ? "qr-code-scanner" : "view-headline"} 
+            name="qr-code-scanner"
             size={32} 
             color={COLORS.primaryWhiteHex} 
           />
           <Text style={styles.instructionTitle}>Ready to Scan</Text>
           <Text style={styles.instructionText}>
-            Ask customer to show their {scanMode === 'qr' ? 'QR code' : 'barcode'}
+            Ask customer to show their QR code
           </Text>
           <Text style={styles.subInstructionText}>
             Points discount will be applied automatically
@@ -1212,34 +915,6 @@ const styles = StyleSheet.create({
   },
   resetButton: {
     padding: SPACING.space_8,
-  },
-  scanModeContainer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    paddingHorizontal: SPACING.space_20,
-    paddingVertical: SPACING.space_12,
-  },
-  scanModeButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: SPACING.space_16,
-    paddingVertical: SPACING.space_8,
-    marginHorizontal: SPACING.space_8,
-    borderRadius: BORDERRADIUS.radius_20,
-    borderWidth: 1,
-    borderColor: COLORS.primaryOrangeHex,
-  },
-  activeScanMode: {
-    backgroundColor: COLORS.primaryOrangeHex,
-  },
-  scanModeText: {
-    fontSize: FONTSIZE.size_12,
-    fontFamily: FONTFAMILY.poppins_medium,
-    color: COLORS.primaryOrangeHex,
-    marginLeft: SPACING.space_4,
-  },
-  activeScanModeText: {
-    color: COLORS.primaryWhiteHex,
   },
   instructions: {
     alignItems: 'center',

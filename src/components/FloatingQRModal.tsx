@@ -26,23 +26,31 @@ const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 interface FloatingQRModalProps {
   visible: boolean;
   onClose: () => void;
+  onSignInPress?: () => void; // Optional callback for sign in
 }
 
-const FloatingQRModal: React.FC<FloatingQRModalProps> = ({ visible, onClose }) => {
+type ModalState = 'loading' | 'not_authenticated' | 'error' | 'success' | 'brightness_error';
+
+const FloatingQRModal: React.FC<FloatingQRModalProps> = ({ 
+  visible, 
+  onClose, 
+  onSignInPress 
+}) => {
   const [loyaltyProfile, setLoyaltyProfile] = useState<LoyaltyUser | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [modalState, setModalState] = useState<ModalState>('loading');
   const [qrToken, setQrToken] = useState<string>('');
-  const [barcodeToken, setBarcodeToken] = useState<string>('');
-  const [showBarcode, setShowBarcode] = useState(false);
   const [originalBrightness, setOriginalBrightness] = useState<number | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string>('');
+  const [retryCount, setRetryCount] = useState<number>(0);
   
   const slideAnim = useRef(new Animated.Value(screenHeight)).current;
   const scaleAnim = useRef(new Animated.Value(0)).current;
   const glowAnim = useRef(new Animated.Value(0)).current;
+  const fadeAnim = useRef(new Animated.Value(0)).current;
 
   // Enhanced QR glow animation
   useEffect(() => {
-    if (visible && !showBarcode) {
+    if (visible && modalState === 'success') {
       const glowAnimation = Animated.loop(
         Animated.sequence([
           Animated.timing(glowAnim, {
@@ -60,26 +68,40 @@ const FloatingQRModal: React.FC<FloatingQRModalProps> = ({ visible, onClose }) =
       glowAnimation.start();
       return () => glowAnimation.stop();
     }
-  }, [visible, showBarcode]);
+  }, [visible, modalState]);
 
-  // Brightness management
-  const increaseBrightness = async () => {
+  // Brightness management with better error handling
+  const increaseBrightness = async (): Promise<boolean> => {
     try {
       const currentBrightness = await Brightness.getBrightnessAsync();
       setOriginalBrightness(currentBrightness);
+      
+      // Try to set maximum brightness
       await Brightness.setBrightnessAsync(1.0);
       console.log('Screen brightness increased for QR display');
+      return true;
     } catch (error) {
       console.error('Error increasing brightness:', error);
-      try {
-        await Brightness.setBrightnessAsync(0.9);
-      } catch (fallbackError) {
-        console.error('Fallback brightness setting failed:', fallbackError);
+      
+      // Try fallback brightness levels
+      const fallbackLevels = [0.9, 0.8, 0.7];
+      for (const level of fallbackLevels) {
+        try {
+          await Brightness.setBrightnessAsync(level);
+          console.log(`Fallback brightness set to ${level}`);
+          return true;
+        } catch (fallbackError) {
+          console.error(`Failed to set brightness to ${level}:`, fallbackError);
+        }
       }
+      
+      // If all brightness attempts fail, continue without brightness adjustment
+      setModalState('brightness_error');
+      return false;
     }
   };
 
-  const restoreBrightness = async () => {
+  const restoreBrightness = async (): Promise<void> => {
     try {
       if (originalBrightness !== null) {
         await Brightness.setBrightnessAsync(originalBrightness);
@@ -87,10 +109,11 @@ const FloatingQRModal: React.FC<FloatingQRModalProps> = ({ visible, onClose }) =
       }
     } catch (error) {
       console.error('Error restoring brightness:', error);
+      // Don't show error to user for brightness restoration failure
     }
   };
 
-  // Generate secure token for QR code
+  // Generate secure token for QR code with better error handling
   const generateSecureToken = (userId: string): string => {
     try {
       const header = {
@@ -102,180 +125,32 @@ const FloatingQRModal: React.FC<FloatingQRModalProps> = ({ visible, onClose }) =
         userId: userId,
         iat: Math.floor(Date.now() / 1000),
         exp: Math.floor(Date.now() / 1000) + (15 * 60), // 15 minutes expiry
-        purpose: 'loyalty_discount'
+        purpose: 'loyalty_discount',
+        version: '1.0'
       };
 
       const encodedHeader = btoa(JSON.stringify(header));
       const encodedPayload = btoa(JSON.stringify(payload));
-      const signature = btoa(`${encodedHeader}.${encodedPayload}.${userId}`);
+      const signature = btoa(`${encodedHeader}.${encodedPayload}.${userId}.${Date.now()}`);
       
       return `${encodedHeader}.${encodedPayload}.${signature}`;
     } catch (error) {
       console.error('Token generation error:', error);
-      return userId;
+      // Fallback to simple token
+      return `${userId}_${Date.now()}_loyalty`;
     }
   };
 
-  // FIXED: Generate proper EAN-13 barcode that matches scanner expectations
-  const generateBarcodeToken = (userId: string): string => {
-    try {
-      // Generate a proper EAN-13 barcode (13 digits)
-      const timestamp = Math.floor(Date.now() / 1000);
-      
-      // Create a consistent hash from userId
-      let userHash = '';
-      for (let i = 0; i < userId.length; i++) {
-        const charCode = userId.charCodeAt(i);
-        userHash += (charCode % 10).toString();
-      }
-      
-      // Take first 8 digits from userHash or pad with timestamp
-      const userPart = userHash.substring(0, 8).padEnd(8, timestamp.toString().slice(-8));
-      
-      // Get last 4 digits of timestamp for uniqueness
-      const timePart = timestamp.toString().slice(-4);
-      
-      // Combine to get 12 digits
-      let code = userPart + timePart;
-      code = code.substring(0, 12); // Ensure exactly 12 digits
-      
-      // Calculate EAN-13 check digit
-      let sum = 0;
-      for (let i = 0; i < 12; i++) {
-        const digit = parseInt(code[i]);
-        sum += (i % 2 === 0) ? digit : digit * 3;
-      }
-      const checkDigit = (10 - (sum % 10)) % 10;
-      
-      // Final EAN-13 code
-      const finalCode = code + checkDigit.toString();
-      
-      console.log('✅ Generated EAN-13 barcode:', finalCode, 'for userId:', userId);
-      console.log('📊 Barcode breakdown - User part:', userPart, 'Time part:', timePart, 'Check digit:', checkDigit);
-      
-      return finalCode;
-    } catch (error) {
-      console.error('❌ Barcode generation error:', error);
-      // Fallback: generate a simple 13-digit number
-      const timestamp = Date.now().toString();
-      const fallback = timestamp.substring(timestamp.length - 12) + '0';
-      console.log('🔄 Using fallback barcode:', fallback);
-      return fallback;
-    }
-  };
-
-  // Store barcode mapping in Firebase for validation - ENHANCED VERSION
-  const storeBarcodeMapping = async (barcodeToken: string, userId: string) => {
+  const loadLoyaltyProfile = async (): Promise<void> => {
     try {
       const user = auth.currentUser;
-      if (!user) return;
-
-      const userDocRef = doc(db, 'users', user.uid);
-      const currentTime = Timestamp.now();
-      const expiryTime = new Timestamp(currentTime.seconds + (15 * 60), 0); // 15 minutes
-
-      // Store with multiple lookup strategies - ENHANCED for barcode scanning
-      const barcodeData = {
-        currentBarcodeToken: barcodeToken,
-        barcodeExpiry: expiryTime,
-        barcodeCreatedAt: currentTime,
-        // CRITICAL: Store the exact barcode for direct lookup
-        loyaltyCardNumber: barcodeToken,
-        ean13Code: barcodeToken, // Store as EAN-13 for scanner compatibility
-        userId: userId,
-        barcodeActive: true,
-        // Add variations for better matching
-        barcodeWithoutCheckDigit: barcodeToken.substring(0, 12), // First 12 digits
-        barcodeCore: barcodeToken.substring(0, 10), // Core identifier
-      };
-
-      // Try to update existing document first
-      const userDoc = await getDoc(userDocRef);
       
-      if (userDoc.exists()) {
-        await updateDoc(userDocRef, barcodeData);
-        console.log('✅ Barcode mapping updated:', barcodeToken, 'for user:', userId);
-      } else {
-        await setDoc(userDocRef, barcodeData, { merge: true });
-        console.log('✅ Barcode mapping created:', barcodeToken, 'for user:', userId);
-      }
-
-      // CRITICAL: Store in barcodeHistory collection with exact barcode as document ID
-      try {
-        const barcodeHistoryRef = doc(db, 'barcodeHistory', barcodeToken);
-        await setDoc(barcodeHistoryRef, {
-          userId: userId,
-          barcodeToken: barcodeToken,
-          ean13Code: barcodeToken,
-          createdAt: currentTime,
-          expiryTime: expiryTime,
-          isActive: true,
-          scanCount: 0,
-          // Store lookup variations
-          variations: {
-            full: barcodeToken,
-            without_check: barcodeToken.substring(0, 12),
-            core: barcodeToken.substring(0, 10)
-          }
-        });
-        console.log('✅ Barcode history entry created with ID:', barcodeToken);
-      } catch (historyError) {
-        console.error('⚠️ Failed to create barcode history entry:', historyError);
-      }
-
-      // ADDITIONAL: Create a reverse lookup document for faster scanning
-      try {
-        const lookupRef = doc(db, 'barcodeLookup', barcodeToken);
-        await setDoc(lookupRef, {
-          userId: userId,
-          createdAt: currentTime,
-          expiryTime: expiryTime,
-          isActive: true
-        });
-        console.log('✅ Barcode lookup entry created');
-      } catch (lookupError) {
-        console.error('⚠️ Failed to create barcode lookup entry:', lookupError);
-      }
-
-    } catch (error) {
-      console.error('❌ Error storing barcode mapping:', error);
-      
-      // Fallback: try with setDoc and merge option
-      try {
-        const user = auth.currentUser;
-        if (user) {
-          const userDocRef = doc(db, 'users', user.uid);
-          const currentTime = Timestamp.now();
-          const expiryTime = new Timestamp(currentTime.seconds + (15 * 60), 0);
-          
-          await setDoc(userDocRef, {
-            currentBarcodeToken: barcodeToken,
-            barcodeExpiry: expiryTime,
-            barcodeCreatedAt: currentTime,
-            loyaltyCardNumber: barcodeToken,
-            ean13Code: barcodeToken,
-            userId: user.uid,
-            barcodeActive: true
-          }, { merge: true });
-          
-          console.log('✅ Barcode mapping stored via fallback method');
-        }
-      } catch (fallbackError) {
-        console.error('❌ Fallback barcode storage also failed:', fallbackError);
-      }
-    }
-  };
-
-  const loadLoyaltyProfile = async () => {
-    try {
-      const user = auth.currentUser;
       if (!user) {
-        Alert.alert('Error', 'Please sign in to view your loyalty code');
-        onClose();
+        setModalState('not_authenticated');
         return;
       }
 
-      setLoading(true);
+      setModalState('loading');
       
       const userDocRef = doc(db, 'users', user.uid);
       const userDoc = await getDoc(userDocRef);
@@ -291,7 +166,7 @@ const FloatingQRModal: React.FC<FloatingQRModalProps> = ({ visible, onClose }) =
           uid: user.uid,
           email: user.email || '',
           displayName: user.displayName || userData.displayName || userData.name || 'User',
-          loyaltyPoints: loyaltyPoints,
+          loyaltyPoints: Math.max(0, loyaltyPoints), // Ensure non-negative
           totalOrders: userData.totalOrders || 0,
           totalSpent: userData.totalSpent || 0,
           isFirstTimeUser: userData.isFirstTimeUser ?? true,
@@ -301,14 +176,11 @@ const FloatingQRModal: React.FC<FloatingQRModalProps> = ({ visible, onClose }) =
         
         setLoyaltyProfile(profile);
         const qrCode = generateSecureToken(profile.uid);
-        const barcodeCode = generateBarcodeToken(profile.uid);
-        
         setQrToken(qrCode);
-        setBarcodeToken(barcodeCode);
+        setModalState('success');
         
-        // Store barcode mapping for validation
-        await storeBarcodeMapping(barcodeCode, profile.uid);
       } else {
+        // Create new user profile
         const now = Timestamp.now();
         const newProfile: LoyaltyUser = {
           uid: user.uid,
@@ -322,30 +194,56 @@ const FloatingQRModal: React.FC<FloatingQRModalProps> = ({ visible, onClose }) =
           updatedAt: now
         };
         
-        setLoyaltyProfile(newProfile);
-        const qrCode = generateSecureToken(newProfile.uid);
-        const barcodeCode = generateBarcodeToken(newProfile.uid);
-        
-        setQrToken(qrCode);
-        setBarcodeToken(barcodeCode);
-        
-        // Store barcode mapping for validation
-        await storeBarcodeMapping(barcodeCode, newProfile.uid);
+        // Try to create the document
+        try {
+          await setDoc(userDocRef, newProfile);
+          setLoyaltyProfile(newProfile);
+          const qrCode = generateSecureToken(newProfile.uid);
+          setQrToken(qrCode);
+          setModalState('success');
+        } catch (createError) {
+          console.error('Error creating user profile:', createError);
+          // Still show QR with default profile
+          setLoyaltyProfile(newProfile);
+          const qrCode = generateSecureToken(newProfile.uid);
+          setQrToken(qrCode);
+          setModalState('success');
+        }
       }
     } catch (error) {
       console.error('Error loading loyalty profile:', error);
-      Alert.alert('Error', 'Failed to load loyalty profile');
-    } finally {
-      setLoading(false);
+      setErrorMessage('Unable to load your loyalty profile. Please check your connection and try again.');
+      setModalState('error');
     }
   };
+
+  const handleRetry = async (): Promise<void> => {
+    setRetryCount(prev => prev + 1);
+    setErrorMessage('');
+    await loadLoyaltyProfile();
+  };
+
+  const handleSignIn = (): void => {
+  try {
+    // Close the modal first
+    handleClose();
+    
+    // Trigger the sign in callback if provided
+    if (onSignInPress) {
+      onSignInPress();
+    } else {
+      // Log a warning if no handler is configured
+      console.warn('No sign-in handler provided to FloatingQRModal');
+    }
+  } catch (error) {
+    console.error('Error handling sign in:', error);
+  }
+};
 
   // Animation and brightness effects
   useEffect(() => {
     if (visible) {
-      loadLoyaltyProfile();
-      increaseBrightness();
-      
+      // Start animations
       Animated.parallel([
         Animated.spring(slideAnim, {
           toValue: 0,
@@ -359,8 +257,56 @@ const FloatingQRModal: React.FC<FloatingQRModalProps> = ({ visible, onClose }) =
           friction: 8,
           useNativeDriver: true,
         }),
+        Animated.timing(fadeAnim, {
+          toValue: 1,
+          duration: 300,
+          useNativeDriver: true,
+        }),
       ]).start();
+
+      // Load data and manage brightness
+      const initialize = async () => {
+        await increaseBrightness();
+        await loadLoyaltyProfile();
+      };
+      
+      initialize();
     } else {
+      // Reset animations
+      Animated.parallel([
+        Animated.timing(slideAnim, {
+          toValue: screenHeight,
+          duration: 300,
+          useNativeDriver: true,
+        }),
+        Animated.timing(scaleAnim, {
+          toValue: 0,
+          duration: 250,
+          useNativeDriver: true,
+        }),
+        Animated.timing(fadeAnim, {
+          toValue: 0,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+      ]).start();
+
+      // Reset state
+      setModalState('loading');
+      setErrorMessage('');
+      setRetryCount(0);
+      restoreBrightness();
+    }
+
+    return () => {
+      if (visible) {
+        restoreBrightness();
+      }
+    };
+  }, [visible]);
+
+  const handleClose = (): void => {
+    try {
       restoreBrightness();
       
       Animated.parallel([
@@ -374,135 +320,150 @@ const FloatingQRModal: React.FC<FloatingQRModalProps> = ({ visible, onClose }) =
           duration: 250,
           useNativeDriver: true,
         }),
-      ]).start();
-    }
-
-    return () => {
-      if (visible) {
-        restoreBrightness();
-      }
-    };
-  }, [visible]);
-
-  const handleClose = () => {
-    restoreBrightness();
-    
-    Animated.parallel([
-      Animated.timing(slideAnim, {
-        toValue: screenHeight,
-        duration: 300,
-        useNativeDriver: true,
-      }),
-      Animated.timing(scaleAnim, {
-        toValue: 0,
-        duration: 250,
-        useNativeDriver: true,
-      }),
-    ]).start(() => {
-      onClose();
-    });
-  };
-
-  const toggleCodeType = () => {
-    setShowBarcode(!showBarcode);
-  };
-
-  // Fixed barcode rendering with proper centering and container sizing
-  const renderBarcode = (value: string) => {
-    const barWidth = 2;
-    const barHeight = 60;
-    const bars = [];
-    
-    // Generate proper barcode pattern (Code 128 style)
-    const generateBarcodePattern = (digit: string) => {
-      const patterns: { [key: string]: number[] } = {
-        '0': [1, 1, 0, 0, 1, 1, 0],
-        '1': [1, 0, 1, 1, 0, 0, 1],
-        '2': [1, 0, 0, 1, 1, 0, 1],
-        '3': [1, 0, 0, 1, 0, 1, 1],
-        '4': [1, 1, 0, 0, 1, 0, 1],
-        '5': [1, 1, 0, 1, 0, 0, 1],
-        '6': [1, 0, 1, 0, 0, 1, 1],
-        '7': [1, 0, 1, 0, 1, 1, 0],
-        '8': [1, 0, 1, 1, 0, 1, 0],
-        '9': [1, 1, 0, 1, 0, 1, 0],
-      };
-      return patterns[digit] || [1, 0, 1, 0, 1, 0, 1];
-    };
-
-    // Start pattern
-    [1, 1, 0, 1].forEach((bar, index) => {
-      bars.push(
-        <View
-          key={`start-${index}`}
-          style={[
-            styles.barcodeBar,
-            {
-              width: barWidth,
-              height: barHeight,
-              backgroundColor: bar === 1 ? COLORS.primaryBlackHex : 'transparent',
-            }
-          ]}
-        />
-      );
-    });
-
-    // Data patterns - use all 13 digits for EAN-13
-    for (let i = 0; i < value.length; i++) {
-      const digit = value[i];
-      const pattern = generateBarcodePattern(digit);
-      
-      pattern.forEach((bar, barIndex) => {
-        bars.push(
-          <View
-            key={`${i}-${barIndex}`}
-            style={[
-              styles.barcodeBar,
-              {
-                width: barWidth,
-                height: barHeight,
-                backgroundColor: bar === 1 ? COLORS.primaryBlackHex : 'transparent',
-              }
-            ]}
-          />
-        );
+        Animated.timing(fadeAnim, {
+          toValue: 0,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+      ]).start(() => {
+        onClose();
       });
+    } catch (error) {
+      console.error('Error during close:', error);
+      // Still close the modal even if animations fail
+      onClose();
     }
-
-    // End pattern
-    [1, 0, 1, 1].forEach((bar, index) => {
-      bars.push(
-        <View
-          key={`end-${index}`}
-          style={[
-            styles.barcodeBar,
-            {
-              width: barWidth,
-              height: barHeight,
-              backgroundColor: bar === 1 ? COLORS.primaryBlackHex : 'transparent',
-            }
-          ]}
-        />
-      );
-    });
-    
-    return (
-      <View style={styles.barcodeContainer}>
-        <View style={styles.barcodeWrapper}>
-          {bars}
-        </View>
-        <Text style={styles.barcodeText}>{value}</Text>
-        <Text style={styles.barcodeDescription}>
-          EAN-13 Loyalty Code - valid for 15 minutes
-        </Text>
-      </View>
-    );
   };
 
   const glowColor = glowAnim.interpolate({
     inputRange: [0, 1],
     outputRange: ['rgba(255, 165, 0, 0.3)', 'rgba(255, 165, 0, 0.8)']
   });
+
+  // Render different states
+  const renderContent = (): JSX.Element => {
+    switch (modalState) {
+      case 'loading':
+        return (
+          <View style={styles.stateContainer}>
+            <ActivityIndicator size="large" color={COLORS.primaryOrangeHex} />
+            <Text style={styles.stateTitle}>Loading your loyalty profile...</Text>
+            <Text style={styles.stateSubtitle}>Please wait a moment</Text>
+          </View>
+        );
+
+      case 'not_authenticated':
+        return (
+          <View style={styles.stateContainer}>
+            <MaterialIcons name="account-circle" size={64} color={COLORS.primaryOrangeHex} />
+            <Text style={styles.stateTitle}>Sign In Required</Text>
+            <Text style={styles.stateSubtitle}>
+              Please sign in to access your loyalty QR code and redeem rewards
+            </Text>
+            <TouchableOpacity style={styles.primaryButton} onPress={handleSignIn}>
+              <Text style={styles.primaryButtonText}>Sign In</Text>
+            </TouchableOpacity>
+          </View>
+        );
+
+      case 'error':
+        return (
+          <View style={styles.stateContainer}>
+            <MaterialIcons name="error-outline" size={64} color={COLORS.primaryRedHex} />
+            <Text style={styles.stateTitle}>Oops! Something went wrong</Text>
+            <Text style={styles.stateSubtitle}>
+              {errorMessage || 'We encountered an issue loading your loyalty profile.'}
+            </Text>
+            <TouchableOpacity style={styles.primaryButton} onPress={handleRetry}>
+              <Text style={styles.primaryButtonText}>
+                {retryCount > 0 ? `Retry (${retryCount + 1})` : 'Try Again'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        );
+
+      case 'success':
+        return (
+          <>
+            {/* Header with Points */}
+            <View style={styles.modalHeader}>
+              <View style={styles.pointsDisplay}>
+                <Text style={styles.pointsLabel}>Loyalty Points</Text>
+                <Text style={styles.pointsValue}>
+                  {loyaltyProfile?.loyaltyPoints || 0}
+                </Text>
+              </View>
+            </View>
+
+            {/* Brightness Indicator */}
+            {modalState !== 'brightness_error' && (
+              <View style={styles.brightnessIndicator}>
+                <MaterialIcons name="brightness-high" size={16} color={COLORS.primaryOrangeHex} />
+                <Text style={styles.brightnessText}>Screen optimized for scanning</Text>
+              </View>
+            )}
+
+            {/* QR Code Display */}
+            <View style={styles.codeContainer}>
+              <View style={styles.codeHeader}>
+                <Text style={styles.codeTitle}>Your QR Code</Text>
+              </View>
+
+              <View style={styles.centeredCodeContainer}>
+                <Animated.View 
+                  style={[
+                    styles.codeWrapper,
+                    {
+                      shadowColor: glowColor,
+                      shadowOpacity: 0.8,
+                      shadowRadius: 15,
+                      elevation: 10,
+                    }
+                  ]}
+                >
+                  <View style={styles.qrContainer}>
+                    <QRCode
+                      value={qrToken}
+                      size={160}
+                      backgroundColor={COLORS.primaryWhiteHex}
+                      color={COLORS.primaryBlackHex}
+                      logo={require('../../assets/icon.png')}
+                      logoSize={32}
+                      logoBackgroundColor="transparent"
+                      quietZone={10}
+                    />
+                  </View>
+                </Animated.View>
+              </View>
+
+              <Text style={styles.instructionText}>
+                Show this QR code to our staff to redeem your loyalty discount
+              </Text>
+            </View>
+
+            {/* Quick Info */}
+            <View style={styles.quickInfo}>
+              <View style={styles.discountInfo}>
+                <MaterialIcons name="local-offer" size={18} color={COLORS.primaryOrangeHex} />
+                <Text style={styles.quickInfoText}>
+                  Available Discount: ₹{loyaltyProfile?.loyaltyPoints || 0}
+                </Text>
+              </View>
+              <Text style={styles.validityText}>
+                Valid for 15 minutes • Expires automatically
+              </Text>
+            </View>
+          </>
+        );
+
+      default:
+        return (
+          <View style={styles.stateContainer}>
+            <ActivityIndicator size="large" color={COLORS.primaryOrangeHex} />
+          </View>
+        );
+    }
+  };
 
   return (
     <Modal
@@ -533,108 +494,27 @@ const FloatingQRModal: React.FC<FloatingQRModalProps> = ({ visible, onClose }) =
                 { translateY: slideAnim },
                 { scale: scaleAnim }
               ],
+              opacity: fadeAnim,
             },
           ]}
         >
-          {/* Header with Points */}
-          <View style={styles.modalHeader}>
-            <TouchableOpacity onPress={handleClose} style={styles.closeButton}>
-              <MaterialIcons name="close" size={24} color={COLORS.primaryBlackHex} />
-            </TouchableOpacity>
-            
-            <View style={styles.pointsDisplay}>
-              <Text style={styles.pointsLabel}>Points</Text>
-              <Text style={styles.pointsValue}>
-                {loading ? '...' : loyaltyProfile?.loyaltyPoints || 0}
+          {/* Close Button */}
+          <TouchableOpacity onPress={handleClose} style={styles.closeButton}>
+            <MaterialIcons name="close" size={24} color={COLORS.primaryBlackHex} />
+          </TouchableOpacity>
+
+          {/* Dynamic Content */}
+          {renderContent()}
+
+          {/* Brightness Error Warning */}
+          {modalState === 'brightness_error' && (
+            <View style={styles.warningContainer}>
+              <MaterialIcons name="warning" size={16} color={COLORS.primaryOrangeHex} />
+              <Text style={styles.warningText}>
+                Unable to adjust screen brightness. Please manually increase brightness for better scanning.
               </Text>
             </View>
-          </View>
-
-          {/* Brightness Indicator */}
-          <View style={styles.brightnessIndicator}>
-            <MaterialIcons name="brightness-high" size={16} color={COLORS.primaryOrangeHex} />
-            <Text style={styles.brightnessText}>Screen brightness optimized for scanning</Text>
-          </View>
-
-          {/* Code Display - CENTERED */}
-          <View style={styles.codeContainer}>
-            {loading ? (
-              <View style={styles.loadingContainer}>
-                <ActivityIndicator size="large" color={COLORS.primaryOrangeHex} />
-                <Text style={styles.loadingText}>Loading...</Text>
-              </View>
-            ) : (
-              <>
-                <View style={styles.codeHeader}>
-                  <Text style={styles.codeTitle}>
-                    {showBarcode ? 'Barcode' : 'QR Code'}
-                  </Text>
-                  <TouchableOpacity 
-                    style={styles.toggleButton} 
-                    onPress={toggleCodeType}
-                  >
-                    <MaterialIcons 
-                      name={showBarcode ? "qr-code" : "view-headline"} 
-                      size={20} 
-                      color={COLORS.primaryOrangeHex} 
-                    />
-                    <Text style={styles.toggleText}>
-                      {showBarcode ? 'QR' : 'Bar'}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-
-                {/* CENTERED CODE WRAPPER */}
-                <View style={styles.centeredCodeContainer}>
-                  <Animated.View 
-                    style={[
-                      styles.codeWrapper,
-                      {
-                        shadowColor: glowColor,
-                        shadowOpacity: showBarcode ? 0.5 : 0.8,
-                        shadowRadius: 15,
-                        elevation: 10,
-                      }
-                    ]}
-                  >
-                    {showBarcode ? (
-                      renderBarcode(barcodeToken)
-                    ) : (
-                      <View style={styles.qrContainer}>
-                        <QRCode
-                          value={qrToken}
-                          size={160}
-                          backgroundColor={COLORS.primaryWhiteHex}
-                          color={COLORS.primaryBlackHex}
-                          logo={require('../../assets/icon.png')}
-                          logoSize={32}
-                          logoBackgroundColor="transparent"
-                          quietZone={10}
-                        />
-                      </View>
-                    )}
-                  </Animated.View>
-                </View>
-
-                <Text style={styles.instructionText}>
-                  Show this code to staff for discount
-                </Text>
-              </>
-            )}
-          </View>
-
-          {/* Quick Info */}
-          <View style={styles.quickInfo}>
-            <View style={styles.discountInfo}>
-              <MaterialIcons name="local-offer" size={18} color={COLORS.primaryOrangeHex} />
-              <Text style={styles.quickInfoText}>
-                Max Discount: ₹{loyaltyProfile?.loyaltyPoints || 0}
-              </Text>
-            </View>
-            <Text style={styles.validityText}>
-              Valid for 15 minutes
-            </Text>
-          </View>
+          )}
         </Animated.View>
       </View>
     </Modal>
@@ -657,7 +537,7 @@ const styles = StyleSheet.create({
     bottom: 0,
   },
   modalContent: {
-    backgroundColor: COLORS.primaryWhiteHex, // Changed to white
+    backgroundColor: COLORS.primaryWhiteHex,
     borderRadius: BORDERRADIUS.radius_25,
     padding: SPACING.space_20,
     margin: SPACING.space_20,
@@ -672,24 +552,28 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.4,
     shadowRadius: 25,
   },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: SPACING.space_15,
-  },
   closeButton: {
+    position: 'absolute',
+    top: SPACING.space_15,
+    right: SPACING.space_15,
     padding: SPACING.space_8,
     borderRadius: BORDERRADIUS.radius_10,
-    backgroundColor: 'rgba(0, 0, 0, 0.1)', // Changed for white background
+    backgroundColor: 'rgba(0, 0, 0, 0.1)',
+    zIndex: 1,
+  },
+  modalHeader: {
+    alignItems: 'center',
+    marginBottom: SPACING.space_15,
+    marginTop: SPACING.space_10,
   },
   pointsDisplay: {
     alignItems: 'center',
     backgroundColor: COLORS.primaryOrangeHex,
-    paddingHorizontal: SPACING.space_15,
-    paddingVertical: SPACING.space_8,
+    paddingHorizontal: SPACING.space_20,
+    paddingVertical: SPACING.space_12,
     borderRadius: BORDERRADIUS.radius_15,
     elevation: 5,
+    minWidth: 120,
   },
   pointsLabel: {
     fontFamily: FONTFAMILY.poppins_regular,
@@ -698,7 +582,7 @@ const styles = StyleSheet.create({
   },
   pointsValue: {
     fontFamily: FONTFAMILY.poppins_bold,
-    fontSize: FONTSIZE.size_18,
+    fontSize: FONTSIZE.size_20,
     color: COLORS.primaryWhiteHex,
   },
   brightnessIndicator: {
@@ -720,43 +604,16 @@ const styles = StyleSheet.create({
   codeContainer: {
     alignItems: 'center',
   },
-  loadingContainer: {
-    alignItems: 'center',
-    paddingVertical: SPACING.space_36,
-  },
-  loadingText: {
-    fontFamily: FONTFAMILY.poppins_regular,
-    fontSize: FONTSIZE.size_14,
-    color: COLORS.primaryBlackHex, // Changed for white background
-    marginTop: SPACING.space_10,
-  },
   codeHeader: {
-    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center', // Center the header
+    justifyContent: 'center',
     marginBottom: SPACING.space_15,
   },
   codeTitle: {
     fontFamily: FONTFAMILY.poppins_semibold,
     fontSize: FONTSIZE.size_16,
-    color: COLORS.primaryBlackHex, // Changed for white background
-    marginRight: SPACING.space_10,
+    color: COLORS.primaryBlackHex,
   },
-  toggleButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(255, 165, 0, 0.2)',
-    paddingHorizontal: SPACING.space_10,
-    paddingVertical: SPACING.space_4,
-    borderRadius: BORDERRADIUS.radius_10,
-  },
-  toggleText: {
-    fontFamily: FONTFAMILY.poppins_medium,
-    fontSize: FONTSIZE.size_12,
-    color: COLORS.primaryOrangeHex,
-    marginLeft: SPACING.space_4,
-  },
-  // NEW: Centered container for the code
   centeredCodeContainer: {
     width: '100%',
     alignItems: 'center',
@@ -778,54 +635,23 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: COLORS.primaryLightGreyHex,
   },
-  // NEW: QR container for perfect centering
   qrContainer: {
     alignItems: 'center',
     justifyContent: 'center',
   },
-  barcodeContainer: {
-    alignItems: 'center',
-    width: '100%',
-  },
-  barcodeWrapper: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: SPACING.space_10,
-    maxWidth: '100%',
-    overflow: 'hidden',
-  },
-  barcodeBar: {
-    marginRight: 1,
-  },
-  barcodeText: {
-    fontFamily: FONTFAMILY.poppins_regular,
-    fontSize: FONTSIZE.size_12,
-    color: COLORS.primaryBlackHex,
-    marginTop: SPACING.space_8,
-    letterSpacing: 1,
-    fontWeight: 'bold',
-    textAlign: 'center',
-  },
-  barcodeDescription: {
-    fontFamily: FONTFAMILY.poppins_regular,
-    fontSize: FONTSIZE.size_10,
-    color: COLORS.primaryLightGreyHex,
-    marginTop: SPACING.space_4,
-    textAlign: 'center',
-  },
   instructionText: {
     fontFamily: FONTFAMILY.poppins_medium,
-    fontSize: FONTSIZE.size_13,
-    color: COLORS.primaryDarkGreyHex, // Changed for white background
+    fontSize: FONTSIZE.size_10,
+    color: COLORS.primaryDarkGreyHex,
     textAlign: 'center',
     lineHeight: 18,
+    paddingHorizontal: SPACING.space_10,
   },
   quickInfo: {
     marginTop: SPACING.space_18,
     paddingTop: SPACING.space_15,
     borderTopWidth: 1,
-    borderTopColor: COLORS.primaryLightGreyHex
+    borderTopColor: COLORS.primaryLightGreyHex,
   },
   discountInfo: {
     flexDirection: 'row',
@@ -837,12 +663,72 @@ const styles = StyleSheet.create({
     fontFamily: FONTFAMILY.poppins_medium,
     fontSize: FONTSIZE.size_14,
     color: COLORS.primaryBlackHex,
-    marginLeft: SPACING.space_6,
+    marginLeft: SPACING.space_8,
   },
   validityText: {
     fontFamily: FONTFAMILY.poppins_regular,
-    fontSize: FONTSIZE.size_11,
+    fontSize: FONTSIZE.size_10,
     color: COLORS.primaryLightGreyHex,
+    textAlign: 'center',
+  },
+  stateContainer: {
+    alignItems: 'center',
+    paddingVertical: SPACING.space_36,
+    paddingHorizontal: SPACING.space_20,
+  },
+  stateTitle: {
+    fontFamily: FONTFAMILY.poppins_semibold,
+    fontSize: FONTSIZE.size_18,
+    color: COLORS.primaryBlackHex,
+    textAlign: 'center',
+    marginTop: SPACING.space_15,
+    marginBottom: SPACING.space_10,
+  },
+  stateSubtitle: {
+    fontFamily: FONTFAMILY.poppins_regular,
+    fontSize: FONTSIZE.size_14,
+    color: COLORS.primaryDarkGreyHex,
+    textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: SPACING.space_20,
+  },
+  primaryButton: {
+    backgroundColor: COLORS.primaryOrangeHex,
+    paddingHorizontal: SPACING.space_24,
+    paddingVertical: SPACING.space_12,
+    borderRadius: BORDERRADIUS.radius_15,
+    elevation: 5,
+    shadowColor: COLORS.primaryBlackHex,
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+  },
+  primaryButtonText: {
+    fontFamily: FONTFAMILY.poppins_semibold,
+    fontSize: FONTSIZE.size_16,
+    color: COLORS.primaryWhiteHex,
+  },
+  warningContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: SPACING.space_15,
+    paddingVertical: SPACING.space_10,
+    paddingHorizontal: SPACING.space_15,
+    backgroundColor: 'rgba(255, 193, 7, 0.1)',
+    borderRadius: BORDERRADIUS.radius_10,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 193, 7, 0.3)',
+  },
+  warningText: {
+    fontFamily: FONTFAMILY.poppins_regular,
+    fontSize: FONTSIZE.size_10,
+    color: COLORS.primaryOrangeHex,
+    marginLeft: SPACING.space_8,
+    flex: 1,
     textAlign: 'center',
   },
 });

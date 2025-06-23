@@ -1,3 +1,4 @@
+// app/(app)/ProfileScreen.tsx
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -165,6 +166,14 @@ const ProfileScreen = () => {
       icon: 'gift',
       screen: '/(app)/RewardsScreen',
       category: 'loyalty'
+    },
+    {
+      id: 'cart',
+      title: 'My Cart',
+      subtitle: 'View items in your cart',
+      icon: 'cart-outline',
+      screen: '/(app)/CartScreen',
+      category: 'Settings'
     },
     {
       id: 'orders',
