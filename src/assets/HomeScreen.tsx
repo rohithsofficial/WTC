@@ -71,7 +71,7 @@ import {
 import { db, auth } from "../../src/firebase/config";
 import { onAuthStateChanged } from "firebase/auth";
 import * as Location from "expo-location";
-import PosterModal from "../../src/components/PosterModel";
+import PosterModal from "../../src/components/posterModel";
 import {
   fetchActivePosters,
   Poster,
@@ -1446,7 +1446,7 @@ const HomeScreen = () => {
               onPress={() => router.push("/HomeScreen1")}
             >
               <Image
-                source={require("../../src/assets/medium_roast_01-Photoroom.png")}
+                source={require("../../assets/medium_roast_01-Photoroom.png")}
                 style={styles.categoryImage}
                 resizeMode="cover"
               />
@@ -1458,7 +1458,7 @@ const HomeScreen = () => {
               onPress={() => router.push("/HomeScreen1")}
             >
               <Image
-                source={require("../../src/assets/Filter-Coffee-Medium (1)-Photoroom.png")}
+                source={require("../../assets/Filter-Coffee-Medium (1)-Photoroom.png")}
                 style={styles.categoryImage}
                 resizeMode="cover"
               />
@@ -1470,7 +1470,7 @@ const HomeScreen = () => {
               onPress={() => router.push("/HomeScreen1")}
             >
               <Image
-                source={require("../../src/assets/Red-1-min-Photoroom.png")}
+                source={require("../../assets/Red-1-min-Photoroom.png")}
                 style={styles.categoryImage}
                 resizeMode="cover"
               />
@@ -1482,7 +1482,7 @@ const HomeScreen = () => {
               onPress={() => router.push("/HomeScreen1")}
             >
               <Image
-                source={require("../../src/assets/tea_1-Photoroom.png")}
+                source={require("../../assets/tea_1-Photoroom.png")}
                 style={styles.categoryImage}
                 resizeMode="cover"
               />

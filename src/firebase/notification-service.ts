@@ -1,3 +1,4 @@
+//src/firebase/notification-service.ts
 import {
   collection,
   getDocs,
@@ -12,7 +13,7 @@ import {
   deleteDoc,
   or,
 } from "firebase/firestore";
-import { db } from "./firebase-config";
+import { db } from "./config";
 
 export interface Notification {
   id: string;
@@ -29,18 +30,16 @@ export interface Notification {
 export const fetchNotifications = async (userId?: string) => {
   try {
     const notificationsRef = collection(db, "notifications");
-    
+
     let q;
     if (userId) {
       // Fetch notifications that are either global (userId is null) or specific to this user
       q = query(
-        notificationsRef,
-        where("isActive", "==", true),
-        or(
-          where("userId", "==", null),
-          where("userId", "==", userId)
-        )
-      );
+       notificationsRef,
+       where("isActive", "==", true),
+       where("userId", "in", ["global", userId])
+    );
+
     } else {
       // If no userId provided, fetch only global notifications
       q = query(
@@ -67,12 +66,14 @@ export const fetchNotifications = async (userId?: string) => {
 
     // Sort notifications by timestamp in memory
     return notifications.sort((a, b) => {
-      const timeA = a.timestamp instanceof Timestamp 
-        ? a.timestamp.toMillis() 
-        : new Date(a.timestamp).getTime();
-      const timeB = b.timestamp instanceof Timestamp 
-        ? b.timestamp.toMillis() 
-        : new Date(b.timestamp).getTime();
+      const timeA =
+        a.timestamp instanceof Timestamp
+          ? a.timestamp.toMillis()
+          : new Date(a.timestamp).getTime();
+      const timeB =
+        b.timestamp instanceof Timestamp
+          ? b.timestamp.toMillis()
+          : new Date(b.timestamp).getTime();
       return timeB - timeA; // Sort in descending order (newest first)
     });
   } catch (error) {
@@ -130,17 +131,14 @@ export const deleteNotification = async (notificationId: string) => {
 export const getUnreadNotificationCount = async (userId?: string) => {
   try {
     const notificationsRef = collection(db, "notifications");
-    
+
     let q;
     if (userId) {
       q = query(
         notificationsRef,
         where("isActive", "==", true),
         where("isRead", "==", false),
-        or(
-          where("userId", "==", null),
-          where("userId", "==", userId)
-        )
+        where("userId", "in",["global" , userId])
       );
     } else {
       q = query(
@@ -165,17 +163,14 @@ export const subscribeToNotifications = (
   callback: (count: number) => void
 ) => {
   const notificationsRef = collection(db, "notifications");
-  
+
   let q;
   if (userId) {
     q = query(
       notificationsRef,
       where("isActive", "==", true),
       where("isRead", "==", false),
-      or(
-        where("userId", "==", null),
-        where("userId", "==", userId)
-      )
+      where("userId", "in", ["global", userId]  )
     );
   } else {
     q = query(

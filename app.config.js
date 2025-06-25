@@ -44,6 +44,7 @@ export default {
       package: "com.rohithofficial.wtccoffee",
     },
     plugins: [
+      "expo-notifications",
       "expo-router",
       "expo-barcode-scanner",
       [

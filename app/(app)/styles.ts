@@ -1,6 +1,5 @@
 import { StyleSheet } from 'react-native';
 import { COLORS, FONTFAMILY, FONTSIZE, SPACING, BORDERRADIUS } from '../../src/theme/theme';
-
 export const styles = StyleSheet.create({
     ScreenContainer: {
         flex: 1,
