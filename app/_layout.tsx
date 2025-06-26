@@ -21,6 +21,8 @@ Notifications.setNotificationHandler({
     shouldShowAlert: true, // Show alert even if app is foregrounded
     shouldPlaySound: false,
     shouldSetBadge: false,
+    shouldShowBanner: true, // ✅ NEW
+    shouldShowList: true,   // ✅ NEW
   }),
 });
 

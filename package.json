@@ -22,7 +22,6 @@
     "@types/react": "~19.0.10",
     "@unimodules/core": "^7.2.0",
     "base-64": "1.0.0",
-    "expo": "53.0.12",
     "expo-auth-session": "~6.2.0",
     "expo-barcode-scanner": "^13.0.1",
     "expo-blur": "~14.1.5",
@@ -37,6 +36,7 @@
     "expo-image-picker": "~16.1.4",
     "expo-linear-gradient": "~14.1.5",
     "expo-linking": "^7.1.5",
+    "expo-location": "~18.1.5",
     "expo-modules-autolinking": "^2.1.12",
     "expo-notifications": "~0.31.3",
     "expo-router": "~5.1.0",
@@ -69,8 +69,7 @@
     "react-native-web": "^0.20.0",
     "react-native-webview": "^13.13.5",
     "typescript": "~5.8.3",
-    "zustand": "^4.5.7",
-    "expo-location": "~18.1.5"
+    "zustand": "^4.5.7"
   },
   "devDependencies": {
     "@babel/core": "^7.26.0",
@@ -81,6 +80,7 @@
     "babel-plugin-module-resolver": "^5.0.2",
     "babel-preset-expo": "~13.0.0",
     "dotenv": "^16.5.0",
+    "expo": "^53.0.12",
     "metro-minify-terser": "^0.82.4",
     "patch-package": "^8.0.0",
     "postinstall-postinstall": "^2.1.0",
