@@ -91,7 +91,8 @@ const NotificationSettings = () => {
   ) => (
     <View style={styles.settingItem}>
       <View style={styles.settingIcon}>
-        <FontAwesome name={icon} size={24} color={COLORS.primaryOrangeHex} />
+        <FontAwesome name={icon as any} size={24} color={COLORS.primaryOrangeHex} />
+
       </View>
       <View style={styles.settingContent}>
         <Text style={styles.settingTitle}>{title}</Text>

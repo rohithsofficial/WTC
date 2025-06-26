@@ -29,6 +29,8 @@ export interface Product {
   categoryId: string;
   createdAt: string;
   updatedAt: string;
+  featured?: boolean;
+  offerprice?: number;
 }
 
 export interface CartItem extends Omit<Product, 'prices'> {

@@ -1,3 +1,4 @@
+//NotificationScreen.tsx
 import React, { useState, useEffect } from "react";
 import {
   View,
@@ -23,85 +24,292 @@ import {
   Notification,
 } from "../../src/firebase/notification-service";
 import { useAuth } from "../../src/context/AuthContext";
-import { Timestamp } from "firebase/firestore";
+import {
+  Timestamp,
+  collection,
+  query,
+  where,
+  getDocs,
+  doc,
+  getDoc,
+  onSnapshot,
+  updateDoc,
+} from "firebase/firestore";
+import { db, auth } from "../../src/firebase/config";
+import { onAuthStateChanged } from "firebase/auth";
+import { Swipeable } from "react-native-gesture-handler";
+
+interface NotificationSettings {
+  orderUpdates: boolean;
+  promotions: boolean;
+  newProducts: boolean;
+  deliveryUpdates: boolean;
+  systemNotifications: boolean;
+}
 
 const NotificationScreen = () => {
   const router = useRouter();
-  const authContext = useAuth();
+  const [user, setUser] = useState<any>(null);
+  const [userData, setUserData] = useState<any>(null);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [authInitialized, setAuthInitialized] = useState(false);
-
-  // Enhanced debugging
-  useEffect(() => {
-    console.log("=== AUTH CONTEXT DEBUG ===");
-    console.log("Full auth context:", authContext);
-    console.log("Auth context keys:", Object.keys(authContext || {}));
-    console.log("Auth context type:", typeof authContext);
-    console.log("========================");
-  }, [authContext]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [notificationSettings, setNotificationSettings] =
+    useState<NotificationSettings | null>(null);
 
   useEffect(() => {
-    // Increase timeout to allow more time for auth initialization
-    const authTimer = setTimeout(() => {
-      console.log("Setting auth initialized to true");
-      setAuthInitialized(true);
-    }, 1000); // Increased from 500ms to 1000ms
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+      console.log("Auth state changed:", currentUser?.uid);
+      setUser(currentUser);
 
-    return () => clearTimeout(authTimer);
+      if (currentUser) {
+        try {
+          const userDocRef = doc(db, "users", currentUser.uid);
+
+          // Set up listener for user document changes
+          const unsubscribeUser = onSnapshot(userDocRef, (doc) => {
+            if (doc.exists()) {
+              console.log("User data updated:", doc.data());
+              setUserData(doc.data());
+              const newSettings = doc.data().notificationSettings || null;
+              setNotificationSettings(newSettings);
+
+              // Reload notifications when settings change
+              if (currentUser.uid) {
+                loadNotifications(currentUser.uid);
+              }
+            }
+          });
+
+          // Initial load
+          const userDoc = await getDoc(userDocRef);
+          if (userDoc.exists()) {
+            console.log("User data found:", userDoc.data());
+            setUserData(userDoc.data());
+            setNotificationSettings(
+              userDoc.data().notificationSettings || null
+            );
+            setupNotificationsListener(currentUser.uid);
+          }
+
+          return () => unsubscribeUser();
+        } catch (error) {
+          console.error("Error fetching user data:", error);
+        }
+      }
+    });
+
+    return () => unsubscribe();
   }, []);
 
-  useEffect(() => {
-    // Enhanced debug logging
-    console.log("=== AUTH STATE CHECK ===");
-    console.log("Auth initialized:", authInitialized);
-    console.log("Full auth context:", authContext);
-    console.log("User from context:", authContext?.user);
-    console.log("User exists:", !!authContext?.user);
-    console.log("User UID:", authContext?.user?.uid);
-    console.log("Is loading from context:", authContext?.isLoading);
-    console.log("========================");
+  const setupNotificationsListener = (userId: string) => {
+    const notificationsRef = collection(db, "notifications");
+    const notificationsQuery = query(
+      notificationsRef,
+      where("isActive", "==", true)
+    );
 
-    // Only run when auth is initialized
-    if (!authInitialized) {
-      console.log("Auth not yet initialized, waiting...");
-      return;
-    }
+    // Set up real-time listener for notifications
+    const unsubscribe = onSnapshot(notificationsQuery, async (snapshot) => {
+      try {
+        // Get latest notification settings from database
+        const userDocRef = doc(db, "users", userId);
+        const userDoc = await getDoc(userDocRef);
+        const currentSettings = userDoc.exists()
+          ? userDoc.data().notificationSettings
+          : null;
 
-    // Check if auth is still loading
-    if (authContext?.isLoading) {
-      console.log("Auth is still loading, waiting...");
-      return;
-    }
+        if (!currentSettings) {
+          console.log("No notification settings found");
+          setNotifications([]);
+          setUnreadCount(0);
+          setIsLoading(false);
+          return;
+        }
 
-    if (authContext?.user?.uid) {
-      console.log("User authenticated, loading notifications for:", authContext.user.uid);
-      loadNotifications();
-    } else {
-      setIsLoading(false);
-      console.log("User not authenticated or no UID available");
-      console.log("Auth context user:", authContext?.user);
-      
-      // Show a message to help debug
-      ToastAndroid.show("User not authenticated. Please log in.", ToastAndroid.LONG);
-    }
-  }, [authContext?.user?.uid, authContext?.isLoading, authInitialized]);
+        const notificationList: Notification[] = [];
+        let unread = 0;
 
-  const loadNotifications = async () => {
+        snapshot.forEach((doc) => {
+          const data = doc.data();
+          const notificationUserId = data.userId;
+          const notificationType = data.type || "system";
+
+          // Check if notifications are enabled for this type in the database
+          let isNotificationEnabled = false;
+
+          switch (notificationType) {
+            case "order":
+              isNotificationEnabled = currentSettings.orderUpdates;
+              break;
+            case "promotion":
+              isNotificationEnabled = currentSettings.promotions;
+              break;
+            case "newProduct":
+              isNotificationEnabled = currentSettings.newProducts;
+              break;
+            case "delivery":
+              isNotificationEnabled = currentSettings.deliveryUpdates;
+              break;
+            case "system":
+              isNotificationEnabled = currentSettings.systemNotifications;
+              break;
+            default:
+              isNotificationEnabled = false;
+          }
+
+          const isGlobalNotification = notificationUserId === null;
+          const isUserSpecificNotification = notificationUserId === userId;
+
+          // Only add notification if it's enabled in settings
+          if (
+            (isGlobalNotification || isUserSpecificNotification) &&
+            isNotificationEnabled
+          ) {
+            const notification = {
+              id: doc.id,
+              title: data.title || "Notification",
+              message: data.message || "",
+              timestamp: data.timestamp || Timestamp.now(),
+              isRead: data.isRead || false,
+              isActive: data.isActive || true,
+              type: notificationType,
+              userId: notificationUserId,
+            };
+
+            notificationList.push(notification);
+            if (!notification.isRead) {
+              unread++;
+            }
+          }
+        });
+
+        // Sort notifications by timestamp
+        notificationList.sort((a, b) => {
+          const timeA =
+            a.timestamp instanceof Timestamp
+              ? a.timestamp.toMillis()
+              : new Date(a.timestamp).getTime();
+          const timeB =
+            b.timestamp instanceof Timestamp
+              ? b.timestamp.toMillis()
+              : new Date(b.timestamp).getTime();
+          return timeB - timeA;
+        });
+
+        console.log("Filtered notifications:", notificationList.length);
+        setNotifications(notificationList);
+        setUnreadCount(unread);
+        setIsLoading(false);
+      } catch (error) {
+        console.error("Error processing notifications:", error);
+        setIsLoading(false);
+      }
+    });
+
+    return unsubscribe;
+  };
+
+  const loadNotifications = async (userId: string) => {
     try {
       setIsLoading(true);
-      const userUid = authContext?.user?.uid;
-      
-      if (!userUid) {
-        console.warn("No user ID available for loading notifications");
+      console.log("Starting notification fetch...");
+      console.log("Current user ID:", userId);
+
+      // Get latest notification settings from database
+      const userDocRef = doc(db, "users", userId);
+      const userDoc = await getDoc(userDocRef);
+      const currentSettings = userDoc.exists()
+        ? userDoc.data().notificationSettings
+        : null;
+
+      if (!currentSettings) {
+        console.log("No notification settings found");
         setNotifications([]);
+        setUnreadCount(0);
+        setIsLoading(false);
         return;
       }
-      
-      console.log("Fetching notifications for user:", userUid);
-      const fetchedNotifications = await fetchNotifications(userUid);
-      console.log("Fetched notifications count:", fetchedNotifications.length);
-      setNotifications(fetchedNotifications);
+
+      const notificationsRef = collection(db, "notifications");
+      const notificationsQuery = query(
+        notificationsRef,
+        where("isActive", "==", true)
+      );
+
+      const querySnapshot = await getDocs(notificationsQuery);
+      const notificationList: Notification[] = [];
+      let unread = 0;
+
+      querySnapshot.forEach((doc) => {
+        const data = doc.data();
+        const notificationUserId = data.userId;
+        const notificationType = data.type || "system";
+
+        // Check if notifications are enabled for this type in the database
+        let isNotificationEnabled = false;
+
+        switch (notificationType) {
+          case "order":
+            isNotificationEnabled = currentSettings.orderUpdates;
+            break;
+          case "promotion":
+            isNotificationEnabled = currentSettings.promotions;
+            break;
+          case "newProduct":
+            isNotificationEnabled = currentSettings.newProducts;
+            break;
+          case "delivery":
+            isNotificationEnabled = currentSettings.deliveryUpdates;
+            break;
+          case "system":
+            isNotificationEnabled = currentSettings.systemNotifications;
+            break;
+          default:
+            isNotificationEnabled = false;
+        }
+
+        const isGlobalNotification = notificationUserId === null;
+        const isUserSpecificNotification = notificationUserId === userId;
+
+        // Only add notification if it's enabled in settings
+        if (
+          (isGlobalNotification || isUserSpecificNotification) &&
+          isNotificationEnabled
+        ) {
+          const notification = {
+            id: doc.id,
+            title: data.title || "Notification",
+            message: data.message || "",
+            timestamp: data.timestamp || Timestamp.now(),
+            isRead: data.isRead || false,
+            isActive: data.isActive || true,
+            type: notificationType,
+            userId: notificationUserId,
+          };
+
+          notificationList.push(notification);
+          if (!notification.isRead) {
+            unread++;
+          }
+        }
+      });
+
+      notificationList.sort((a, b) => {
+        const timeA =
+          a.timestamp instanceof Timestamp
+            ? a.timestamp.toMillis()
+            : new Date(a.timestamp).getTime();
+        const timeB =
+          b.timestamp instanceof Timestamp
+            ? b.timestamp.toMillis()
+            : new Date(b.timestamp).getTime();
+        return timeB - timeA;
+      });
+
+      console.log("Filtered notifications:", notificationList.length);
+      setNotifications(notificationList);
+      setUnreadCount(unread);
     } catch (error) {
       console.error("Error loading notifications:", error);
       ToastAndroid.show("Failed to load notifications", ToastAndroid.SHORT);
@@ -132,9 +340,9 @@ const NotificationScreen = () => {
             n.id === notification.id ? { ...n, isRead: true } : n
           )
         );
+        setUnreadCount((prev) => Math.max(0, prev - 1));
       }
 
-      // Handle navigation based on notification type
       switch (notification.type) {
         case "offer":
           router.push("/OffersScreen");
@@ -142,7 +350,6 @@ const NotificationScreen = () => {
         case "order":
           router.push("/OrderScreen");
           break;
-        // Add more cases as needed
       }
     } catch (error) {
       console.error("Error handling notification press:", error);
@@ -150,124 +357,80 @@ const NotificationScreen = () => {
     }
   };
 
-  const formatTimestamp = (timestamp: any) => {
-    try {
-      let date: Date;
+  const formatTimestamp = (timestamp: string | Timestamp) => {
+    const date =
+      timestamp instanceof Timestamp ? timestamp.toDate() : new Date(timestamp);
+    const now = new Date();
+    const diffInHours = Math.floor(
+      (now.getTime() - date.getTime()) / (1000 * 60 * 60)
+    );
 
-      if (timestamp instanceof Timestamp) {
-        date = timestamp.toDate();
-      } else if (timestamp && typeof timestamp.toDate === 'function') {
-        date = timestamp.toDate();
-      } else if (timestamp instanceof Date) {
-        date = timestamp;
-      } else if (typeof timestamp === 'string') {
-        date = new Date(timestamp);
-      } else if (typeof timestamp === 'number') {
-        date = new Date(timestamp);
-      } else if (timestamp && timestamp.seconds) {
-        date = new Date(timestamp.seconds * 1000);
-      } else {
-        console.warn('Invalid timestamp format:', timestamp);
-        date = new Date();
-      }
-
-      if (isNaN(date.getTime())) {
-        console.warn('Invalid date created from timestamp:', timestamp);
-        return 'Recently';
-      }
-
-      const now = new Date();
-      const diffInMilliseconds = now.getTime() - date.getTime();
-      const diffInMinutes = Math.floor(diffInMilliseconds / (1000 * 60));
-      const diffInHours = Math.floor(diffInMilliseconds / (1000 * 60 * 60));
-      const diffInDays = Math.floor(diffInMilliseconds / (1000 * 60 * 60 * 24));
-
-      if (diffInMinutes < 1) {
-        return 'Just now';
-      } else if (diffInMinutes < 60) {
-        return `${diffInMinutes} minute${diffInMinutes !== 1 ? 's' : ''} ago`;
-      } else if (diffInHours < 24) {
-        return `${diffInHours} hour${diffInHours !== 1 ? 's' : ''} ago`;
-      } else if (diffInDays < 7) {
-        return `${diffInDays} day${diffInDays !== 1 ? 's' : ''} ago`;
-      } else {
-        return date.toLocaleDateString();
-      }
-    } catch (error) {
-      console.error('Error formatting timestamp:', error, timestamp);
-      return 'Recently';
+    if (diffInHours < 24) {
+      return  `${diffInHours} hours ago`;
+    } else {
+      return date.toLocaleDateString();
     }
   };
 
+  const handleDeleteNotification = async (notificationId: string) => {
+    try {
+      const notificationRef = doc(db, "notifications", notificationId);
+      await updateDoc(notificationRef, {
+        isActive: false,
+      });
+      ToastAndroid.show("Notification deleted", ToastAndroid.SHORT);
+    } catch (error) {
+      console.error("Error deleting notification:", error);
+      ToastAndroid.show("Failed to delete notification", ToastAndroid.SHORT);
+    }
+  };
+
+  const renderRightActions = (notificationId: string) => {
+    return (
+      <TouchableOpacity
+        style={styles.deleteAction}
+        onPress={() => handleDeleteNotification(notificationId)}
+      >
+        <MaterialIcons name="delete" size={24} color={COLORS.primaryWhiteHex} />
+      </TouchableOpacity>
+    );
+  };
+
   const renderNotification = ({ item }: { item: Notification }) => (
-    <TouchableOpacity
-      style={[
-        styles.notificationItem,
-        !item.isRead && styles.unreadNotification,
-      ]}
-      onPress={() => handleNotificationPress(item)}
+    <Swipeable
+      renderRightActions={() => renderRightActions(item.id)}
+      rightThreshold={40}
     >
-      <View style={styles.notificationIcon}>
-        <MaterialIcons
-          name={getNotificationIcon(item.type)}
-          size={24}
-          color={COLORS.primaryOrangeHex}
-        />
-      </View>
-      <View style={styles.notificationContent}>
-        <Text style={styles.notificationTitle}>{item.title}</Text>
-        <Text style={styles.notificationMessage}>{item.message}</Text>
-        <Text style={styles.notificationTime}>
-          {formatTimestamp(item.timestamp)}
-        </Text>
-      </View>
-      {!item.isRead && <View style={styles.unreadDot} />}
-    </TouchableOpacity>
+      <TouchableOpacity
+        style={[
+          styles.notificationItem,
+          !item.isRead && styles.unreadNotification,
+        ]}
+        onPress={() => handleNotificationPress(item)}
+      >
+        <View style={styles.notificationIcon}>
+          <MaterialIcons
+            name={getNotificationIcon(item.type)}
+            size={24}
+            color={COLORS.primaryOrangeHex}
+          />
+        </View>
+        <View style={styles.notificationContent}>
+          <Text style={styles.notificationTitle}>{item.title}</Text>
+          <Text style={styles.notificationMessage}>{item.message}</Text>
+          <Text style={styles.notificationTime}>
+            {formatTimestamp(item.timestamp)}
+          </Text>
+        </View>
+        {!item.isRead && <View style={styles.unreadDot} />}
+      </TouchableOpacity>
+    </Swipeable>
   );
 
-  // Show loading while auth or notifications are loading
-  if (isLoading || authContext?.isLoading) {
+  if (isLoading) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color={COLORS.primaryOrangeHex} />
-        <Text style={styles.loadingText}>
-          {authContext?.isLoading ? "Authenticating..." : "Loading notifications..."}
-        </Text>
-      </View>
-    );
-  }
-
-  // Show auth required message if user is not authenticated
-  if (!authContext?.user) {
-    return (
-      <View style={styles.container}>
-        <View style={styles.header}>
-          <TouchableOpacity
-            style={styles.backButton}
-            onPress={() => router.back()}
-          >
-            <MaterialIcons
-              name="arrow-back"
-              size={24}
-              color={COLORS.primaryBlackHex}
-            />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Notifications</Text>
-        </View>
-        <View style={styles.emptyContainer}>
-          <MaterialIcons
-            name="login"
-            size={48}
-            color={COLORS.primaryLightGreyHex}
-          />
-          <Text style={styles.emptyText}>Please log in to view notifications</Text>
-          <TouchableOpacity
-            style={styles.loginButton}
-            onPress={() => router.push("../(auth)/phone-auth.tsx")} // Adjust route as needed
-          >
-            <Text style={styles.loginButtonText}>Go to Login</Text>
-          </TouchableOpacity>
-        </View>
       </View>
     );
   }
@@ -286,6 +449,21 @@ const NotificationScreen = () => {
           />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Notifications</Text>
+        <TouchableOpacity
+          style={styles.settingsButton}
+          onPress={() => router.push("/NotificationSettings")}
+        >
+          <MaterialIcons
+            name="settings"
+            size={24}
+            color={COLORS.primaryBlackHex}
+          />
+        </TouchableOpacity>
+        {unreadCount > 0 && (
+          <View style={styles.badgeContainer}>
+            <Text style={styles.badgeText}>{unreadCount}</Text>
+          </View>
+        )}
       </View>
 
       {notifications.length === 0 ? (
@@ -295,7 +473,32 @@ const NotificationScreen = () => {
             size={48}
             color={COLORS.primaryLightGreyHex}
           />
-          <Text style={styles.emptyText}>No notifications yet</Text>
+          <Text style={styles.emptyText}>
+            {!user
+              ? "Please login to view notifications"
+              : !notificationSettings
+              ? "Please enable notifications in settings"
+              : "No notifications yet"}
+          </Text>
+          {!user ? (
+            <TouchableOpacity
+              style={styles.loginButton}
+              onPress={() => router.push("/(auth)/login")}
+            >
+              <Text style={styles.loginButtonText}>Go to Login</Text>
+            </TouchableOpacity>
+          ) : (
+            !notificationSettings && (
+              <TouchableOpacity
+                style={styles.settingsButton}
+                onPress={() => router.push("/NotificationSettings")}
+              >
+                <Text style={styles.settingsButtonText}>
+                  Enable Notifications
+                </Text>
+              </TouchableOpacity>
+            )
+          )}
         </View>
       ) : (
         <FlatList
@@ -304,7 +507,7 @@ const NotificationScreen = () => {
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.notificationList}
           refreshing={isLoading}
-          onRefresh={loadNotifications}
+          onRefresh={() => user?.uid && loadNotifications(user.uid)}
         />
       )}
     </View>
@@ -389,12 +592,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-  loadingText: {
-    fontFamily: FONTFAMILY.poppins_regular,
-    fontSize: FONTSIZE.size_14,
-    color: COLORS.primaryDarkGreyHex,
-    marginTop: SPACING.space_8,
-  },
   emptyContainer: {
     flex: 1,
     justifyContent: "center",
@@ -406,7 +603,23 @@ const styles = StyleSheet.create({
     fontSize: FONTSIZE.size_16,
     color: COLORS.primaryDarkGreyHex,
     marginTop: SPACING.space_12,
-    textAlign: "center",
+  },
+  badgeContainer: {
+    position: "absolute",
+    right: SPACING.space_16,
+    top: SPACING.space_16,
+    backgroundColor: COLORS.primaryOrangeHex,
+    borderRadius: BORDERRADIUS.radius_10,
+    minWidth: 20,
+    height: 20,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: SPACING.space_4,
+  },
+  badgeText: {
+    color: COLORS.primaryWhiteHex,
+    fontFamily: FONTFAMILY.poppins_medium,
+    fontSize: FONTSIZE.size_12,
   },
   loginButton: {
     backgroundColor: COLORS.primaryOrangeHex,
@@ -417,8 +630,26 @@ const styles = StyleSheet.create({
   },
   loginButtonText: {
     fontFamily: FONTFAMILY.poppins_semibold,
-    fontSize: FONTSIZE.size_14,
+    fontSize: FONTSIZE.size_16,
     color: COLORS.primaryWhiteHex,
+  },
+  settingsButton: {
+    padding: SPACING.space_8,
+  },
+  settingsButtonText: {
+    fontFamily: FONTFAMILY.poppins_semibold,
+    fontSize: FONTSIZE.size_16,
+    color: COLORS.primaryOrangeHex,
+    marginTop: SPACING.space_16,
+  },
+  deleteAction: {
+    backgroundColor: COLORS.primaryRedHex,
+    justifyContent: "center",
+    alignItems: "center",
+    top: 5,
+    borderRadius: 10,
+    width: 60,
+    height: "80%",
   },
 });
 
