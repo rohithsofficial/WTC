@@ -16,9 +16,8 @@ import * as Brightness from 'expo-brightness';
 import { COLORS, FONTFAMILY, FONTSIZE, SPACING, BORDERRADIUS } from '../theme/theme';
 import { MaterialIcons } from '@expo/vector-icons';
 import QRCode from 'react-native-qrcode-svg';
-import { auth } from '../firebase/config';
-import { doc, getDoc, updateDoc, setDoc, Timestamp } from 'firebase/firestore';
-import { db } from '../firebase/config';
+import { auth } from '../firebase/firebase-config';
+import { db } from '../firebase/firebase-config';
 import type { LoyaltyUser } from '../types/loyalty';
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
@@ -144,44 +143,42 @@ const FloatingQRModal: React.FC<FloatingQRModalProps> = ({
   const loadLoyaltyProfile = async (): Promise<void> => {
     try {
       const user = auth.currentUser;
-      
       if (!user) {
         setModalState('not_authenticated');
         return;
       }
-
       setModalState('loading');
-      
-      const userDocRef = doc(db, 'users', user.uid);
-      const userDoc = await getDoc(userDocRef);
-      
+      const userDocRef = db.collection('users').doc(user.uid);
+      let userDoc;
+      try {
+        userDoc = await userDocRef.get();
+      } catch (err) {
+        setErrorMessage('Could not connect to server. Please try again.');
+        setModalState('error');
+        Alert.alert('Connection Error', 'Unable to load your profile. Please check your connection.');
+        return;
+      }
       if (userDoc.exists()) {
         const userData = userDoc.data();
-        const loyaltyPoints = userData.loyaltyPoints || 
-                             userData.loyalty_points || 
-                             userData.points || 
-                             0;
-        
+        const loyaltyPoints = userData.loyaltyPoints || userData.loyalty_points || userData.points || 0;
         const profile: LoyaltyUser = {
           uid: user.uid,
           email: user.email || '',
           displayName: user.displayName || userData.displayName || userData.name || 'User',
-          loyaltyPoints: Math.max(0, loyaltyPoints), // Ensure non-negative
+          loyaltyPoints: Math.max(0, loyaltyPoints),
           totalOrders: userData.totalOrders || 0,
           totalSpent: userData.totalSpent || 0,
           isFirstTimeUser: userData.isFirstTimeUser ?? true,
-          createdAt: userData.createdAt || Timestamp.now(),
-          updatedAt: userData.updatedAt || Timestamp.now()
+          createdAt: userData.createdAt || new Date(),
+          updatedAt: userData.updatedAt || new Date()
         };
-        
         setLoyaltyProfile(profile);
         const qrCode = generateSecureToken(profile.uid);
         setQrToken(qrCode);
         setModalState('success');
-        
       } else {
         // Create new user profile
-        const now = Timestamp.now();
+        const now = new Date();
         const newProfile: LoyaltyUser = {
           uid: user.uid,
           email: user.email || '',
@@ -193,27 +190,25 @@ const FloatingQRModal: React.FC<FloatingQRModalProps> = ({
           createdAt: now,
           updatedAt: now
         };
-        
-        // Try to create the document
         try {
-          await setDoc(userDocRef, newProfile);
+          await userDocRef.set(newProfile);
           setLoyaltyProfile(newProfile);
           const qrCode = generateSecureToken(newProfile.uid);
           setQrToken(qrCode);
           setModalState('success');
         } catch (createError) {
-          console.error('Error creating user profile:', createError);
-          // Still show QR with default profile
+          setErrorMessage('Could not create your profile. Please try again.');
           setLoyaltyProfile(newProfile);
           const qrCode = generateSecureToken(newProfile.uid);
           setQrToken(qrCode);
           setModalState('success');
+          Alert.alert('Profile Error', 'Unable to create your profile. Some features may not work.');
         }
       }
     } catch (error) {
-      console.error('Error loading loyalty profile:', error);
       setErrorMessage('Unable to load your loyalty profile. Please check your connection and try again.');
       setModalState('error');
+      Alert.alert('Error', 'Unable to load your loyalty profile. Please try again later.');
     }
   };
 

@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -14,21 +14,21 @@ import {
 import { Stack, router } from 'expo-router';
 import { FontAwesome } from '@expo/vector-icons';
 import { COLORS, FONTFAMILY, FONTSIZE, SPACING, BORDERRADIUS } from '../../src/theme/theme';
-import { auth, firebaseConfig } from '../../src/firebase/config';
-import { PhoneAuthProvider, signInWithCredential, updateProfile } from 'firebase/auth';
-import { FirebaseRecaptchaVerifierModal } from 'expo-firebase-recaptcha';
-import { collection, query, where, getDocs, doc, setDoc } from 'firebase/firestore';
-import { db } from '../../src/firebase/firebase-config';
+
+// *** FIXED: Import from your firebase config ***
+import { auth, db } from '../../src/firebase/firebase-config';
+import { FirebaseAuthTypes } from '@react-native-firebase/auth';
+
+// Your custom alert component
 import StyledAlert from '../../src/components/StyledAlert';
 
-export default function PhoneAuth() {
+export default function PhoneAuth(): React.ReactElement {
   const [phoneNumber, setPhoneNumber] = useState('');
   const [verificationCode, setVerificationCode] = useState('');
-  const [verificationId, setVerificationId] = useState('');
+  const [confirm, setConfirm] = useState<FirebaseAuthTypes.ConfirmationResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [showOTPInput, setShowOTPInput] = useState(false);
-  const recaptchaVerifier = useRef<FirebaseRecaptchaVerifierModal>(null);
-  
+
   // Alert state
   const [alert, setAlert] = useState({
     visible: false,
@@ -50,41 +50,27 @@ export default function PhoneAuth() {
     setAlert(prev => ({ ...prev, visible: false }));
   };
 
-  // Set language code for SMS messages
-  auth.languageCode = 'en';
-
   const handleSendOTP = async () => {
     if (!phoneNumber.trim()) {
       showAlert('Missing Information', 'Please enter your phone number to continue', 'error');
       return;
     }
 
-    if (!recaptchaVerifier.current) {
-      showAlert('System Error', 'Unable to verify your device. Please try again.', 'error');
-      return;
-    }
-
     try {
       setLoading(true);
       const formattedPhone = phoneNumber.startsWith('+') ? phoneNumber : `+91${phoneNumber}`;
+
+      // *** FIXED: Use the auth instance from your config ***
+      const confirmation = await auth.signInWithPhoneNumber(formattedPhone);
       
-      // Create a new PhoneAuthProvider instance
-      const phoneProvider = new PhoneAuthProvider(auth);
-      
-      // Send verification code
-      const verificationId = await phoneProvider.verifyPhoneNumber(
-        formattedPhone,
-        recaptchaVerifier.current
-      );
-      
-      setVerificationId(verificationId);
+      setConfirm(confirmation);
       setShowOTPInput(true);
       showAlert('Verification Code Sent', 'Please check your messages for the 6-digit code', 'success');
     } catch (error: any) {
       console.error('OTP send error:', error);
       let errorTitle = 'Verification Failed';
       let errorMessage = 'Unable to send verification code. Please try again.';
-      
+
       // Handle specific Firebase error codes
       switch (error.code) {
         case 'auth/invalid-phone-number':
@@ -109,7 +95,7 @@ export default function PhoneAuth() {
           errorTitle = 'Error';
           errorMessage = 'An unexpected error occurred. Please try again.';
       }
-      
+
       showAlert(errorTitle, errorMessage, 'error');
     } finally {
       setLoading(false);
@@ -122,28 +108,36 @@ export default function PhoneAuth() {
       return;
     }
 
+    if (!confirm) {
+      showAlert('Error', 'No verification session found. Please request a new code.', 'error');
+      return;
+    }
+
     try {
       setLoading(true);
       const formattedPhone = phoneNumber.startsWith('+') ? phoneNumber : `+91${phoneNumber}`;
+
+      // *** FIXED: Use the confirm object to verify the code ***
+      const userCredential = await confirm.confirm(verificationCode);
       
-      // Create a credential with the verification ID and code
-      const credential = PhoneAuthProvider.credential(verificationId, verificationCode);
+      if (!userCredential) {
+        showAlert('Verification Failed', 'Unable to verify the code. Please try again.', 'error');
+        return;
+      }
       
-      // Sign in with the credential
-      const userCredential = await signInWithCredential(auth, credential);
       const user = userCredential.user;
 
       // Check if user document exists with this phone number
-      const usersRef = collection(db, 'users');
-      const q = query(usersRef, where('phoneNumber', '==', formattedPhone));
-      const querySnapshot = await getDocs(q);
+      const usersRef = db.collection('users');
+      const querySnapshot = await usersRef.where('phoneNumber', '==', formattedPhone).get();
 
       if (!querySnapshot.empty) {
         // Existing user - update their auth profile with existing data
         const existingUserDoc = querySnapshot.docs[0];
         const existingUserData = existingUserDoc.data();
-        
-        await updateProfile(user, {
+
+        // Update user profile
+        await user.updateProfile({
           displayName: existingUserData.displayName || user.displayName
         });
 
@@ -155,7 +149,6 @@ export default function PhoneAuth() {
           pathname: '/(auth)/UserDetailsScreen',
           params: {
             phoneNumber: formattedPhone,
-            verificationId: verificationId,
             userId: user.uid
           }
         });
@@ -164,7 +157,7 @@ export default function PhoneAuth() {
       console.error('Verification error:', error);
       let errorTitle = 'Verification Failed';
       let errorMessage = 'Unable to verify the code. Please try again.';
-      
+
       // Handle specific Firebase error codes
       switch (error.code) {
         case 'auth/invalid-verification-code':
@@ -201,7 +194,7 @@ export default function PhoneAuth() {
           errorTitle = 'Error';
           errorMessage = 'An unexpected error occurred. Please try again.';
       }
-      
+
       showAlert(errorTitle, errorMessage, 'error');
     } finally {
       setLoading(false);
@@ -226,14 +219,6 @@ export default function PhoneAuth() {
         message={alert.message}
         type={alert.type}
         onClose={hideAlert}
-      />
-
-      <FirebaseRecaptchaVerifierModal
-        ref={recaptchaVerifier}
-        firebaseConfig={firebaseConfig}
-        attemptInvisibleVerification={true}
-        title="Verify your phone number"
-        cancelLabel="Cancel"
       />
 
       <ScrollView
@@ -330,13 +315,6 @@ export default function PhoneAuth() {
               </TouchableOpacity>
             </>
           )}
-
-          {/* <View style={styles.loginContainer}>
-            <Text style={styles.loginText}>Or login with email? </Text>
-            <TouchableOpacity onPress={() => router.push('/(auth)/login')}>
-              <Text style={styles.loginLink}>Login</Text>
-            </TouchableOpacity>
-          </View> */}
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -445,20 +423,4 @@ const styles = StyleSheet.create({
     fontSize: FONTSIZE.size_14,
     color: COLORS.primaryOrangeHex,
   },
-  loginContainer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  loginText: {
-    fontFamily: FONTFAMILY.poppins_regular,
-    fontSize: FONTSIZE.size_14,
-    color: COLORS.primaryGreyHex,
-  },
-  loginLink: {
-    fontFamily: FONTFAMILY.poppins_semibold,
-    fontSize: FONTSIZE.size_14,
-    color: COLORS.primaryOrangeHex,
-  },
 });
-

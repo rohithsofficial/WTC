@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
-import { collection, getDocs, query, where, orderBy } from 'firebase/firestore';
+import firestore, { collection, getDocs, query, where, orderBy } from '@react-native-firebase/firestore';
 import * as Location from 'expo-location';
-import { db } from '../firebase/config';
+import { db } from '../firebase/firebase-config';
 import { Store } from '../types/interfaces';
 
 interface StoreState {

@@ -1,5 +1,5 @@
-import { collection, getDocs, query, where } from "firebase/firestore";
-import { db } from "./config";
+import firestore, { collection, getDocs, query, where } from '@react-native-firebase/firestore';
+import { db } from './firebase-config';
 
 export interface Offer {
   id: string;

@@ -189,8 +189,8 @@ buck-out/
 web-build/
 
 # Native directories
-/android/
-/ios/
+/android
+/ios
 
 # notes
 notes.txt

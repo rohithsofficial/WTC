@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
 import { Image, Text, TextInput, TouchableOpacity, View, StyleSheet, ActivityIndicator } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
-import { auth, db } from '../../src/firebase/config';
-import { createUserWithEmailAndPassword , updateProfile } from 'firebase/auth';
-import { doc, setDoc } from 'firebase/firestore';
+import { auth, db } from '../../src/firebase/firebase-config';
+import authModule from '@react-native-firebase/auth';
+import firestore from '@react-native-firebase/firestore';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -33,11 +33,8 @@ export default function Register() {
 
     setIsLoading(true);
     try {
-      const userCredential = await createUserWithEmailAndPassword(auth, email.trim(), password);
-
-       await updateProfile(userCredential.user, {
-      displayName: displayName,
-    });
+      const userCredential = await authModule().createUserWithEmailAndPassword(email.trim(), password);
+      await userCredential.user.updateProfile({ displayName });
       const uid = userCredential.user.uid;
       const data = {
         id: uid,
@@ -45,9 +42,8 @@ export default function Register() {
         displayName,
         loyaltyPoints: 0,
         createdAt: new Date().toISOString(),
-      }; 
-      
-      await setDoc(doc(db, 'users', uid), data);
+      };
+      await db.collection('users').doc(uid).set(data);
       router.replace('/(app)/HomeScreen');
     } catch (error: any) {
       alert(error.message);

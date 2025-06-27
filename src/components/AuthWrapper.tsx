@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { View, ActivityIndicator } from 'react-native';
 import { router } from 'expo-router';
-import { auth } from '../firebase/config';
+import { auth } from '../firebase/firebase-config';
 import { COLORS } from '../theme/theme';
 
 interface AuthWrapperProps {

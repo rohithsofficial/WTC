@@ -4,18 +4,20 @@ export interface Category {
   description?: string;
   image?: string;
   createdAt: string;
+  icon?: string;
 }
 
 export interface Product {
   id: string;
   name: string;
-  prices: number[];
+  prices: { size: string; price: string; currency: string }[];
   imagelink_square: string;
   special_ingredient: string;
-  type: string;
-  description: string;
-  average_rating: number;
-  ratings_count: number;
+  featured?: boolean;
+  type?: string;
+  description?: string;
+  average_rating?: number;
+  ratings_count?: number;
   roasted: string;
   ingredients: string[];
   categoryId: string;

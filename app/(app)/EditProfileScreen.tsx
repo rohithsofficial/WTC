@@ -11,13 +11,11 @@ import {
   Switch,
 } from 'react-native';
 import { Stack, router } from 'expo-router';
-import { auth, db } from '../../src/firebase/config';
+import { auth, db } from '../../src/firebase/firebase-config';
 import { FontAwesome } from '@expo/vector-icons';
 import { COLORS, FONTFAMILY, FONTSIZE, SPACING, BORDERRADIUS } from '../../src/theme/theme';
-import { updateProfile } from 'firebase/auth';
-import { doc, updateDoc, getDoc } from 'firebase/firestore';
 import * as ImagePicker from 'expo-image-picker';
-import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import storage from '@react-native-firebase/storage';
 import StyledAlert from '../../src/components/StyledAlert';
 
 const EditProfileScreen = () => {
@@ -42,14 +40,14 @@ const EditProfileScreen = () => {
       }
 
       try {
-        const userDocRef = doc(db, 'users', user.uid);
-        const userDoc = await getDoc(userDocRef);
+        const userDocRef = db.collection('users').doc(user.uid);
+        const userDoc = await userDocRef.get();
         
         if (userDoc.exists()) {
           const data = userDoc.data();
           setUserData(data);
-          setDisplayName(data.displayName || '');
-          setEmail(data.email || '');
+          setDisplayName(data?.displayName || '');
+          setEmail(data?.email || '');
         }
       } catch (error) {
         console.error('Error fetching user data:', error);
@@ -59,6 +57,15 @@ const EditProfileScreen = () => {
 
     fetchUserData();
   }, [user]);
+
+  useEffect(() => {
+    // Listen for auth state changes
+    const unsubscribe = auth.onAuthStateChanged((authUser) => {
+      setUser(authUser);
+    });
+
+    return unsubscribe;
+  }, []);
 
   const showAlert = (title: string, message: string, type: 'success' | 'error' | 'info' = 'info') => {
     setAlert({
@@ -96,23 +103,29 @@ const EditProfileScreen = () => {
 
     try {
       setUploading(true);
-      const response = await fetch(uri);
-      const blob = await response.blob();
       
-      const storage = getStorage();
-      const storageRef = ref(storage, `profile_images/${user.uid}`);
+      // Create a reference to Firebase Storage
+      const storageRef = storage().ref(`profile_images/${user.uid}`);
       
-      await uploadBytes(storageRef, blob);
-      const downloadURL = await getDownloadURL(storageRef);
+      // Upload the image
+      await storageRef.putFile(uri);
+      
+      // Get the download URL
+      const downloadURL = await storageRef.getDownloadURL();
       
       // Update Firebase Auth profile
-      await updateProfile(user, { photoURL: downloadURL });
+      await user.updateProfile({ 
+        photoURL: downloadURL 
+      });
       
       // Update Firestore user document
-      await updateDoc(doc(db, 'users', user.uid), {
+      await db.collection('users').doc(user.uid).update({
         photoURL: downloadURL,
         updatedAt: new Date().toISOString()
       });
+
+      // Update local user state
+      setUser(auth.currentUser);
 
       showAlert('Success', 'Profile photo updated successfully', 'success');
     } catch (error) {
@@ -135,16 +148,19 @@ const EditProfileScreen = () => {
       setLoading(true);
 
       // Update Firebase Auth profile
-      await updateProfile(user, {
+      await user.updateProfile({
         displayName: displayName.trim()
       });
 
       // Update Firestore user document
-      await updateDoc(doc(db, 'users', user.uid), {
+      await db.collection('users').doc(user.uid).update({
         displayName: displayName.trim(),
         email: email.trim(),
         updatedAt: new Date().toISOString()
       });
+
+      // Update local user state
+      setUser(auth.currentUser);
 
       showAlert('Success', 'Profile updated successfully', 'success');
       setTimeout(() => router.back(), 1500);

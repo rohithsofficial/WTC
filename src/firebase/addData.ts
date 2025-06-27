@@ -1,12 +1,11 @@
-import { collection, addDoc, setDoc, doc, updateDoc , query, where, getDocs } from 'firebase/firestore';
-import { db } from './config';
+import { db } from './firebase-config';
 import { Product, Category, Order, User } from '../types/database';
 
 // Add a product with auto-generated ID
 export const addProduct = async (productData: Omit<Product, 'id'>) => {
   try {
-    const productsRef = collection(db, 'products');
-    const docRef = await addDoc(productsRef, {
+    const productsRef = db.collection('products');
+    const docRef = await productsRef.add({
       ...productData,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
@@ -22,8 +21,8 @@ export const addProduct = async (productData: Omit<Product, 'id'>) => {
 // Add a product with custom ID
 export const addProductWithId = async (productId: string, productData: Omit<Product, 'id'>) => {
   try {
-    const productRef = doc(db, 'products', productId);
-    await setDoc(productRef, {
+    const productRef = db.collection('products').doc(productId);
+    await productRef.set({
       ...productData,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
@@ -53,11 +52,11 @@ export const addMultipleProducts = async (products: Omit<Product, 'id'>[]) => {
 // Add a category
 export const addCategory = async (categoryData: Omit<Category, 'id'>) => {
   try {
-    const categoriesRef = collection(db, 'categories');
+    const categoriesRef = db.collection('categories');
 
     // Check if category with the same name already exists
-    const q = query(categoriesRef, where('name', '==', categoryData.name));
-    const querySnapshot = await getDocs(q);
+    const q = categoriesRef.where('name', '==', categoryData.name);
+    const querySnapshot = await q.get();
 
     if (!querySnapshot.empty) {
       // Return existing category ID
@@ -67,7 +66,7 @@ export const addCategory = async (categoryData: Omit<Category, 'id'>) => {
     }
 
     // Create new category
-    const docRef = await addDoc(categoriesRef, {
+    const docRef = await categoriesRef.add({
       ...categoryData,
       createdAt: new Date().toISOString()
     });
@@ -84,8 +83,8 @@ export const addCategory = async (categoryData: Omit<Category, 'id'>) => {
 // Add an order
 export const addOrder = async (orderData: Omit<Order, 'id'>) => {
   try {
-    const ordersRef = collection(db, 'orders');
-    const docRef = await addDoc(ordersRef, {
+    const ordersRef = db.collection('orders');
+    const docRef = await ordersRef.add({
       ...orderData,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
@@ -101,8 +100,8 @@ export const addOrder = async (orderData: Omit<Order, 'id'>) => {
 // Add a user
 export const addUser = async (userId: string, userData: Omit<User, 'id'>) => {
   try {
-    const userRef = doc(db, 'users', userId);
-    await setDoc(userRef, {
+    const userRef = db.collection('users').doc(userId);
+    await userRef.set({
       ...userData,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()

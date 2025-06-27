@@ -1,16 +1,15 @@
 // src/firebase/productService.ts
-import { collection, getDocs, query, where, doc, getDoc, orderBy } from 'firebase/firestore';
-import { db } from './config';
+import { db } from './firebase-config';
 import { Product, Category } from '../types/database';
 import { Product as ProductInterface, Banner } from '../types/interfaces';
 
 // Fetch all categories
 export const fetchCategories = async (): Promise<Category[]> => {
   try {
-    const categoriesRef = collection(db, 'categories');
-    const q = query(categoriesRef, orderBy('createdAt', 'desc'));
+    const categoriesRef = db.collection('categories');
+    const q = categoriesRef.orderBy('createdAt', 'desc');
     
-    const querySnapshot = await getDocs(q);
+    const querySnapshot = await q.get();
     return querySnapshot.docs.map(doc => ({
       id: doc.id,
       ...doc.data()
@@ -28,8 +27,8 @@ export const fetchAllProductsWithCategories = async () => {
     const categories = await fetchCategories();
     
     // Then fetch all products
-    const productsCollection = collection(db, 'products');
-    const productSnapshot = await getDocs(productsCollection);
+    const productsCollection = db.collection('products');
+    const productSnapshot = await productsCollection.get();
     const products = productSnapshot.docs.map(doc => ({
       id: doc.id,
       ...doc.data()
@@ -59,9 +58,9 @@ export const fetchAllProductsWithCategories = async () => {
 // Fetch products by category ID
 export const fetchProductsByCategory = async (categoryId: string): Promise<ProductInterface[]> => {
   try {
-    const productsCollection = collection(db, 'products');
-    const q = query(productsCollection, where('categoryId', '==', categoryId));
-    const productSnapshot = await getDocs(q);
+    const productsCollection = db.collection('products');
+    const q = productsCollection.where('categoryId', '==', categoryId);
+    const productSnapshot = await q.get();
     return productSnapshot.docs.map(doc => ({
       id: doc.id,
       ...doc.data()
@@ -72,76 +71,12 @@ export const fetchProductsByCategory = async (categoryId: string): Promise<Produ
   }
 };
 
-// // Fetch coffee products (type = 'coffee')
-// export const fetchCoffeeProducts = async (): Promise<ProductInterface[]> => {
-//   try {
-//     const productsCollection = collection(db, 'products');
-//     const q = query(productsCollection, where('type', '==', 'Coffee'));
-//     const productSnapshot = await getDocs(q);
-//     const productList = productSnapshot.docs.map(doc => {
-//       const data = doc.data();
-//       return {
-//         id: doc.id,
-//         name: data.name,
-//         prices: data.prices,
-//         imagelink_square: data.imagelink_square,
-//         special_ingredient: data.special_ingredient,
-//         type: data.type,
-//         description: data.description,
-//         average_rating: data.average_rating,
-//         ratings_count: data.ratings_count,
-//         roasted: data.roasted,
-//         ingredients: data.ingredients,
-//         categoryId: data.categoryId,
-//         createdAt: data.createdAt,
-//         updatedAt: data.updatedAt
-//       } as ProductInterface;
-//     });
-//     return productList;
-//   } catch (error) {
-//     console.error('Error fetching coffee products:', error);
-//     return [];
-//   }
-// };
-
-// // Fetch tea products (type = 'tea')
-// export const fetchteaProducts = async (): Promise<ProductInterface[]> => {
-//   try {
-//     const productsCollection = collection(db, 'products');
-//     const q = query(productsCollection, where('type', '==', 'Tea'));
-//     const productSnapshot = await getDocs(q);
-//     const productList = productSnapshot.docs.map(doc => {
-//       const data = doc.data();
-//       return {
-//         id: doc.id,
-//         name: data.name,
-//         prices: data.prices,
-//         imagelink_square: data.imagelink_square,
-//         special_ingredient: data.special_ingredient,
-//         type: data.type,
-//         description: data.description,
-//         average_rating: data.average_rating,
-//         ratings_count: data.ratings_count,
-//         roasted: data.roasted,
-//         ingredients: data.ingredients,
-//         categoryId: data.categoryId,
-//         createdAt: data.createdAt,
-//         updatedAt: data.updatedAt
-//       } as ProductInterface;
-//     });
-//     return productList;
-//   } catch (error) {
-//     console.error('Error fetching tea products:', error);
-//     return [];
-//   }
-// };
-
 // Fetch products by type (Coffee, Tea, etc.)
 export const fetchProductsByType = async (type: string): Promise<ProductInterface[]> => {
   try {
-    const productsCollection = collection(db, 'products');
-    const q = query(productsCollection, where('type', '==', type));
-    const productSnapshot = await getDocs(q);
+    const productsCollection = db.collection('products');
+    const q = productsCollection.where('type', '==', type);
+    const productSnapshot = await q.get();
     return productSnapshot.docs.map(doc => ({
       id: doc.id,
       ...doc.data()
@@ -155,8 +90,8 @@ export const fetchProductsByType = async (type: string): Promise<ProductInterfac
 // Search products by name
 export const searchProducts = async (searchTerm: string): Promise<ProductInterface[]> => {
   try {
-    const productsCollection = collection(db, 'products');
-    const productSnapshot = await getDocs(productsCollection);
+    const productsCollection = db.collection('products');
+    const productSnapshot = await productsCollection.get();
     const products = productSnapshot.docs.map(doc => ({
       id: doc.id,
       ...doc.data()
@@ -176,13 +111,13 @@ export const searchProducts = async (searchTerm: string): Promise<ProductInterfa
 export const fetchProductById = async (productId: string): Promise<ProductInterface | null> => {
   try {
     console.log('Fetching product with ID:', productId);
-    const productDoc = doc(db, 'products', productId);
+    const productDoc = db.collection('products').doc(productId);
     console.log('Product document reference created');
     
-    const productSnapshot = await getDoc(productDoc);
-    console.log('Product snapshot exists:', productSnapshot.exists());
+    const productSnapshot = await productDoc.get();
+    console.log('Product snapshot exists:', productSnapshot.exists);
     
-    if (productSnapshot.exists()) {
+    if (productSnapshot.exists) {
       const data = productSnapshot.data();
       console.log('Raw product data:', data);
       
@@ -207,8 +142,8 @@ export const fetchProductById = async (productId: string): Promise<ProductInterf
 export const checkAndInitializeDatabase = async () => {
   try {
     console.log('Checking if database needs initialization...');
-    const productsRef = collection(db, 'products');
-    const productsSnapshot = await getDocs(productsRef);
+    const productsRef = db.collection('products');
+    const productsSnapshot = await productsRef.get();
     
     if (productsSnapshot.empty) {
       console.log('Database is empty, initializing with sample data...');
@@ -226,13 +161,10 @@ export const checkAndInitializeDatabase = async () => {
 export const fetchActiveBanners = async (): Promise<Banner[]> => {
   try {
     console.log('Fetching banners...');
-    const bannersRef = collection(db, 'banners');
-    const q = query(
-      bannersRef,
-      where('isActive', '==', true)
-    );
+    const bannersRef = db.collection('banners');
+    const q = bannersRef.where('isActive', '==', true);
     
-    const querySnapshot = await getDocs(q);
+    const querySnapshot = await q.get();
     console.log('Banner query snapshot size:', querySnapshot.size);
     
     // If no banners found, return a test banner
@@ -311,9 +243,9 @@ export const fetchMenuOptions = async (): Promise<{
   type: string;
 }[]> => {
   try {
-    const categoriesRef = collection(db, 'categories');
-    const q = query(categoriesRef, orderBy('createdAt', 'desc'));
-    const querySnapshot = await getDocs(q);
+    const categoriesRef = db.collection('categories');
+    const q = categoriesRef.orderBy('createdAt', 'desc');
+    const querySnapshot = await q.get();
     
     return querySnapshot.docs.map(doc => ({
       id: doc.id,

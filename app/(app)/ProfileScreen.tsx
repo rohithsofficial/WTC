@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import { Stack, router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { auth, db } from '../../src/firebase/config';
+import { auth, db } from '../../src/firebase/firebase-config';
 import { FontAwesome, Ionicons } from '@expo/vector-icons';
 import {
   COLORS,
@@ -22,8 +22,8 @@ import {
   SPACING,
   BORDERRADIUS,
 } from '../../src/theme/theme';
-import { signOut, onAuthStateChanged } from 'firebase/auth';
-import { doc, getDoc, onSnapshot } from 'firebase/firestore';
+import { signOut, onAuthStateChanged } from '@react-native-firebase/auth';
+import authModule from '@react-native-firebase/auth';
 import StyledAlert from '../../src/components/StyledAlert';
 
 const ProfileScreen = () => {
@@ -46,13 +46,12 @@ const ProfileScreen = () => {
       setLoading(true);
 
       if (currentUser) {
-        const userDocRef = doc(db, 'users', currentUser.uid);
+        const userDocRef = db.collection('users').doc(currentUser.uid);
 
         try {
-          const userDoc = await getDoc(userDocRef);
+          const userDoc = await userDocRef.get();
           if (userDoc.exists()) {
-            unsubscribeSnapshot = onSnapshot(
-              userDocRef,
+            unsubscribeSnapshot = userDocRef.onSnapshot(
               (doc) => {
                 if (doc.exists()) {
                   setUserData(doc.data());

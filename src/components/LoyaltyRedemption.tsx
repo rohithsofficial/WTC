@@ -39,10 +39,12 @@ const LoyaltyRedemption: React.FC<LoyaltyRedemptionProps> = ({
   } | null>(null);
 
   // Calculate maximum redeemable points for this order
+  const maxRedemptionPercentage = LOYALTY_CONFIG.maxRedemptionPercentage ?? 0.5; // 50% fallback
+  const maxRedemptionAmount = LOYALTY_CONFIG.maxRedemptionAmount ?? 100; // ₹100 fallback
   const maxRedeemablePoints = Math.min(
     availablePoints,
-    Math.floor(orderAmount * LOYALTY_CONFIG.maxRedemptionPercentage / LOYALTY_CONFIG.redemptionRate),
-    Math.floor(LOYALTY_CONFIG.maxRedemptionAmount / LOYALTY_CONFIG.redemptionRate)
+    Math.floor(orderAmount * maxRedemptionPercentage / LOYALTY_CONFIG.redemptionRate),
+    Math.floor(maxRedemptionAmount / LOYALTY_CONFIG.redemptionRate)
   );
 
   // Check for points near expiry
@@ -54,7 +56,7 @@ const LoyaltyRedemption: React.FC<LoyaltyRedemptionProps> = ({
 
   const checkExpiryWarning = async () => {
     try {
-      const nearExpiry = await LoyaltyService.getPointsNearExpiry(userId);
+      const nearExpiry = await loyaltyService.getPointsNearExpiry(userId);
       if (nearExpiry.totalPoints > 0) {
         setExpiryWarning({
           points: nearExpiry.totalPoints,
@@ -67,7 +69,7 @@ const LoyaltyRedemption: React.FC<LoyaltyRedemptionProps> = ({
   };
 
   const calculateRedemption = (points: number) => {
-    const calculation = LoyaltyService.calculateRedemption(
+    const calculation = loyaltyService.calculateRedemption(
       points,
       availablePoints,
       orderAmount
@@ -235,7 +237,7 @@ const LoyaltyRedemption: React.FC<LoyaltyRedemptionProps> = ({
           • Minimum: {LOYALTY_CONFIG.minRedemption} points
         </Text>
         <Text style={styles.limitsText}>
-          • Maximum: {Math.min(LOYALTY_CONFIG.maxRedemptionAmount / LOYALTY_CONFIG.redemptionRate, orderAmount * LOYALTY_CONFIG.maxRedemptionPercentage / LOYALTY_CONFIG.redemptionRate).toFixed(0)} points for this order
+          • Maximum: {Math.min(maxRedemptionAmount / LOYALTY_CONFIG.redemptionRate, orderAmount * maxRedemptionPercentage / LOYALTY_CONFIG.redemptionRate).toFixed(0)} points for this order
         </Text>
         <Text style={styles.limitsText}>
           • Rate: {(1 / LOYALTY_CONFIG.redemptionRate).toFixed(0)} points = ₹1
@@ -256,7 +258,7 @@ export const useLoyaltyPoints = (userId: string) => {
     try {
       setLoading(true);
       setError(null);
-      const points = await LoyaltyService.getUserLoyaltyPoints(userId);
+      const points = await loyaltyService.getUserLoyaltyPoints(userId);
       setAvailablePoints(points);
       setLastRefresh(new Date());
     } catch (err) {
@@ -274,7 +276,7 @@ export const useLoyaltyPoints = (userId: string) => {
     multiplier?: number
   ) => {
     try {
-      await LoyaltyService.awardPoints(userId, orderId, orderAmount, description, multiplier);
+      await loyaltyService.awardPoints(userId, orderId, orderAmount, description, multiplier);
       await refreshPoints(); // Refresh after awarding
       return { success: true };
     } catch (err) {
@@ -290,7 +292,7 @@ export const useLoyaltyPoints = (userId: string) => {
     description?: string
   ) => {
     try {
-      const result = await LoyaltyService.spendPoints(userId, pointsToSpend, orderId, description);
+      const result = await loyaltyService.spendPoints(userId, pointsToSpend, orderId, description);
       if (result.success) {
         await refreshPoints(); // Refresh after spending
       }
@@ -304,7 +306,7 @@ export const useLoyaltyPoints = (userId: string) => {
 
   const getPointsBreakdown = async () => {
     try {
-      return await LoyaltyService.getPointsBreakdown(userId);
+      return await loyaltyService.getPointsBreakdown(userId);
     } catch (err) {
       console.error('Error getting points breakdown:', err);
       return null;
@@ -313,7 +315,7 @@ export const useLoyaltyPoints = (userId: string) => {
 
   const checkExpiringPoints = async () => {
     try {
-      return await LoyaltyService.getPointsNearExpiry(userId);
+      return await loyaltyService.getPointsNearExpiry(userId);
     } catch (err) {
       console.error('Error checking expiring points:', err);
       return { batches: [], totalPoints: 0, daysUntilExpiry: 0 };

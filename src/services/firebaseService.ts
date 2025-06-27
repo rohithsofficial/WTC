@@ -1,17 +1,17 @@
-import { collection, doc, getDocs, addDoc, updateDoc, deleteDoc, query, where, getDoc, setDoc , onSnapshot } from 'firebase/firestore';
-import { db ,auth } from '../firebase/config';
-import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';// Adjust path as needed
+// Updated Firebase services for React Native Firebase SDK
+import { auth, db } from '../firebase/firebase-config';
+import { FirebaseAuthTypes } from '@react-native-firebase/auth';
 
 export const signUpUser = async (email: string, password: string, displayName: string) => {
   try {
-    const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+    const userCredential = await auth.createUserWithEmailAndPassword(email, password);
     const user = userCredential.user;
 
-    await updateProfile(user, {
+    await user.updateProfile({
       displayName: displayName,
     });
 
-    await setDoc(doc(db, 'users', user.uid), {
+    await db.collection('users').doc(user.uid).set({
       uid: user.uid,
       displayName: displayName,
       email: user.email,
@@ -24,41 +24,37 @@ export const signUpUser = async (email: string, password: string, displayName: s
   }
 };
 
-
 // Product Operations
 export const productService = {
-
   // Live updates for all products
-listenToAllProducts: (callback: (products: any[]) => void, errorCallback?: (error: any) => void) => {
-  try {
-    const productsRef = collection(db, 'products');
-    const unsubscribe = onSnapshot(
-      productsRef,
-      (snapshot) => {
-        const products = snapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        }));
-        callback(products);
-      },
-      (error) => {
-        console.error('Error listening to products:', error);
-        if (errorCallback) errorCallback(error);
-      }
-    );
+  listenToAllProducts: (callback: (products: any[]) => void, errorCallback?: (error: any) => void) => {
+    try {
+      const productsRef = db.collection('products');
+      const unsubscribe = productsRef.onSnapshot(
+        (snapshot) => {
+          const products = snapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+          }));
+          callback(products);
+        },
+        (error) => {
+          console.error('Error listening to products:', error);
+          if (errorCallback) errorCallback(error);
+        }
+      );
 
-    return unsubscribe; // Return unsubscribe function to detach listener
-  } catch (error) {
-    console.error('Error setting up snapshot listener:', error);
-    if (errorCallback) errorCallback(error);
-  }
-},
-
+      return unsubscribe; // Return unsubscribe function to detach listener
+    } catch (error) {
+      console.error('Error setting up snapshot listener:', error);
+      if (errorCallback) errorCallback(error);
+    }
+  },
 
   // Get all products
   getAllProducts: async () => {
     try {
-      const querySnapshot = await getDocs(collection(db, 'products'));
+      const querySnapshot = await db.collection('products').get();
       return querySnapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
@@ -72,8 +68,7 @@ listenToAllProducts: (callback: (products: any[]) => void, errorCallback?: (erro
   // Get product by ID
   getProductById: async (productId: string) => {
     try {
-      const docRef = doc(db, 'products', productId);
-      const docSnap = await getDoc(docRef);
+      const docSnap = await db.collection('products').doc(productId).get();
       if (docSnap.exists()) {
         return { id: docSnap.id, ...docSnap.data() };
       }
@@ -87,7 +82,7 @@ listenToAllProducts: (callback: (products: any[]) => void, errorCallback?: (erro
   // Add new product
   addProduct: async (productData: any) => {
     try {
-      const docRef = await addDoc(collection(db, 'products'), productData);
+      const docRef = await db.collection('products').add(productData);
       return docRef.id;
     } catch (error) {
       console.error('Error adding product:', error);
@@ -98,8 +93,7 @@ listenToAllProducts: (callback: (products: any[]) => void, errorCallback?: (erro
   // Update product
   updateProduct: async (productId: string, productData: any) => {
     try {
-      const docRef = doc(db, 'products', productId);
-      await updateDoc(docRef, productData);
+      await db.collection('products').doc(productId).update(productData);
       return true;
     } catch (error) {
       console.error('Error updating product:', error);
@@ -110,7 +104,7 @@ listenToAllProducts: (callback: (products: any[]) => void, errorCallback?: (erro
   // Delete product
   deleteProduct: async (productId: string) => {
     try {
-      await deleteDoc(doc(db, 'products', productId));
+      await db.collection('products').doc(productId).delete();
       return true;
     } catch (error) {
       console.error('Error deleting product:', error);
@@ -124,7 +118,7 @@ export const orderService = {
   // Get all orders
   getAllOrders: async () => {
     try {
-      const querySnapshot = await getDocs(collection(db, 'orders'));
+      const querySnapshot = await db.collection('orders').get();
       return querySnapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
@@ -138,8 +132,7 @@ export const orderService = {
   // Get user orders
   getUserOrders: async (userId: string) => {
     try {
-      const q = query(collection(db, 'orders'), where('userId', '==', userId));
-      const querySnapshot = await getDocs(q);
+      const querySnapshot = await db.collection('orders').where('userId', '==', userId).get();
       return querySnapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
@@ -153,7 +146,7 @@ export const orderService = {
   // Add new order
   addOrder: async (orderData: any) => {
     try {
-      const docRef = await addDoc(collection(db, 'orders'), {
+      const docRef = await db.collection('orders').add({
         ...orderData,
         createdAt: new Date().toISOString()
       });
@@ -167,8 +160,10 @@ export const orderService = {
   // Update order status
   updateOrderStatus: async (orderId: string, status: string) => {
     try {
-      const docRef = doc(db, 'orders', orderId);
-      await updateDoc(docRef, { status, updatedAt: new Date().toISOString() });
+      await db.collection('orders').doc(orderId).update({ 
+        status, 
+        updatedAt: new Date().toISOString() 
+      });
       return true;
     } catch (error) {
       console.error('Error updating order status:', error);
@@ -182,8 +177,7 @@ export const userService = {
   // Get user profile
   getUserProfile: async (userId: string) => {
     try {
-      const docRef = doc(db, 'users', userId);
-      const docSnap = await getDoc(docRef);
+      const docSnap = await db.collection('users').doc(userId).get();
       if (docSnap.exists()) {
         return { id: docSnap.id, ...docSnap.data() };
       }
@@ -197,8 +191,7 @@ export const userService = {
   // Update user profile
   updateUserProfile: async (userId: string, profileData: any) => {
     try {
-      const docRef = doc(db, 'users', userId);
-      await updateDoc(docRef, {
+      await db.collection('users').doc(userId).update({
         ...profileData,
         updatedAt: new Date().toISOString()
       });
@@ -212,10 +205,9 @@ export const userService = {
   // Get user favorites
   getUserFavorites: async (userId: string) => {
     try {
-      const docRef = doc(db, 'users', userId);
-      const docSnap = await getDoc(docRef);
-      if (docSnap.exists() && docSnap.data().favorites) {
-        return docSnap.data().favorites;
+      const docSnap = await db.collection('users').doc(userId).get();
+      if (docSnap.exists() && docSnap.data()?.favorites) {
+        return docSnap.data()?.favorites;
       }
       return [];
     } catch (error) {
@@ -227,8 +219,7 @@ export const userService = {
   // Update user favorites
   updateUserFavorites: async (userId: string, favorites: string[]) => {
     try {
-      const docRef = doc(db, 'users', userId);
-      await updateDoc(docRef, { favorites });
+      await db.collection('users').doc(userId).update({ favorites });
       return true;
     } catch (error) {
       console.error('Error updating user favorites:', error);
@@ -242,7 +233,7 @@ export const categoryService = {
   // Get all categories
   getAllCategories: async () => {
     try {
-      const querySnapshot = await getDocs(collection(db, 'categories'));
+      const querySnapshot = await db.collection('categories').get();
       return querySnapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
@@ -256,8 +247,7 @@ export const categoryService = {
   // Get category by ID
   getCategoryById: async (categoryId: string) => {
     try {
-      const docRef = doc(db, 'categories', categoryId);
-      const docSnap = await getDoc(docRef);
+      const docSnap = await db.collection('categories').doc(categoryId).get();
       if (docSnap.exists()) {
         return { id: docSnap.id, ...docSnap.data() };
       }
@@ -271,7 +261,7 @@ export const categoryService = {
   // Add new category
   addCategory: async (categoryData: any) => {
     try {
-      const docRef = await addDoc(collection(db, 'categories'), {
+      const docRef = await db.collection('categories').add({
         ...categoryData,
         createdAt: new Date().toISOString()
       });
@@ -285,8 +275,7 @@ export const categoryService = {
   // Update category
   updateCategory: async (categoryId: string, categoryData: any) => {
     try {
-      const docRef = doc(db, 'categories', categoryId);
-      await updateDoc(docRef, {
+      await db.collection('categories').doc(categoryId).update({
         ...categoryData,
         updatedAt: new Date().toISOString()
       });
@@ -300,20 +289,18 @@ export const categoryService = {
   // Delete category
   deleteCategory: async (categoryId: string) => {
     try {
-      const docRef = doc(db, 'categories', categoryId);
-      await deleteDoc(docRef);
+      await db.collection('categories').doc(categoryId).delete();
       return true;
     } catch (error) {
       console.error('Error deleting category:', error);
       throw error;
     }
   },
+
   // Get featured products
   getFeaturedProducts: async () => {
     try {
-      const productsRef = collection(db, 'products');
-      const featuredQuery = query(productsRef, where('featured', '==', true));
-      const querySnapshot = await getDocs(featuredQuery);
+      const querySnapshot = await db.collection('products').where('featured', '==', true).get();
       
       return querySnapshot.docs.map(doc => ({
         id: doc.id,
@@ -326,10 +313,9 @@ export const categoryService = {
   },
   
   // Toggle product featured status
-  toggleFeaturedStatus: async (id, featured) => {
+  toggleFeaturedStatus: async (id: string, featured: boolean) => {
     try {
-      const productRef = doc(db, 'products', id);
-      await updateDoc(productRef, {
+      await db.collection('products').doc(id).update({
         featured: featured
       });
       return true;

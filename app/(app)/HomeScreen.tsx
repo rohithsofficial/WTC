@@ -58,18 +58,11 @@ import {
   subscribeToNotifications,
 } from "../../src/firebase/notification-service";
 import { useAuth } from "../../src/context/AuthContext";
-import {
-  Timestamp,
-  collection,
-  query,
-  where,
-  getDocs,
-  doc,
-  getDoc,
-  onSnapshot,
-} from "firebase/firestore";
-import { db, auth } from "../../src/firebase/config";
-import { onAuthStateChanged } from "firebase/auth";
+
+// React Native Firebase imports
+import firestore from '@react-native-firebase/firestore';
+import auth from '@react-native-firebase/auth';
+
 import * as Location from "expo-location";
 import PosterModal from "../../src/components/PosterModel";
 import {
@@ -80,7 +73,7 @@ import {
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import LoadingScreen from "../../src/components/LoadingScreen";
 import { useLocation } from "../../src/hooks/useLocation";
- 
+
 // Add type definition for footer special offer
 interface FooterOffer {
   id: string;
@@ -90,14 +83,14 @@ interface FooterOffer {
   actionUrl: string;
   backgroundColor: string;
 }
- 
+
 const quickActions = [
   { label: "Menu", icon: "restaurant-menu" as const, sub: "View Menu" },
   { label: "Coffee", icon: "grain" as const, sub: "Order Now" },
   { label: "Offers", icon: "local-offer" as const, sub: "Deals" },
   { label: "Cafes", icon: "storefront" as const, sub: "Explore" },
 ];
- 
+
 // Add banner image URLs
 const bannerImages = [
   "https://westernterrain.com/wp-content/uploads/2022/10/wtc_003.jpg",
@@ -105,7 +98,7 @@ const bannerImages = [
   "https://westernterrain.com/wp-content/uploads/2022/10/wtc_001.jpg",
   "https://westernterrain.com/wp-content/uploads/2022/10/wtc_007.jpg",
 ];
- 
+
 // Add constants for the store location
 const STORE_LOCATION = {
   id: "main",
@@ -117,7 +110,21 @@ const STORE_LOCATION = {
   // Maximum allowed distance in kilometers
   maxDistance: 0.5, // 500 meters radius
 };
- 
+
+
+interface UserData {
+  message?: string;
+  // Add other user properties you expect
+  name?: string;
+  email?: string;
+  preferences?: {
+    notifications?: boolean;
+    // other preferences
+  };
+  // Add any other fields your user document might have
+}
+
+
 // Add function to check if user is at the store
 const isUserAtStore = (userCoords: { latitude: number; longitude: number }) => {
   const distance = calculateDistance(
@@ -128,7 +135,7 @@ const isUserAtStore = (userCoords: { latitude: number; longitude: number }) => {
   );
   return distance <= STORE_LOCATION.maxDistance;
 };
- 
+
 // Add distance calculation function
 const calculateDistance = (
   lat1: number,
@@ -148,11 +155,11 @@ const calculateDistance = (
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   return R * c;
 };
- 
+
 const toRad = (value: number) => {
   return (value * Math.PI) / 180;
 };
- 
+
 // Move LocationModal outside of HomeScreen and memoize it
 const LocationModal = React.memo(
   ({
@@ -197,7 +204,7 @@ const LocationModal = React.memo(
               />
             </TouchableOpacity>
           </View>
- 
+
           <TouchableOpacity
             style={[
               styles.currentLocationButton,
@@ -221,7 +228,7 @@ const LocationModal = React.memo(
                 : "Verify Store Location"}
             </Text>
           </TouchableOpacity>
- 
+
           <ScrollView style={styles.locationList}>
             {storeOptions.map((store) => (
               <TouchableOpacity
@@ -270,11 +277,11 @@ const LocationModal = React.memo(
     </Modal>
   )
 );
- 
+
 const HomeScreen = () => {
   const router = useRouter();
   const { user } = useAuth();
- 
+
   // Access store state and actions
   const {
     productsByCategory,
@@ -285,7 +292,7 @@ const HomeScreen = () => {
     addToCart,
     calculateCartPrice,
   } = useStore();
- 
+
   // Local state
   const [selectedStore, setSelectedStore] = useState<string>("main");
   const [searchText, setSearchText] = useState("");
@@ -319,7 +326,7 @@ const HomeScreen = () => {
   const [isFirstLaunch, setIsFirstLaunch] = useState(true);
   const [isInitialLoading, setIsInitialLoading] = useState(true);
   const [showAllFeatured, setShowAllFeatured] = useState(false);
- 
+
   // Store options with icons
   const storeOptions = [
     {
@@ -330,114 +337,116 @@ const HomeScreen = () => {
         "Madikeri, SH 88 Piriyapatna - Kushalnagar, Road, Kundanahalli, Karnataka 571107",
     },
   ];
- 
+
+
+  function processNotifications(notificationsData: any[], userData: any) {
+  // Implement your notification logic here
+}
   // Refs
   const ListRef = useRef<FlatList<Product>>(null);
- 
+
   // Get bottom tab bar height for proper layout
   const tabBarHeight = useBottomTabBarHeight();
- 
+
   // Fetch data on component mount
   useEffect(() => {
     console.log("Fetching data...");
     fetchData();
-    loadBanners();
-    loadCategories();
-    loadFooterOffers();
-    loadOffers();
-    loadPosters();
- 
-    // Set up real-time listeners
-    const productsQuery = query(collection(db, "products"));
-    const unsubscribeProducts = onSnapshot(productsQuery, (snapshot) => {
-      const updatedProducts = snapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      }));
-      fetchData(); // Refresh products data
-    });
- 
-    const categoriesQuery = query(collection(db, "categories"));
-    const unsubscribeCategories = onSnapshot(categoriesQuery, (snapshot) => {
-      const updatedCategories = snapshot.docs.map((doc) => {
-        const data = doc.data();
-        return {
+  const loadBanners = async () => {};
+  const loadCategories = async () => {};
+  const loadFooterOffers = async () => {};
+  const loadOffers = async () => {};
+
+    // Set up real-time listeners using React Native Firebase
+    const unsubscribeProducts = firestore()
+      .collection('products')
+      .onSnapshot((snapshot) => {
+        const updatedProducts = snapshot.docs.map((doc) => ({
           id: doc.id,
-          name: data.name || "",
-          description: data.description || "",
-          image: data.image || "",
-          icon: data.icon,
-          createdAt: data.createdAt || new Date().toISOString(),
-        };
+          ...doc.data(),
+        }));
+        fetchData(); // Refresh products data
       });
-      setCategories(updatedCategories);
-    });
- 
-    const bannersQuery = query(
-      collection(db, "banners"),
-      where("isActive", "==", true)
-    );
-    const unsubscribeBanners = onSnapshot(bannersQuery, (snapshot) => {
-      const updatedBanners = snapshot.docs.map((doc) => {
-        const data = doc.data();
-        return {
-          id: doc.id,
-          title: data.title || "",
-          subtitle: data.subtitle || "",
-          imageUrl: data.imageUrl || "",
-          actionUrl: data.actionUrl || "",
-          actionText: data.actionText || "",
-          displayOrder: data.displayOrder || 0,
-          isActive: data.isActive || false,
-          startDate: data.startDate || "",
-          endDate: data.endDate || "",
-        };
+
+    const unsubscribeCategories = firestore()
+      .collection('categories')
+      .onSnapshot((snapshot) => {
+        const updatedCategories = snapshot.docs.map((doc) => {
+          const data = doc.data();
+          return {
+            id: doc.id,
+            name: data.name || "",
+            description: data.description || "",
+            image: data.image || "",
+            icon: data.icon,
+            createdAt: data.createdAt || new Date().toISOString(),
+          };
+        });
+        setCategories(updatedCategories);
       });
-      setBanners(updatedBanners);
-    });
- 
-    const offersQuery = query(
-      collection(db, "offers"),
-      where("isActive", "==", true)
-    );
-    const unsubscribeOffers = onSnapshot(offersQuery, (snapshot) => {
-      const updatedOffers = snapshot.docs.map((doc) => {
-        const data = doc.data();
-        return {
-          id: doc.id,
-          title: data.title || "",
-          description: data.description || "",
-          gradientColors: data.gradientColors || ["#fff", "#eee"],
-          isActive: data.isActive || false,
-        };
+
+    const unsubscribeBanners = firestore()
+      .collection('banners')
+      .where('isActive', '==', true)
+      .onSnapshot((snapshot) => {
+        const updatedBanners = snapshot.docs.map((doc) => {
+          const data = doc.data();
+          return {
+            id: doc.id,
+            title: data.title || "",
+            subtitle: data.subtitle || "",
+            imageUrl: data.imageUrl || "",
+            actionUrl: data.actionUrl || "",
+            actionText: data.actionText || "",
+            displayOrder: data.displayOrder || 0,
+            isActive: data.isActive || false,
+            startDate: data.startDate || "",
+            endDate: data.endDate || "",
+          };
+        });
+        setBanners(updatedBanners);
       });
-      setOffers(updatedOffers);
-    });
- 
-    const postersQuery = query(
-      collection(db, "posters"),
-      where("isActive", "==", true)
-    );
-    const unsubscribePosters = onSnapshot(postersQuery, (snapshot) => {
-      const updatedPosters = snapshot.docs.map((doc) => {
-        const data = doc.data();
-        return {
-          id: doc.id,
-          imageUrl: data.imageUrl || "",
-          title: data.title || "",
-          description: data.description || "",
-          actionUrl: data.actionUrl || "",
-          isActive: data.isActive || false,
-          createdAt: data.createdAt || new Date(),
-          updatedAt: data.updatedAt || new Date(),
-        };
+
+    const unsubscribeOffers = firestore()
+      .collection('offers')
+      .where('isActive', '==', true)
+      .onSnapshot((snapshot) => {
+        const updatedOffers = snapshot.docs.map((doc) => {
+          const data = doc.data();
+          return {
+            id: doc.id,
+            title: data.title || "",
+            description: data.description || "",
+            gradientColors: data.gradientColors || ["#fff", "#eee"],
+            isActive: data.isActive || false,
+          };
+        });
+        setOffers(updatedOffers);
       });
-      setPosters(updatedPosters);
-      if (updatedPosters.length > 0 && isFirstLaunch) {
-        setShowPosterModal(true);
-      }
-    });
- 
+
+    const unsubscribePosters = firestore()
+      .collection('posters')
+      .where('isActive', '==', true)
+      .onSnapshot((snapshot) => {
+        const updatedPosters = snapshot.docs.map((doc) => {
+          const data = doc.data();
+          return {
+            id: doc.id,
+            imageUrl: data.imageUrl || "",
+            title: data.title || "",
+            description: data.description || "",
+            actionUrl: data.actionUrl || "",
+            isActive: data.isActive || false,
+            createdAt: data.createdAt || new Date(),
+            updatedAt: data.updatedAt || new Date(),
+          };
+        });
+        setPosters(updatedPosters);
+        if (updatedPosters.length > 0 && isFirstLaunch) {
+          setShowPosterModal(true);
+        }
+      });
+
     // Cleanup listeners on component unmount
     return () => {
       unsubscribeProducts();
@@ -447,11 +456,11 @@ const HomeScreen = () => {
       unsubscribePosters();
     };
   }, [isFirstLaunch]);
- 
+
   useEffect(() => {
     // console.log("All products loaded:", allProducts);
   }, [allProducts]);
- 
+
   // Rotate through top banners
   useEffect(() => {
     if (banners.length > 0) {
@@ -460,11 +469,11 @@ const HomeScreen = () => {
           prevIndex === banners.length - 1 ? 0 : prevIndex + 1
         );
       }, 5000); // Change banner every 5 seconds
- 
+
       return () => clearInterval(interval);
     }
   }, [banners]);
- 
+
   // Banner animation effect
   useEffect(() => {
     const timer = setInterval(() => {
@@ -486,416 +495,307 @@ const HomeScreen = () => {
     }, 15000);
     return () => clearInterval(timer);
   }, [fadeAnim]);
- 
+
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+    const unsubscribe = auth().onAuthStateChanged(async (currentUser) => {
       if (currentUser) {
         setupNotificationsListener(currentUser.uid);
         setupOffersListener(currentUser.uid);
       }
     });
- 
+
     return () => unsubscribe();
   }, []);
- 
-  const setupNotificationsListener = (userId: string) => {
-    const notificationsRef = collection(db, "notifications");
-    const notificationsQuery = query(
-      notificationsRef,
-      where("isActive", "==", true)
-    );
- 
-    // Set up real-time listener for notifications
-    const unsubscribe = onSnapshot(notificationsQuery, async (snapshot) => {
-      try {
-        // Get user's notification settings
-        const userDocRef = doc(db, "users", userId);
-        const userDoc = await getDoc(userDocRef);
-        const userSettings = userDoc.exists()
-          ? userDoc.data().notificationSettings
-          : null;
- 
-        if (!userSettings) {
-          setUnreadCount(0);
-          return;
-        }
- 
-        let unread = 0;
- 
-        snapshot.forEach((doc) => {
-          const data = doc.data();
-          const notificationUserId = data.userId;
-          const notificationType = data.type || "system";
- 
-          // Check if notifications are enabled for this type
-          let isNotificationEnabled = false;
-          switch (notificationType) {
-            case "order":
-              isNotificationEnabled = userSettings.orderUpdates;
-              break;
-            case "promotion":
-              isNotificationEnabled = userSettings.promotions;
-              break;
-            case "newProduct":
-              isNotificationEnabled = userSettings.newProducts;
-              break;
-            case "delivery":
-              isNotificationEnabled = userSettings.deliveryUpdates;
-              break;
-            case "system":
-              isNotificationEnabled = userSettings.systemNotifications;
-              break;
-            default:
-              isNotificationEnabled = false;
-          }
- 
-          const isGlobalNotification = notificationUserId === null;
-          const isUserSpecificNotification = notificationUserId === userId;
- 
-          // Only count if notification type is enabled in settings
-          if (
-            (isGlobalNotification || isUserSpecificNotification) &&
-            !data.isRead &&
-            isNotificationEnabled
-          ) {
-            unread++;
-          }
-        });
- 
-        setUnreadCount(unread);
-      } catch (error) {
-        console.error("Error processing notifications:", error);
-        setUnreadCount(0);
-      }
-    });
- 
-    return unsubscribe;
-  };
- 
-  const setupOffersListener = (userId: string) => {
-    const offersRef = collection(db, "offers");
-    const offersQuery = query(offersRef, where("isActive", "==", true));
- 
-    // Set up real-time listener for offers
-    const unsubscribe = onSnapshot(offersQuery, (snapshot) => {
-      let unread = 0;
- 
-      snapshot.forEach((doc) => {
-        const data = doc.data();
-        const offerUserId = data.userId;
- 
-        const isGlobalOffer = offerUserId === null;
-        const isUserSpecificOffer = offerUserId === userId;
- 
-        if (
-          (isGlobalOffer || isUserSpecificOffer) &&
-          !visitedOffers.includes(doc.id)
-        ) {
-          unread++;
-        }
-      });
- 
-      console.log("Unread offers count:", unread);
-      setUnreadOffersCount(unread);
-    });
- 
-    return unsubscribe;
-  };
- 
-  // Load banners
-  const loadBanners = async () => {
-    try {
-      console.log("Starting to load banners...");
-      setIsLoadingBanners(true);
-      const activeBanners = await fetchActiveBanners();
-      console.log("Banners loaded:", activeBanners);
-      setBanners(activeBanners);
-    } catch (error) {
-      console.error("Error loading banners:", error);
-      ToastAndroid.show("Failed to load banners", ToastAndroid.SHORT);
-    } finally {
-      setIsLoadingBanners(false);
-    }
-  };
- 
-  // Load categories
-  const loadCategories = async () => {
-    try {
-      setIsLoadingCategories(true);
-      const categoryList = await fetchCategories();
-      setCategories(categoryList);
-    } catch (error) {
-      console.error("Error loading categories:", error);
-      ToastAndroid.show("Failed to load categories", ToastAndroid.SHORT);
-    } finally {
-      setIsLoadingCategories(false);
-    }
-  };
- 
-  // Load footer offers (this would be fetched from your backend in a real app)
-  const loadFooterOffers = async () => {
-    // This is a placeholder. In a real app, you would fetch this from your backend
-    const mockFooterOffers: FooterOffer[] = [
-      {
-        id: "1",
-        title: "Free Coffee Day",
-        description: "Visit us on May 25th for a free coffee!",
-        imageUrl: "https://example.com/free-coffee.jpg",
-        actionUrl: "https://example.com/free-coffee-promo",
-        backgroundColor: "#8A5A44",
-      },
-      {
-        id: "2",
-        title: "Happy Hour",
-        description: "20% off all drinks from 2-4 PM daily",
-        imageUrl: "https://example.com/happy-hour.jpg",
-        actionUrl: "https://example.com/happy-hour-promo",
-        backgroundColor: "#6F4E37",
-      },
-      {
-        id: "3",
-        title: "Loyalty Program",
-        description: "Join now & get every 10th drink free",
-        imageUrl: "https://example.com/loyalty.jpg",
-        actionUrl: "https://example.com/loyalty-program",
-        backgroundColor: "#5C4033",
-      },
-    ];
- 
-    setFooterOffers(mockFooterOffers);
-  };
- 
-  // Load offers from Firebase
-  const loadOffers = async () => {
-    try {
-      const activeOffers = await fetchActiveOffers();
-      setOffers(activeOffers);
-    } catch (error) {
-      console.error("Error loading offers:", error);
-      ToastAndroid.show("Failed to load offers", ToastAndroid.SHORT);
-    }
-  };
- 
-  // Load posters from Firebase
-  const loadPosters = async () => {
-    try {
-      const activePosters = await fetchActivePosters();
-      setPosters(activePosters);
-      if (activePosters.length > 0) {
-        setCurrentPoster(activePosters[0]);
-        setShowPoster(true);
-      }
-    } catch (error) {
-      console.error("Error loading posters:", error);
-    }
-  };
- 
-  // Handle search
-  const handleSearch = async (search: string) => {
-    setSearchText(search);
-    if (search.length > 0) {
-      setIsSearching(true);
-      try {
-        const results = await searchProducts(search);
-        setSearchResults(results);
-      } catch (error) {
-        console.error("Search error:", error);
-        ToastAndroid.show("Error searching products", ToastAndroid.SHORT);
-      } finally {
-        setIsSearching(false);
-      }
-    } else {
-      setSearchResults([]);
-    }
-  };
- 
-  // Handle search result press
-  const handleSearchResultPress = (product: Product) => {
-    router.push({
-      pathname: "/products/[id]",
-      params: { id: product.id },
-    });
-    setSearchText("");
-    setSearchResults([]);
-  };
- 
-  // Handle banner action
-  const handleBannerAction = async (actionUrl: string) => {
-    try {
-      // Ensure URL has proper format
-      const formattedUrl = actionUrl.startsWith("http")
-        ? actionUrl
-        : `https://${actionUrl}`;
-      const canOpen = await Linking.canOpenURL(formattedUrl);
 
+
+   const setupNotificationsListener = (userId: string) => {
+  // Set up real-time listener for notifications using React Native Firebase
+  const unsubscribe = firestore()
+    .collection('notifications')
+    .where('isActive', '==', true)
+    .onSnapshot(
+      async (snapshot) => {
+        if (!snapshot.empty) {
+          const notificationsData = snapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+          }));
+          
+          try {
+            // Get user document to check notification preferences
+            const userDoc = await firestore()
+              .collection('users')
+              .doc(userId)
+              .get();
+            
+            if (userDoc.exists()) {
+              const userData = userDoc.data();
+              // Process notifications based on user preferences
+              processNotifications(notificationsData, userData);
+            }
+          } catch (error) {
+            console.error('Error fetching user data:', error);
+          }
+        }
+      },
+      (error) => {
+        console.error('Error listening to notifications:', error);
+      }
+    );
+  
+  return unsubscribe;
+};
+
+const setupOffersListener = (userId: string) => {
+  // Set up real-time listener for offers using React Native Firebase
+  const unsubscribe = firestore()
+    .collection('offers')
+    .where('isActive', '==', true)
+    .onSnapshot(
+      (snapshot) => {
+        if (!snapshot.empty) {
+          const offersData = snapshot.docs.map(doc => {
+  const data = doc.data();
+  return {
+    id: doc.id,
+    title: data.title,
+    description: data.description,
+    gradientColors: data.gradientColors,
+    isActive: data.isActive,
+    // ...add any other required fields
+  };
+});
+setOffers(offersData);
+        }
+      },
+      (error) => {
+        console.error('Error listening to offers:', error);
+      }
+    );
+  
+  return unsubscribe;
+};
+
+// Load posters from Firebase
+const loadPosters = async () => {
+  try {
+    const activePosters = await fetchActivePosters();
+    setPosters(activePosters);
+    if (activePosters.length > 0) {
+      setCurrentPoster(activePosters[0]);
+      setShowPoster(true);
+    }
+  } catch (error) {
+    console.error("Error loading posters:", error);
+  }
+};
+
+// Handle search
+const handleSearch = async (search: string) => {
+  setSearchText(search);
+  if (search.length > 0) {
+    setIsSearching(true);
+    try {
+      const results = await searchProducts(search);
+      setSearchResults(results);
+    } catch (error) {
+      console.error("Search error:", error);
+      ToastAndroid.show("Error searching products", ToastAndroid.SHORT);
+    } finally {
+      setIsSearching(false);
+    }
+  } else {
+    setSearchResults([]);
+  }
+};
+
+// Handle search result press
+const handleSearchResultPress = (product: Product) => {
+  router.push({
+    pathname: "/products/[id]",
+    params: { id: product.id },
+  });
+  setSearchText("");
+  setSearchResults([]);
+};
+
+// Handle banner action
+const handleBannerAction = async (actionUrl: string) => {
+  try {
+    // Ensure URL has proper format
+    const formattedUrl = actionUrl.startsWith("http")
+      ? actionUrl
+      : `https://${actionUrl}`;
+    const canOpen = await Linking.canOpenURL(formattedUrl);
+
+    if (canOpen) {
+      await Linking.openURL(formattedUrl);
+    } else {
+      ToastAndroid.show("Cannot open this link", ToastAndroid.SHORT);
+    }
+  } catch (error) {
+    console.error("Error opening URL:", error);
+    ToastAndroid.show("Could not open the link", ToastAndroid.SHORT);
+  }
+};
+
+// Handle category selection
+const handleCategoryPress = (category: Category) => {
+  console.log("Navigating to category:", {
+    id: category.id,
+    name: category.name,
+    path: "/(app)/category/[category]",
+  });
+  try {
+    router.push({
+      pathname: "/(app)/category/[category]",
+      params: { category: category.id },
+    });
+  } catch (error) {
+    console.error("Navigation error:", error);
+    ToastAndroid.show("Error navigating to category", ToastAndroid.SHORT);
+  }
+};
+
+// Update the handleAddToCart function
+const handleAddToCart = async (item: Product) => {
+  try {
+    const hasLocation = await requestLocationPermission();
+    if (!hasLocation) {
+      Alert.alert(
+        "Location Required",
+        "You must be at Western Terrain Coffee Roasters to place orders. Please visit our store to continue.",
+        [
+          {
+            text: "View on Map",
+            onPress: () =>
+              Linking.openURL(
+                "https://www.google.co.in/maps/place/Western+Terrain+Coffee+Roasters+LLP/@12.9077297,77.5238884,17z/data=!3m1!4b1!4m6!3m5!1s0x3bae3fe896e68309:0x971dd35302249dd3!8m2!3d12.9077297!4d77.5264633!16s%2Fg%2F11syw_tm13!5m1!1e2?entry=ttu&g_ep=EgoyMDI1MDYwNC4wIKXMDSoASAFQAw%3D%3D"
+              ),
+          },
+          {
+            text: "OK",
+            style: "cancel",
+          },
+        ]
+      );
+      return;
+    }
+
+    if (!userLocation?.coords) {
+      Alert.alert(
+        "Location Error",
+        "Unable to get your current location. Please make sure location services are enabled and try again.",
+        [
+          {
+            text: "Settings",
+            onPress: () => Linking.openSettings(),
+          },
+          {
+            text: "OK",
+            style: "cancel",
+          },
+        ]
+      );
+      return;
+    }
+
+    if (!isUserAtStore(userLocation.coords)) {
+      Alert.alert(
+        "Not at Store Location",
+        "You must be at Western Terrain Coffee Roasters to place orders. Please visit our store to continue.",
+        [
+          {
+            text: "View on Map",
+            onPress: () =>
+              Linking.openURL(
+                "https://www.google.co.in/maps/place/Western+Terrain+Coffee+Roasters+LLP/@12.9077297,77.5238884,17z/data=!3m1!4b1!4m6!3m5!1s0x3bae3fe896e68309:0x971dd35302249dd3!8m2!3d12.9077297!4d77.5264633!16s%2Fg%2F11syw_tm13!5m1!1e2?entry=ttu&g_ep=EgoyMDI1MDYwNC4wIKXMDSoASAFQAw%3D%3D"
+              ),
+          },
+          {
+            text: "OK",
+            style: "cancel",
+          },
+        ]
+      );
+      return;
+    }
+
+    const cartItem: CartItem = {
+      ...item,
+      prices: [
+        {
+          size: "Regular",
+          price: item.prices[0].toString(),
+          currency: "₹",
+          quantity: 1,
+        },
+      ],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    addToCart(cartItem);
+    calculateCartPrice();
+  } catch (error) {
+    console.error("Error adding to cart:", error);
+    Alert.alert("Error", "Failed to add item to cart. Please try again.", [
+      { text: "OK" },
+    ]);
+  }
+};
+
+// Handle footer offer press
+const handleFooterOfferPress = (offer: FooterOffer) => {
+  try {
+    // Ensure URL has proper format
+    const formattedUrl = offer.actionUrl.startsWith("http")
+      ? offer.actionUrl
+      : `https://${offer.actionUrl}`;
+    Linking.canOpenURL(formattedUrl).then((canOpen) => {
       if (canOpen) {
-        await Linking.openURL(formattedUrl);
+        Linking.openURL(formattedUrl);
       } else {
         ToastAndroid.show("Cannot open this link", ToastAndroid.SHORT);
       }
-    } catch (error) {
-      console.error("Error opening URL:", error);
-      ToastAndroid.show("Could not open the link", ToastAndroid.SHORT);
-    }
-  };
- 
-  // Handle category selection
-  const handleCategoryPress = (category: Category) => {
-    console.log("Navigating to category:", {
-      id: category.id,
-      name: category.name,
-      path: "/(app)/category/[category]",
     });
-    try {
-      router.push({
-        pathname: "/(app)/category/[category]",
-        params: { category: category.id },
-      });
-    } catch (error) {
-      console.error("Navigation error:", error);
-      ToastAndroid.show("Error navigating to category", ToastAndroid.SHORT);
-    }
-  };
- 
-  // Update the handleAddToCart function
-  const handleAddToCart = async (item: Product) => {
-    try {
-      const hasLocation = await requestLocationPermission();
-      if (!hasLocation) {
-        Alert.alert(
-          "Location Required",
-          "You must be at Western Terrain Coffee Roasters to place orders. Please visit our store to continue.",
-          [
-            {
-              text: "View on Map",
-              onPress: () =>
-                Linking.openURL(
-                  "https://www.google.co.in/maps/place/Western+Terrain+Coffee+Roasters+LLP/@12.9077297,77.5238884,17z/data=!3m1!4b1!4m6!3m5!1s0x3bae3fe896e68309:0x971dd35302249dd3!8m2!3d12.9077297!4d77.5264633!16s%2Fg%2F11syw_tm13!5m1!1e2?entry=ttu&g_ep=EgoyMDI1MDYwNC4wIKXMDSoASAFQAw%3D%3D"
-                ),
-            },
-            {
-              text: "OK",
-              style: "cancel",
-            },
-          ]
-        );
-        return;
-      }
- 
-      if (!userLocation?.coords) {
-        Alert.alert(
-          "Location Error",
-          "Unable to get your current location. Please make sure location services are enabled and try again.",
-          [
-            {
-              text: "Settings",
-              onPress: () => Linking.openSettings(),
-            },
-            {
-              text: "OK",
-              style: "cancel",
-            },
-          ]
-        );
-        return;
-      }
- 
-      if (!isUserAtStore(userLocation.coords)) {
-        Alert.alert(
-          "Not at Store Location",
-          "You must be at Western Terrain Coffee Roasters to place orders. Please visit our store to continue.",
-          [
-            {
-              text: "View on Map",
-              onPress: () =>
-                Linking.openURL(
-                  "https://www.google.co.in/maps/place/Western+Terrain+Coffee+Roasters+LLP/@12.9077297,77.5238884,17z/data=!3m1!4b1!4m6!3m5!1s0x3bae3fe896e68309:0x971dd35302249dd3!8m2!3d12.9077297!4d77.5264633!16s%2Fg%2F11syw_tm13!5m1!1e2?entry=ttu&g_ep=EgoyMDI1MDYwNC4wIKXMDSoASAFQAw%3D%3D"
-                ),
-            },
-            {
-              text: "OK",
-              style: "cancel",
-            },
-          ]
-        );
-        return;
-      }
- 
-      const cartItem: CartItem = {
-        ...item,
-        prices: [
-          {
-            size: "Regular",
-            price: item.prices[0].toString(),
-            currency: "₹",
-            quantity: 1,
-          },
-        ],
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
- 
-      addToCart(cartItem);
-      calculateCartPrice();
-    } catch (error) {
-      console.error("Error adding to cart:", error);
-      Alert.alert("Error", "Failed to add item to cart. Please try again.", [
-        { text: "OK" },
-      ]);
-    }
-  };
- 
-  // Handle footer offer press
-  const handleFooterOfferPress = (offer: FooterOffer) => {
-    try {
-      // Ensure URL has proper format
-      const formattedUrl = offer.actionUrl.startsWith("http")
-        ? offer.actionUrl
-        : `https://${offer.actionUrl}`;
-      Linking.canOpenURL(formattedUrl).then((canOpen) => {
-        if (canOpen) {
-          Linking.openURL(formattedUrl);
-        } else {
-          ToastAndroid.show("Cannot open this link", ToastAndroid.SHORT);
-        }
-      });
-    } catch (error) {
-      console.error("Error opening URL:", error);
-      ToastAndroid.show("Could not open the link", ToastAndroid.SHORT);
-    }
-  };
- 
-  // Handle offer press
-  const handleOfferPress = (offerId: string) => {
-    setVisitedOffers((prev) => [...prev, offerId]);
-    router.push("/OffersScreen");
-  };
- 
-  // Filter active and unvisited offers
-  const activeUnvisitedOffers = offers.filter(
-    (offer) => offer.isActive && !visitedOffers.includes(offer.id)
-  );
- 
-  // Add getFeaturedProducts function
-  const getFeaturedProducts = () => {
-    return allProducts.filter((product) => product.featured);
-  };
- 
-  // Update handleLocationSelect to be memoized
-  const handleLocationSelect = React.useCallback((storeId: string) => {
-    setSelectedStore(storeId);
-    setShowLocationModal(false);
-    ToastAndroid.show("Location updated successfully", ToastAndroid.SHORT);
-  }, []);
- 
-  // Update handleCloseLocationModal to be memoized
-  const handleCloseLocationModal = React.useCallback(() => {
-    setShowLocationModal(false);
-  }, []);
- 
-  const handleClosePoster = () => {
-    setShowPoster(false);
-  };
+  } catch (error) {
+    console.error("Error opening URL:", error);
+    ToastAndroid.show("Could not open the link", ToastAndroid.SHORT);
+  }
+};
+
+// Handle offer press
+const handleOfferPress = (offerId: string) => {
+  setVisitedOffers((prev) => [...prev, offerId]);
+  router.push("/OffersScreen");
+};
+
+// Filter active and unvisited offers
+const activeUnvisitedOffers = offers.filter(
+  (offer) => offer.isActive && !visitedOffers.includes(offer.id)
+);
+
+// Add getFeaturedProducts function
+const getFeaturedProducts = () => {
+  return allProducts.filter((product) => product.featured);
+};
+
+// Update handleLocationSelect to be memoized
+const handleLocationSelect = React.useCallback((storeId: string) => {
+  setSelectedStore(storeId);
+  setShowLocationModal(false);
+  ToastAndroid.show("Location updated successfully", ToastAndroid.SHORT);
+}, []);
+
+// Update handleCloseLocationModal to be memoized
+const handleCloseLocationModal = React.useCallback(() => {
+  setShowLocationModal(false);
+}, []);
+
+const handleClosePoster = () => {
+  setShowPoster(false);
+};
  
   useEffect(() => {
     const checkFirstLaunch = async () => {
@@ -1454,16 +1354,16 @@ const HomeScreen = () => {
             </TouchableOpacity>
  
             <TouchableOpacity
-              style={styles.coffeeCategoryItem}
-              onPress={() => router.push("/HomeScreen1")}
-            >
-              <Image
-                source={require("../../src/assets/Filter-Coffee-Medium (1)-Photoroom.png")}
-                style={styles.categoryImage}
-                resizeMode="cover"
-              />
-              <Text style={styles.categoryText}>Filter Coffee</Text>
-            </TouchableOpacity>
+  style={styles.coffeeCategoryItem}
+  onPress={() => router.push("/HomeScreen1")}
+>
+  <Image
+    source={require("../../src/assets/Filter-Coffee-Medium (1)-Photoroom.png")}
+    style={styles.categoryImage}
+    resizeMode="cover"
+  />
+  <Text style={styles.categoryText}>Filter Coffee</Text>
+</TouchableOpacity>
  
             <TouchableOpacity
               style={styles.coffeeCategoryItem}
@@ -1519,8 +1419,8 @@ const HomeScreen = () => {
     </View>
   );
 };
- 
-const styles = StyleSheet.create({
+
+ const styles = StyleSheet.create({
   screenContainer: {
     flex: 1,
     backgroundColor: COLORS.primaryWhiteHex,
@@ -2049,6 +1949,11 @@ const styles = StyleSheet.create({
     paddingVertical: 3,
     borderRadius: 8,
   },
+  featuredProductBadgeText: {
+    color: COLORS.primaryWhiteHex,
+    fontFamily: FONTFAMILY.poppins_bold,
+    fontSize: 12,
+  },
   featuredProductInfo: {
     padding: 8,
   },
@@ -2058,7 +1963,6 @@ const styles = StyleSheet.create({
     color: COLORS.primaryBlackHex,
     marginBottom: 4,
     height: 40,
-    numberOfLines: 2,
     flexWrap: "wrap",
   },
   featuredProductPrice: {

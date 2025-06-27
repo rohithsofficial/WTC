@@ -19,8 +19,6 @@ import {
 } from '../../src/theme/theme';
 import GradientBGIcon from '../../src/components/GradientBGIcon';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { doc, onSnapshot } from 'firebase/firestore';
-import { db } from '../../src/firebase/config';
 import { LinearGradient } from 'expo-linear-gradient';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import FontAwesome from 'react-native-vector-icons/FontAwesome';
@@ -28,6 +26,8 @@ import Ionicons from 'react-native-vector-icons/Ionicons';
 import LottieView from 'lottie-react-native';
 import QRCode from 'react-native-qrcode-svg';
 import { CountdownCircleTimer } from 'react-native-countdown-circle-timer';
+import firestore from '@react-native-firebase/firestore';
+import { db } from '../../src/firebase/firebase-config';
 
 const { width } = Dimensions.get('window');
 
@@ -310,8 +310,8 @@ const OrderStatusScreen = () => {
 
     console.log('Setting up real-time listener for order:', orderId);
     
-    const orderRef = doc(db, 'orders', orderId);
-    const unsubscribe = onSnapshot(orderRef, (doc) => {
+    const orderRef = db.collection('orders').doc(orderId);
+    const unsubscribe = orderRef.onSnapshot((doc) => {
       if (doc.exists()) {
         const orderData = { id: doc.id, ...doc.data() } as OrderData;
         console.log('Real-time order update received:', orderData);

@@ -53,7 +53,11 @@ const SearchScreen = () => {
       <View style={styles.productInfo}>
         <Text style={styles.productName}>{item.name}</Text>
         <Text style={styles.productDescription}>{item.special_ingredient}</Text>
-        <Text style={styles.productPrice}>₹{item.prices[0]}</Text>
+        <Text style={styles.productPrice}>
+          {item.prices && item.prices.length > 0
+            ? `₹${item.prices[0].price}`
+            : 'N/A'}
+        </Text>
       </View>
     </TouchableOpacity>
   );

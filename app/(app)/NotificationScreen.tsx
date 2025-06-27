@@ -25,18 +25,12 @@ import {
 } from "../../src/firebase/notification-service";
 import { useAuth } from "../../src/context/AuthContext";
 import {
-  Timestamp,
-  collection,
-  query,
-  where,
-  getDocs,
-  doc,
-  getDoc,
-  onSnapshot,
-  updateDoc,
-} from "firebase/firestore";
-import { db, auth } from "../../src/firebase/config";
-import { onAuthStateChanged } from "firebase/auth";
+  auth,
+  db,
+  onAuthStateChanged,
+  FirebaseFirestoreTypes,
+  FirebaseAuthTypes,
+} from "../../src/firebase/firebase-config";
 import { Swipeable } from "react-native-gesture-handler";
 
 interface NotificationSettings {
@@ -49,7 +43,7 @@ interface NotificationSettings {
 
 const NotificationScreen = () => {
   const router = useRouter();
-  const [user, setUser] = useState<any>(null);
+  const [user, setUser] = useState<FirebaseAuthTypes.User | null>(null);
   const [userData, setUserData] = useState<any>(null);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -58,20 +52,20 @@ const NotificationScreen = () => {
     useState<NotificationSettings | null>(null);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+    const unsubscribe = onAuthStateChanged(async (currentUser) => {
       console.log("Auth state changed:", currentUser?.uid);
       setUser(currentUser);
 
       if (currentUser) {
         try {
-          const userDocRef = doc(db, "users", currentUser.uid);
+          const userDocRef = db.collection("users").doc(currentUser.uid);
 
           // Set up listener for user document changes
-          const unsubscribeUser = onSnapshot(userDocRef, (doc) => {
+          const unsubscribeUser = userDocRef.onSnapshot((doc) => {
             if (doc.exists()) {
               console.log("User data updated:", doc.data());
               setUserData(doc.data());
-              const newSettings = doc.data().notificationSettings || null;
+              const newSettings = doc.data()?.notificationSettings || null;
               setNotificationSettings(newSettings);
 
               // Reload notifications when settings change
@@ -82,12 +76,12 @@ const NotificationScreen = () => {
           });
 
           // Initial load
-          const userDoc = await getDoc(userDocRef);
+          const userDoc = await userDocRef.get();
           if (userDoc.exists()) {
             console.log("User data found:", userDoc.data());
             setUserData(userDoc.data());
             setNotificationSettings(
-              userDoc.data().notificationSettings || null
+              userDoc.data()?.notificationSettings || null
             );
             setupNotificationsListener(currentUser.uid);
           }
@@ -103,20 +97,17 @@ const NotificationScreen = () => {
   }, []);
 
   const setupNotificationsListener = (userId: string) => {
-    const notificationsRef = collection(db, "notifications");
-    const notificationsQuery = query(
-      notificationsRef,
-      where("isActive", "==", true)
-    );
+    const notificationsRef = db.collection("notifications");
+    const notificationsQuery = notificationsRef.where("isActive", "==", true);
 
     // Set up real-time listener for notifications
-    const unsubscribe = onSnapshot(notificationsQuery, async (snapshot) => {
+    const unsubscribe = notificationsQuery.onSnapshot(async (snapshot) => {
       try {
         // Get latest notification settings from database
-        const userDocRef = doc(db, "users", userId);
-        const userDoc = await getDoc(userDocRef);
+        const userDocRef = db.collection("users").doc(userId);
+        const userDoc = await userDocRef.get();
         const currentSettings = userDoc.exists()
-          ? userDoc.data().notificationSettings
+          ? userDoc.data()?.notificationSettings
           : null;
 
         if (!currentSettings) {
@@ -170,7 +161,7 @@ const NotificationScreen = () => {
               id: doc.id,
               title: data.title || "Notification",
               message: data.message || "",
-              timestamp: data.timestamp || Timestamp.now(),
+              timestamp: data.timestamp || new Date(),
               isRead: data.isRead || false,
               isActive: data.isActive || true,
               type: notificationType,
@@ -186,14 +177,21 @@ const NotificationScreen = () => {
 
         // Sort notifications by timestamp
         notificationList.sort((a, b) => {
-          const timeA =
-            a.timestamp instanceof Timestamp
-              ? a.timestamp.toMillis()
-              : new Date(a.timestamp).getTime();
-          const timeB =
-            b.timestamp instanceof Timestamp
-              ? b.timestamp.toMillis()
-              : new Date(b.timestamp).getTime();
+          const getTimestamp = (timestamp: any): number => {
+            if (timestamp instanceof Date) {
+              return timestamp.getTime();
+            } else if (timestamp && typeof timestamp.toDate === 'function') {
+              return timestamp.toDate().getTime();
+            } else if (timestamp && timestamp.seconds) {
+              // Firestore Timestamp object
+              return timestamp.seconds * 1000;
+            } else {
+              return new Date(timestamp).getTime();
+            }
+          };
+          
+          const timeA = getTimestamp(a.timestamp);
+          const timeB = getTimestamp(b.timestamp);
           return timeB - timeA;
         });
 
@@ -217,10 +215,10 @@ const NotificationScreen = () => {
       console.log("Current user ID:", userId);
 
       // Get latest notification settings from database
-      const userDocRef = doc(db, "users", userId);
-      const userDoc = await getDoc(userDocRef);
+      const userDocRef = db.collection("users").doc(userId);
+      const userDoc = await userDocRef.get();
       const currentSettings = userDoc.exists()
-        ? userDoc.data().notificationSettings
+        ? userDoc.data()?.notificationSettings
         : null;
 
       if (!currentSettings) {
@@ -231,13 +229,10 @@ const NotificationScreen = () => {
         return;
       }
 
-      const notificationsRef = collection(db, "notifications");
-      const notificationsQuery = query(
-        notificationsRef,
-        where("isActive", "==", true)
-      );
+      const notificationsRef = db.collection("notifications");
+      const notificationsQuery = notificationsRef.where("isActive", "==", true);
 
-      const querySnapshot = await getDocs(notificationsQuery);
+      const querySnapshot = await notificationsQuery.get();
       const notificationList: Notification[] = [];
       let unread = 0;
 
@@ -281,7 +276,7 @@ const NotificationScreen = () => {
             id: doc.id,
             title: data.title || "Notification",
             message: data.message || "",
-            timestamp: data.timestamp || Timestamp.now(),
+            timestamp: data.timestamp || new Date(),
             isRead: data.isRead || false,
             isActive: data.isActive || true,
             type: notificationType,
@@ -296,14 +291,21 @@ const NotificationScreen = () => {
       });
 
       notificationList.sort((a, b) => {
-        const timeA =
-          a.timestamp instanceof Timestamp
-            ? a.timestamp.toMillis()
-            : new Date(a.timestamp).getTime();
-        const timeB =
-          b.timestamp instanceof Timestamp
-            ? b.timestamp.toMillis()
-            : new Date(b.timestamp).getTime();
+        const getTimestamp = (timestamp: any): number => {
+          if (timestamp instanceof Date) {
+            return timestamp.getTime();
+          } else if (timestamp && typeof timestamp.toDate === 'function') {
+            return timestamp.toDate().getTime();
+          } else if (timestamp && timestamp.seconds) {
+            // Firestore Timestamp object
+            return timestamp.seconds * 1000;
+          } else {
+            return new Date(timestamp).getTime();
+          }
+        };
+        
+        const timeA = getTimestamp(a.timestamp);
+        const timeB = getTimestamp(b.timestamp);
         return timeB - timeA;
       });
 
@@ -357,16 +359,28 @@ const NotificationScreen = () => {
     }
   };
 
-  const formatTimestamp = (timestamp: string | Timestamp) => {
-    const date =
-      timestamp instanceof Timestamp ? timestamp.toDate() : new Date(timestamp);
+  const formatTimestamp = (timestamp: string | Date | any) => {
+    let date: Date;
+    
+    if (timestamp instanceof Date) {
+      date = timestamp;
+    } else if (timestamp && typeof timestamp.toDate === 'function') {
+      // Firebase Firestore Timestamp
+      date = timestamp.toDate();
+    } else if (timestamp && timestamp.seconds) {
+      // Firestore Timestamp object with seconds property
+      date = new Date(timestamp.seconds * 1000);
+    } else {
+      date = new Date(timestamp);
+    }
+    
     const now = new Date();
     const diffInHours = Math.floor(
       (now.getTime() - date.getTime()) / (1000 * 60 * 60)
     );
 
     if (diffInHours < 24) {
-      return  `${diffInHours} hours ago`;
+      return `${diffInHours} hours ago`;
     } else {
       return date.toLocaleDateString();
     }
@@ -374,8 +388,8 @@ const NotificationScreen = () => {
 
   const handleDeleteNotification = async (notificationId: string) => {
     try {
-      const notificationRef = doc(db, "notifications", notificationId);
-      await updateDoc(notificationRef, {
+      const notificationRef = db.collection("notifications").doc(notificationId);
+      await notificationRef.update({
         isActive: false,
       });
       ToastAndroid.show("Notification deleted", ToastAndroid.SHORT);

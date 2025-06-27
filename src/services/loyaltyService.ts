@@ -1,5 +1,5 @@
 // src/services/loyaltyService.ts
-import { 
+import firestore, { 
   doc, 
   getDoc, 
   updateDoc, 
@@ -16,10 +16,9 @@ import {
   limit,
   onSnapshot,
   Unsubscribe,
-  Transaction,
   increment
-} from 'firebase/firestore';
-import { db, auth } from '../firebase/config';
+} from '@react-native-firebase/firestore';
+import { db, auth } from '../firebase/firebase-config';
 import type { 
   LoyaltyUser, 
   LoyaltyConfig
@@ -272,8 +271,8 @@ export class LoyaltyServiceClass {
       ]);
       
       // Get points from both documents
-      const userPoints = userDoc.exists() ? userDoc.data().loyaltyPoints || 0 : 0;
-      const loyaltyPoints = loyaltyUserDoc.exists() ? loyaltyUserDoc.data().loyaltyPoints || 0 : 0;
+      const userPoints = userDoc.exists() ? userDoc.data()?.loyaltyPoints || 0 : 0;
+      const loyaltyPoints = loyaltyUserDoc.exists() ? loyaltyUserDoc.data()?.loyaltyPoints || 0 : 0;
       
       // If points are different, sync them
       if (userPoints !== loyaltyPoints) {
@@ -315,7 +314,7 @@ export class LoyaltyServiceClass {
       (doc) => {
         if (doc.exists()) {
           const userData = doc.data();
-          const points = userData.loyaltyPoints || 0;
+          const points = userData?.loyaltyPoints || 0;
           callback(points);
         } else {
           callback(0);
@@ -348,14 +347,14 @@ export class LoyaltyServiceClass {
         if (doc.exists()) {
           const userData = doc.data();
           const profile: UserLoyaltyProfile = {
-            userName: userData.displayName || 'Guest',
-            userId: userData.userId || userId,
-            availablePoints: userData.loyaltyPoints || 0,
-            totalOrders: userData.totalOrders || 0,
-            totalSpent: userData.totalSpent || 0,
-            isFirstTimeUser: userData.isFirstTimeUser ?? true,
-            createdAt: userData.createdAt instanceof Timestamp ? userData.createdAt.toDate() : new Date(),
-            updatedAt: userData.updatedAt instanceof Timestamp ? userData.updatedAt.toDate() : new Date()
+            userId: userData?.userId || userId,
+            userName: userData?.displayName || 'Guest',
+            availablePoints: userData?.loyaltyPoints || 0,
+            totalOrders: userData?.totalOrders || 0,
+            totalSpent: userData?.totalSpent || 0,
+            isFirstTimeUser: userData?.isFirstTimeUser ?? true,
+            createdAt: userData?.createdAt instanceof Timestamp ? userData?.createdAt.toDate() : new Date(),
+            updatedAt: userData?.updatedAt instanceof Timestamp ? userData?.updatedAt.toDate() : new Date()
           };
           callback(profile);
         } else {
@@ -401,14 +400,14 @@ export class LoyaltyServiceClass {
       if (userDoc.exists()) {
         const userData = userDoc.data();
         return {
-          userId: userData.userId || userId,
-          userName: userData.displayName || userData.userName || 'Guest',
-          availablePoints: userData.loyaltyPoints || 0,
-          totalOrders: userData.totalOrders || 0,
-          totalSpent: userData.totalSpent || 0,
-          isFirstTimeUser: userData.isFirstTimeUser ?? true,
-          createdAt: userData.createdAt instanceof Timestamp ? userData.createdAt.toDate() : new Date(),
-          updatedAt: userData.updatedAt instanceof Timestamp ? userData.updatedAt.toDate() : new Date()
+          userId: userData?.userId || userId,
+          userName: userData?.displayName || userData?.userName || 'Guest',
+          availablePoints: userData?.loyaltyPoints || 0,
+          totalOrders: userData?.totalOrders || 0,
+          totalSpent: userData?.totalSpent || 0,
+          isFirstTimeUser: userData?.isFirstTimeUser ?? true,
+          createdAt: userData?.createdAt instanceof Timestamp ? userData?.createdAt.toDate() : new Date(),
+          updatedAt: userData?.updatedAt instanceof Timestamp ? userData?.updatedAt.toDate() : new Date()
         };
       }
 
@@ -680,7 +679,7 @@ export class LoyaltyServiceClass {
       }
 
       const userData = userDoc.data();
-      const currentPoints = userData.loyaltyPoints || 0;
+      const currentPoints = userData?.loyaltyPoints || 0;
       
       // Calculate points earned based on final amount
       const pointsEarned = Math.floor(finalAmount * this.pointsEarningRate);
@@ -972,8 +971,8 @@ export class LoyaltyServiceClass {
       }
 
       const userData = userDoc.data();
-      const currentPoints = userData.loyaltyPoints || 0;
-      const userName = userData.displayName || userData.userName || 'Guest';
+      const currentPoints = userData?.loyaltyPoints || 0;
+      const userName = userData?.displayName || userData?.userName || 'Guest';
       const isFirstTimeUser = userData.isFirstTimeUser ?? true;
       const totalOrders = userData.totalOrders || 0;
       const totalSpent = userData.totalSpent || 0;
@@ -1125,7 +1124,7 @@ export class LoyaltyServiceClass {
         }
 
         const userData = userDoc.data();
-        const currentPoints = userData.loyaltyPoints || 0;
+        const currentPoints = userData?.loyaltyPoints || 0;
         const newBalance = Math.max(0, currentPoints + pointsAdjustment);
 
         transaction.update(userRef, {
@@ -1181,8 +1180,8 @@ export class LoyaltyServiceClass {
       });
 
       return {
-        totalOrders: userData.totalOrders || 0,
-        totalSpent: userData.totalSpent || 0,
+        totalOrders: userData?.totalOrders || 0,
+        totalSpent: userData?.totalSpent || 0,
         totalSaved,
         totalPointsEarned,
         totalPointsRedeemed,

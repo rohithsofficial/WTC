@@ -14,8 +14,8 @@ import {
 import { Stack, router } from 'expo-router';
 import { FontAwesome } from '@expo/vector-icons';
 import { COLORS, FONTFAMILY, FONTSIZE, SPACING, BORDERRADIUS } from '../../src/theme/theme';
-import { auth, db } from '../../src/firebase/config';
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { auth, db } from '../../src/firebase/firebase-config';
+import firestore from '@react-native-firebase/firestore';
 
 interface SupportTicket {
   subject: string;
@@ -50,11 +50,11 @@ const SupportScreen = () => {
         subject: subject.trim(),
         message: message.trim(),
         status: 'open',
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
+        createdAt: firestore.FieldValue.serverTimestamp(),
+        updatedAt: firestore.FieldValue.serverTimestamp(),
       };
 
-      await addDoc(collection(db, 'support_tickets'), ticketData);
+      await db.collection('support_tickets').add(ticketData);
 
       // Clear inputs
       setSubject('');
@@ -99,13 +99,13 @@ const SupportScreen = () => {
       onPress={() => handleContactSupport(method)}
     >
       <View style={styles.contactIcon}>
-        <FontAwesome name={icon} size={24} color={COLORS.primaryOrangeHex} />
+        <FontAwesome name={icon as any} size={24} color={COLORS.primaryOrangeHex} />
       </View>
       <View style={styles.contactContent}>
         <Text style={styles.contactTitle}>{title}</Text>
         <Text style={styles.contactDescription}>{description}</Text>
       </View>
-      <FontAwesome name="chevron-right" size={16} color={COLORS.primaryGreyHex} />
+      <FontAwesome name={"chevron-right" as any} size={16} color={COLORS.primaryGreyHex} />
     </TouchableOpacity>
   );
 

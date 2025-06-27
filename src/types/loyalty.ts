@@ -1,5 +1,6 @@
 // src/types/loyalty.ts
-import { Timestamp } from 'firebase/firestore';
+import { FirebaseFirestoreTypes } from '@react-native-firebase/firestore';
+const { Timestamp } = FirebaseFirestoreTypes;
 
 export interface LoyaltyUser {
   uid: string;
@@ -10,8 +11,8 @@ export interface LoyaltyUser {
   totalOrders: number;
   totalSpent: number;
   isFirstTimeUser: boolean;
-  createdAt: Timestamp;
-  updatedAt: Timestamp;
+  createdAt: FirebaseFirestoreTypes.Timestamp | FirebaseFirestoreTypes.FieldValue;
+  updatedAt: FirebaseFirestoreTypes.Timestamp | FirebaseFirestoreTypes.FieldValue;
   birthday?: string;
 }
 

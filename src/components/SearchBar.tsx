@@ -1,5 +1,5 @@
 // CoffeeSearchBar.js
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, MutableRefObject } from 'react';
 import {
   View,
   TextInput,
@@ -9,24 +9,34 @@ import {
   StyleSheet,
   ActivityIndicator,
   Image,
-  Keyboard
+  Keyboard,
+  Alert
 } from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import {
-  collection,
-  query,
-  where,
-  getDocs,
-  orderBy,
-  limit,
-  doc,
-  setDoc,
-  addDoc,
-  getFirestore
-} from 'firebase/firestore';
+import { db } from '../firebase/firebase-config';
 
-const CoffeeSearchBar = ({
+interface Product {
+  id: string;
+  name: string;
+  price?: number;
+  imageUrl?: string;
+  featured?: boolean;
+  popularity?: number;
+  [key: string]: any;
+}
+
+interface CoffeeSearchBarProps {
+  onProductSelect?: (product: Product) => void;
+  placeholder?: string;
+  maxResults?: number;
+  collectionName?: string;
+  showRecent?: boolean;
+  firebaseDb?: any;
+  customStyles?: { container?: any };
+}
+
+const CoffeeSearchBar: React.FC<CoffeeSearchBarProps> = ({
   onProductSelect,
   placeholder = "Search coffee, pastries...",
   maxResults = 10,
@@ -35,15 +45,15 @@ const CoffeeSearchBar = ({
   firebaseDb = null,
   customStyles = {}
 }) => {
-  const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState([]);
-  const [recentSearches, setRecentSearches] = useState([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [showResults, setShowResults] = useState(false);
+  const [searchQuery, setSearchQuery] = useState<string>('');
+  const [searchResults, setSearchResults] = useState<Product[]>([]);
+  const [recentSearches, setRecentSearches] = useState<Product[]>([]);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [showResults, setShowResults] = useState<boolean>(false);
 
-  const inputRef = useRef(null);
-  const db = firebaseDb || getFirestore();
-  const searchDelayRef = useRef(null);
+  const inputRef = useRef<TextInput | null>(null);
+  const dbInstance = firebaseDb || db;
+  const searchDelayRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     loadRecentSearches();
@@ -62,73 +72,62 @@ const CoffeeSearchBar = ({
     };
   }, []);
 
-  const searchProducts = async (searchText) => {
+  const searchProducts = async (searchText: string) => {
     if (!searchText || searchText.trim() === '') {
       setSearchResults([]);
       return;
     }
-
     setIsLoading(true);
     try {
-      const productsRef = collection(db, collectionName);
+      const productsRef = dbInstance.collection(collectionName);
       const searchTextLower = searchText.toLowerCase();
       const searchTextUpper = searchTextLower + '\uf8ff';
-
-      let q = query(
-        productsRef,
-        where('nameKeywords', '>=', searchTextLower),
-        where('nameKeywords', '<=', searchTextUpper),
-        orderBy('nameKeywords'),
-        limit(maxResults)
-      );
-
-      let querySnapshot = await getDocs(q);
-      let results = [];
-
-      querySnapshot.forEach((doc) => {
+      let q = productsRef
+        .where('nameKeywords', '>=', searchTextLower)
+        .where('nameKeywords', '<=', searchTextUpper)
+        .orderBy('nameKeywords')
+        .limit(maxResults);
+      let querySnapshot = await q.get();
+      let results: Product[] = [];
+      querySnapshot.forEach((doc: any) => {
         if (!results.some(item => item.id === doc.id)) {
           results.push({ id: doc.id, ...doc.data() });
         }
       });
-
       if (results.length < 3 && searchTextLower.length > 2) {
-        q = query(
-          productsRef,
-          where('descriptionKeywords', '>=', searchTextLower),
-          where('descriptionKeywords', '<=', searchTextUpper),
-          orderBy('descriptionKeywords'),
-          limit(maxResults - results.length)
-        );
-
-        querySnapshot = await getDocs(q);
-        querySnapshot.forEach((doc) => {
+        q = productsRef
+          .where('descriptionKeywords', '>=', searchTextLower)
+          .where('descriptionKeywords', '<=', searchTextUpper)
+          .orderBy('descriptionKeywords')
+          .limit(maxResults - results.length);
+        querySnapshot = await q.get();
+        querySnapshot.forEach((doc: any) => {
           if (!results.some(item => item.id === doc.id)) {
             results.push({ id: doc.id, ...doc.data() });
           }
         });
       }
-
       results.sort((a, b) => {
         if (a.featured && !b.featured) return -1;
         if (!a.featured && b.featured) return 1;
         return (b.popularity || 0) - (a.popularity || 0);
       });
-
       setSearchResults(results);
     } catch (error) {
       console.error('Error searching products:', error);
+      Alert.alert('Search Error', 'Unable to search products. Please try again later.');
     } finally {
       setIsLoading(false);
     }
   };
 
-  const generateKeywords = (text) => {
+  const generateKeywords = (text: string): string[] => {
     if (!text) return [];
     const textLower = text.toLowerCase();
     const words = textLower.split(/\s+/);
-    const keywords = [];
+    const keywords: string[] = [];
 
-    words.forEach(word => {
+    words.forEach((word: string) => {
       if (word.length < 2) return;
       let currentKeyword = '';
       for (const letter of word) {
@@ -149,7 +148,7 @@ const CoffeeSearchBar = ({
     return [...new Set(keywords)];
   };
 
-  const handleSearchInputChange = (text) => {
+  const handleSearchInputChange = (text: string) => {
     setSearchQuery(text);
 
     if (searchDelayRef.current) {
@@ -165,10 +164,10 @@ const CoffeeSearchBar = ({
     searchDelayRef.current = setTimeout(() => {
       searchProducts(text);
       setShowResults(true);
-    }, 500);
+    }, 500) as unknown as NodeJS.Timeout;
   };
 
-  const handleSelectProduct = (product) => {
+  const handleSelectProduct = (product: Product) => {
     setSearchQuery(product.name);
     setShowResults(false);
     addToRecentSearches(product);
@@ -190,23 +189,24 @@ const CoffeeSearchBar = ({
       }
     } catch (error) {
       console.error('Error loading recent searches:', error);
+      Alert.alert('Error', 'Unable to load recent searches.');
     }
   };
 
-  const addToRecentSearches = async (product) => {
+  const addToRecentSearches = async (product: Product) => {
     if (!showRecent) return;
     const filtered = recentSearches.filter(item => item.id !== product.id);
     const updated = [product, ...filtered].slice(0, 5);
     setRecentSearches(updated);
-
     try {
       await AsyncStorage.setItem('recentCoffeeSearches', JSON.stringify(updated));
     } catch (e) {
       console.error('Error saving recent searches:', e);
+      Alert.alert('Error', 'Unable to save recent searches.');
     }
   };
 
-  const renderItem = ({ item }) => (
+  const renderItem = ({ item }: { item: Product }) => (
     <TouchableOpacity style={styles.resultItem} onPress={() => handleSelectProduct(item)}>
       {item.imageUrl && (
         <Image source={{ uri: item.imageUrl }} style={styles.thumbnail} />
@@ -219,7 +219,7 @@ const CoffeeSearchBar = ({
   );
 
   return (
-    <View style={[styles.container, customStyles.container]}>
+    <View style={[styles.container, customStyles.container || {}]}>
       <View style={styles.searchBar}>
         <TextInput
           ref={inputRef}
@@ -244,7 +244,7 @@ const CoffeeSearchBar = ({
       {showResults && (
         <FlatList
           data={searchResults.length ? searchResults : (showRecent ? recentSearches : [])}
-          keyExtractor={item => item.id}
+          keyExtractor={(item: Product) => item.id}
           renderItem={renderItem}
           style={styles.resultsList}
           keyboardShouldPersistTaps="handled"

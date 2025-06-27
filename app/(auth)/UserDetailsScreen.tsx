@@ -13,8 +13,7 @@ import {
 import { Stack, router, useLocalSearchParams } from 'expo-router';
 import { FontAwesome } from '@expo/vector-icons';
 import { COLORS, FONTFAMILY, FONTSIZE, SPACING, BORDERRADIUS } from '../../src/theme/theme';
-import { auth, db } from '../../src/firebase/config';
-import { doc, setDoc, getDoc } from 'firebase/firestore';
+import { auth, db } from '../../src/firebase/firebase-config';
 import StyledAlert from '../../src/components/StyledAlert';
 
 const UserDetailsScreen = () => {
@@ -52,12 +51,12 @@ const UserDetailsScreen = () => {
       setLoading(true);
 
       // Check if user document already exists
-      const userDocRef = doc(db, 'users', userId as string);
-      const userDoc = await getDoc(userDocRef);
+      const userDocRef = db.collection('users').doc(userId as string);
+      const userDoc = await userDocRef.get();
 
       if (userDoc.exists()) {
         // Update existing user document
-        await setDoc(userDocRef, {
+        await userDocRef.set({
           displayName: fullName,
           email: email.trim(),
           phoneNumber,
@@ -65,7 +64,7 @@ const UserDetailsScreen = () => {
         }, { merge: true });
       } else {
         // Create new user document
-        await setDoc(userDocRef, {
+        await userDocRef.set({
           displayName: fullName,
           email: email.trim(),
           phoneNumber,

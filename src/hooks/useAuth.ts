@@ -1,15 +1,14 @@
 import { useState, useEffect } from 'react';
-import {
+import authModule, {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   signOut,
   onAuthStateChanged,
   sendPasswordResetEmail,
   updateProfile,
-  User as FirebaseUser,
-} from 'firebase/auth';
-import { doc, setDoc, getDoc } from 'firebase/firestore';
-import { auth, db } from '../firebase/config';
+  FirebaseAuthTypes,
+} from '@react-native-firebase/auth';
+import { db } from '../firebase/firebase-config';
 import { User } from '../types/interfaces';
 
 interface AuthState {
@@ -33,7 +32,7 @@ export const useAuth = () => {
   });
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+    const unsubscribe = onAuthStateChanged(authModule(), async (firebaseUser) => {
       if (firebaseUser) {
         const userData = await getUserData(firebaseUser);
         setState({
@@ -53,9 +52,9 @@ export const useAuth = () => {
     return () => unsubscribe();
   }, []);
 
-  const getUserData = async (firebaseUser: FirebaseUser): Promise<User> => {
-    const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
-    if (userDoc.exists()) {
+  const getUserData = async (firebaseUser: FirebaseAuthTypes.User): Promise<User> => {
+    const userDoc = await db.collection('users').doc(firebaseUser.uid).get();
+    if (userDoc.exists) {
       return userDoc.data() as User;
     }
     return {
@@ -73,7 +72,7 @@ export const useAuth = () => {
   const signUp = async ({ email, password, displayName, phoneNumber }: SignUpData) => {
     try {
       setState(prev => ({ ...prev, loading: true, error: null }));
-      const { user: firebaseUser } = await createUserWithEmailAndPassword(auth, email, password);
+      const { user: firebaseUser } = await createUserWithEmailAndPassword(authModule(), email, password);
       
       await updateProfile(firebaseUser, { displayName });
       
@@ -88,7 +87,7 @@ export const useAuth = () => {
         updatedAt: new Date(),
       };
 
-      await setDoc(doc(db, 'users', firebaseUser.uid), userData);
+      await db.collection('users').doc(firebaseUser.uid).set(userData);
       
       setState({
         user: userData,
@@ -108,7 +107,7 @@ export const useAuth = () => {
   const signIn = async (email: string, password: string) => {
     try {
       setState(prev => ({ ...prev, loading: true, error: null }));
-      await signInWithEmailAndPassword(auth, email, password);
+      await signInWithEmailAndPassword(authModule(), email, password);
     } catch (error) {
       setState(prev => ({
         ...prev,
@@ -122,7 +121,7 @@ export const useAuth = () => {
   const logout = async () => {
     try {
       setState(prev => ({ ...prev, loading: true, error: null }));
-      await signOut(auth);
+      await signOut(authModule());
       setState({
         user: null,
         loading: false,
@@ -141,7 +140,7 @@ export const useAuth = () => {
   const resetPassword = async (email: string) => {
     try {
       setState(prev => ({ ...prev, loading: true, error: null }));
-      await sendPasswordResetEmail(auth, email);
+      await sendPasswordResetEmail(authModule(), email);
       setState(prev => ({ ...prev, loading: false }));
     } catch (error) {
       setState(prev => ({
@@ -159,14 +158,14 @@ export const useAuth = () => {
     try {
       setState(prev => ({ ...prev, loading: true, error: null }));
       
-      const userRef = doc(db, 'users', state.user.id);
+      const userRef = db.collection('users').doc(state.user.id);
       const updatedUser = {
         ...state.user,
         ...updates,
         updatedAt: new Date(),
       };
       
-      await setDoc(userRef, updatedUser, { merge: true });
+      await userRef.set(updatedUser, { merge: true });
       
       setState(prev => ({
         ...prev,

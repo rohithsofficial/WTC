@@ -23,14 +23,14 @@ import {
 } from '../../src/theme/theme';
 import GradientBGIcon from '../../src/components/GradientBGIcon';
 import { useRouter } from 'expo-router';
-import { collection, query, where, orderBy, getDocs, onSnapshot } from 'firebase/firestore';
-import { db, auth } from '../../src/firebase/config';
+import { db, auth } from '../../src/firebase/firebase-config';
 import CustomIcon from '../../src/components/CustomIcon';
 import { MaterialIcons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { TabView, TabBar } from 'react-native-tab-view';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { CountdownCircleTimer } from 'react-native-countdown-circle-timer';
+import firestore from '@react-native-firebase/firestore';
 
 // Define interfaces
 interface OrderItem {
@@ -100,14 +100,12 @@ const OrderScreen = () => {
     setLoading(true);
     setError(null);
 
-    const ordersRef = collection(db, 'orders');
-    const q = query(
-      ordersRef,
-      where('userId', '==', userId),
-      orderBy('createdAt', 'desc')
-    );
+    const ordersRef = db.collection('orders');
+    const q = ordersRef
+      .where('userId', '==', userId)
+      .orderBy('createdAt', 'desc');
 
-    const unsubscribe = onSnapshot(q, (querySnapshot) => {
+    const unsubscribe = q.onSnapshot((querySnapshot) => {
       const ordersList = querySnapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data(),

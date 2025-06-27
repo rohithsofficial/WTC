@@ -8,17 +8,17 @@ import { StyleSheet } from 'react-native';
 // In your React Native app (e.g., App.tsx or a dedicated push notification setup file)
 
 import * as Notifications from 'expo-notifications';
-import { doc, setDoc } from 'firebase/firestore'; // Import Firestore functions
-import { auth, db } from '../src/firebase/config'; // Your Firebase config for the mobile app
 import { useEffect } from 'react';
-import { onAuthStateChanged } from 'firebase/auth'; // For listening to user login state
+import { auth, db, onAuthStateChanged } from '../src/firebase/firebase-config';
 
 // Call this function to set up notification handling for your app
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
-    shouldShowAlert: true, // Show alert even if app is foregrounded
+     shouldShowAlert: true,
     shouldPlaySound: false,
     shouldSetBadge: false,
+    shouldShowBanner: true, // ✅ NEW
+    shouldShowList: true,   // ✅ NEW
   }),
 });
 
@@ -42,9 +42,9 @@ async function registerAndSavePushToken(userId: string) {
   // 3. Save the token to the user's document in Firestore
   // (This is how the Cloud Function will know where to send notifications)
   try {
-    await setDoc(doc(db, "users", userId), {
+    await db.collection('users').doc(userId).set({
       expoPushToken: token,
-    }, { merge: true }); // Use merge:true to update without overwriting other fields
+    }, { merge: true });
     console.log("Expo Push Token successfully saved for user:", userId);
   } catch (error) {
     console.error("Error saving Expo Push Token:", error);
@@ -55,7 +55,7 @@ async function registerAndSavePushToken(userId: string) {
 // whenever the user's authentication state changes (e.g., they log in).
 export function NotificationSetup() {
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
+    const unsubscribe = onAuthStateChanged((user) => {
       if (user) {
         registerAndSavePushToken(user.uid);
       }

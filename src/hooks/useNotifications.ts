@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import { Platform } from 'react-native';
 import * as Notifications from 'expo-notifications';
-import { collection, query, where, orderBy, getDocs, addDoc, updateDoc, doc } from 'firebase/firestore';
-import { db } from '../firebase/config';
+import firestore, { collection, query, where, orderBy, getDocs, addDoc, updateDoc, doc } from '@react-native-firebase/firestore';
+import { db } from '../firebase/firebase-config';
 import { UserNotification } from '../types/interfaces';
 
 interface NotificationState {

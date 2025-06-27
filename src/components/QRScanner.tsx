@@ -1,9 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { StyleSheet, View, Text, TouchableOpacity, Alert } from 'react-native';
-import { Camera, CameraType } from 'expo-camera';
-import { BarCodeScanner } from 'expo-barcode-scanner';
-import { COLORS, FONTSIZE, SPACING } from '../theme/theme';
-import { LoyaltyService } from '../services/loyaltyService';
 import { Ionicons } from '@expo/vector-icons';
 
 interface QRScannerProps {
@@ -12,78 +8,11 @@ interface QRScannerProps {
 }
 
 const QRScanner: React.FC<QRScannerProps> = ({ onScanSuccess, onScanError }) => {
-  const [hasPermission, setHasPermission] = useState<boolean | null>(null);
-  const [scanned, setScanned] = useState(false);
-
-  useEffect(() => {
-    const getBarCodeScannerPermissions = async () => {
-      const { status } = await Camera.requestCameraPermissionsAsync();
-      setHasPermission(status === 'granted');
-    };
-
-    getBarCodeScannerPermissions();
-  }, []);
-
-  const handleBarCodeScanned = async ({ data }: { data: string }) => {
-    if (scanned) return;
-    setScanned(true);
-
-    try {
-      // Validate the scanned data is a valid user ID
-      const profile = await LoyaltyService.getUserProfile(data);
-      
-      if (profile) {
-        onScanSuccess(data);
-      } else {
-        onScanError('Invalid QR code. No loyalty profile found.');
-      }
-    } catch (error) {
-      onScanError('Error scanning QR code. Please try again.');
-    } finally {
-      // Reset scan after 2 seconds
-      setTimeout(() => setScanned(false), 2000);
-    }
-  };
-
-  if (hasPermission === null) {
-    return (
-      <View style={styles.container}>
-        <Text style={styles.text}>Requesting camera permission...</Text>
-      </View>
-    );
-  }
-
-  if (hasPermission === false) {
-    return (
-      <View style={styles.container}>
-        <Text style={styles.text}>No access to camera</Text>
-        <TouchableOpacity 
-          style={styles.button}
-          onPress={() => Camera.requestCameraPermissionsAsync()}>
-          <Text style={styles.buttonText}>Grant Permission</Text>
-        </TouchableOpacity>
-      </View>
-    );
-  }
-
+  // QR scanning is not available. Show a placeholder.
   return (
     <View style={styles.container}>
-      <Camera
-        style={styles.camera}
-        type={CameraType.back}
-        barCodeScannerSettings={{
-          barCodeTypes: [BarCodeScanner.Constants.BarCodeType.qr],
-        }}
-        onBarCodeScanned={scanned ? undefined : handleBarCodeScanned}>
-        <View style={styles.overlay}>
-          <View style={styles.scanArea} />
-        </View>
-        <View style={styles.instructions}>
-          <Text style={styles.instructionText}>
-            Position the QR code within the frame
-          </Text>
-        </View>
-      </Camera>
+      <Text style={styles.text}>QR scanning is not available in this build.</Text>
+      {/* TODO: Implement QR scanning with a supported library */}
     </View>
   );
 };

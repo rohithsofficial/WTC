@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { Alert } from 'react-native';
 import { initStripe, createPaymentMethod, confirmPayment } from '@stripe/stripe-react-native';
-import { doc, updateDoc, addDoc, collection } from 'firebase/firestore';
-import { db } from '../firebase/config';
+import firestore, { doc, updateDoc, addDoc, collection } from '@react-native-firebase/firestore';
+import { db } from '../firebase/firebase-config';
 import { Order, PaymentMethod } from '../types/interfaces';
 
 interface PaymentState {

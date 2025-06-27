@@ -12,8 +12,7 @@ import {
 import { Stack, router } from 'expo-router';
 import { FontAwesome } from '@expo/vector-icons';
 import { COLORS, FONTFAMILY, FONTSIZE, SPACING, BORDERRADIUS } from '../../src/theme/theme';
-import { auth, db } from '../../src/firebase/config';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { auth, db } from '../../src/firebase/firebase-config';
 
 interface NotificationSettings {
   orderUpdates: boolean;
@@ -44,9 +43,9 @@ const NotificationSettings = () => {
       const userId = auth.currentUser?.uid;
       if (!userId) return;
 
-      const userDoc = await getDoc(doc(db, 'users', userId));
-      if (userDoc.exists() && userDoc.data().notificationSettings) {
-        setSettings(userDoc.data().notificationSettings);
+      const userDoc = await db.collection('users').doc(userId).get();
+      if (userDoc.exists() && userDoc.data()?.notificationSettings) {
+        setSettings(userDoc.data()!.notificationSettings);
       }
     } catch (error) {
       console.error('Error loading notification settings:', error);
@@ -70,7 +69,7 @@ const NotificationSettings = () => {
         [key]: !settings[key],
       };
 
-      await setDoc(doc(db, 'users', userId), {
+      await db.collection('users').doc(userId).set({
         notificationSettings: newSettings,
       }, { merge: true });
 

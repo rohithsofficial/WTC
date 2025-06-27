@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { collection, doc, getDoc, getDocs, query, where, updateDoc } from 'firebase/firestore';
-import { db } from '../firebase/config';
+import firestore, { collection, doc, getDoc, getDocs, query, where, updateDoc } from '@react-native-firebase/firestore';
+import { db } from '../firebase/firebase-config';
 import { LoyaltyReward, User } from '../types/interfaces';
 
 interface LoyaltyState {

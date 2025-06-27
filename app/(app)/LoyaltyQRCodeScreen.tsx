@@ -13,13 +13,19 @@ import {
 import { useRouter } from 'expo-router';
 import { COLORS, FONTFAMILY, FONTSIZE, SPACING, BORDERRADIUS } from '../../src/theme/theme';
 import GradientBGIcon from '../../src/components/GradientBGIcon';
-import { auth } from '../../src/firebase/config';
-import { signOut } from 'firebase/auth';
+import firestore from '@react-native-firebase/firestore';
+import { 
+  auth, 
+  db, 
+  signOutUser,
+  getUserDocument,
+  createUserDocument,
+  getCurrentUser 
+} from '../../src/firebase/firebase-config';
 import QRCode from 'react-native-qrcode-svg';
 import type { LoyaltyUser } from '../../src/types/loyalty';
-import { doc, getDoc, setDoc, Timestamp } from 'firebase/firestore';
-import { db } from '../../src/firebase/config';
 import { MaterialIcons } from '@expo/vector-icons';
+import { FirebaseFirestoreTypes } from '@react-native-firebase/firestore';
 
 const LoyaltyQRCodeScreen = () => {
   const router = useRouter();
@@ -79,7 +85,7 @@ const LoyaltyQRCodeScreen = () => {
 
   const loadLoyaltyProfile = async () => {
     try {
-      const user = auth.currentUser;
+      const user = getCurrentUser();
       if (!user) {
         Alert.alert('Error', 'Please sign in to view your loyalty QR code');
         router.back();
@@ -89,65 +95,71 @@ const LoyaltyQRCodeScreen = () => {
       setLoading(true);
       console.log('Loading profile for user:', user.uid);
       
-      // Get user data from users collection with fresh data
-      const userDocRef = doc(db, 'users', user.uid);
-      const userDoc = await getDoc(userDocRef);
-      
-      if (userDoc.exists()) {
-        const userData = userDoc.data();
-        console.log('Raw user data from Firestore:', userData);
+      // Get user data from users collection using native SDK
+      try {
+        const userData = await getUserDocument(user.uid);
         
-        // Check for different possible field names for loyalty points
-        const loyaltyPoints = userData.loyaltyPoints || 
-                             userData.loyalty_points || 
-                             userData.points || 
-                             0;
-        
-        console.log('Extracted loyalty points:', loyaltyPoints);
-        console.log('Field loyaltyPoints:', userData.loyaltyPoints);
-        console.log('Field loyalty_points:', userData.loyalty_points);
-        console.log('Field points:', userData.points);
-        
-        const profile: LoyaltyUser = {
-          uid: user.uid,
-          email: user.email || '',
-          displayName: user.displayName || userData.displayName || userData.name || 'User',
-          loyaltyPoints: loyaltyPoints,
-          totalOrders: userData.totalOrders || 0,
-          totalSpent: userData.totalSpent || 0,
-          isFirstTimeUser: userData.isFirstTimeUser ?? true,
-          createdAt: userData.createdAt || Timestamp.now(),
-          updatedAt: userData.updatedAt || Timestamp.now()
-        };
-        
-        console.log('Final profile object:', profile);
-        setLoyaltyProfile(profile);
-        setQrToken(generateSecureToken(profile.uid));
-      } else {
-        console.log('No user document found, creating new profile');
-        // Create a new user profile if one doesn't exist
-        const now = Timestamp.now();
-        const newProfile: LoyaltyUser = {
-          uid: user.uid,
-          email: user.email || '',
-          displayName: user.displayName || 'User',
-          loyaltyPoints: 0,
-          totalOrders: 0,
-          totalSpent: 0,
-          isFirstTimeUser: true,
-          createdAt: now,
-          updatedAt: now
-        };
-        
-        // Add the profile to users collection
-        await setDoc(userDocRef, newProfile);
-        console.log('Created new profile:', newProfile);
-        setLoyaltyProfile(newProfile);
-        setQrToken(generateSecureToken(newProfile.uid));
+        if (userData) {
+          console.log('Raw user data from Firestore:', userData);
+          
+          // Check for different possible field names for loyalty points
+          const loyaltyPoints = userData.loyaltyPoints || 
+                               userData.loyalty_points || 
+                               userData.points || 
+                               0;
+          
+          console.log('Extracted loyalty points:', loyaltyPoints);
+          console.log('Field loyaltyPoints:', userData.loyaltyPoints);
+          console.log('Field loyalty_points:', userData.loyalty_points);
+          console.log('Field points:', userData.points);
+          
+          const profile: LoyaltyUser = {
+            uid: user.uid,
+            email: user.email || '',
+            displayName: user.displayName || userData.displayName || userData.name || 'User',
+            loyaltyPoints: loyaltyPoints,
+            totalOrders: userData.totalOrders || 0,
+            totalSpent: userData.totalSpent || 0,
+            isFirstTimeUser: userData.isFirstTimeUser ?? true,
+            createdAt: userData.createdAt || firestore.FieldValue.serverTimestamp(),
+            updatedAt: userData.updatedAt || firestore.FieldValue.serverTimestamp()
+          };
+          
+          console.log('Final profile object:', profile);
+          setLoyaltyProfile(profile);
+          setQrToken(generateSecureToken(profile.uid));
+        } else {
+          console.log('No user document found, creating new profile');
+          // Create a new user profile if one doesn't exist
+          const newProfile: LoyaltyUser = {
+            uid: user.uid,
+            email: user.email || '',
+            displayName: user.displayName || 'User',
+            loyaltyPoints: 0,
+            totalOrders: 0,
+            totalSpent: 0,
+            isFirstTimeUser: true,
+            createdAt: firestore.FieldValue.serverTimestamp(),
+            updatedAt: firestore.FieldValue.serverTimestamp()
+          };
+          
+          // Add the profile to users collection using native SDK
+          const createResult = await createUserDocument(user.uid, newProfile);
+          if (createResult.success) {
+            console.log('Created new profile:', newProfile);
+            setLoyaltyProfile(newProfile);
+            setQrToken(generateSecureToken(newProfile.uid));
+          } else {
+            throw createResult.error;
+          }
+        }
+      } catch (firestoreError) {
+        console.error('Firestore operation error:', firestoreError);
+        throw firestoreError;
       }
     } catch (error) {
       console.error('Error loading loyalty profile:', error);
-      setError('Failed to load loyalty profile: ' + error.message);
+      setError('Failed to load loyalty profile: ' + (error?.message || 'Unknown error'));
     } finally {
       setLoading(false);
     }
@@ -176,15 +188,13 @@ const LoyaltyQRCodeScreen = () => {
   // Manual refresh function for debugging
   const debugRefresh = async () => {
     console.log('=== DEBUG REFRESH ===');
-    const user = auth.currentUser;
+    const user = getCurrentUser();
     if (!user) return;
     
     try {
-      const userDocRef = doc(db, 'users', user.uid);
-      const userDoc = await getDoc(userDocRef);
+      const userData = await getUserDocument(user.uid);
       
-      if (userDoc.exists()) {
-        const userData = userDoc.data();
+      if (userData) {
         console.log('=== FRESH DATA FROM DATABASE ===');
         console.log('Full document:', JSON.stringify(userData, null, 2));
         console.log('loyaltyPoints field:', userData.loyaltyPoints);
@@ -198,7 +208,7 @@ const LoyaltyQRCodeScreen = () => {
       }
     } catch (error) {
       console.error('Debug refresh error:', error);
-      Alert.alert('Debug Error', error.message);
+      Alert.alert('Debug Error', error?.message || 'Unknown error');
     }
     
     // Also refresh the profile
@@ -220,8 +230,12 @@ const LoyaltyQRCodeScreen = () => {
 
   const handleLogout = async () => {
     try {
-      await signOut(auth);
-      router.replace('/');
+      const result = await signOutUser();
+      if (result.success) {
+        router.replace('/');
+      } else {
+        throw result.error;
+      }
     } catch (error) {
       console.error('Error signing out:', error);
       Alert.alert('Error', 'Failed to sign out');
@@ -424,50 +438,12 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: COLORS.primaryBlackHex,
   },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: COLORS.primaryBlackHex,
-  },
-  loadingText: {
-    fontFamily: FONTFAMILY.poppins_regular,
-    fontSize: FONTSIZE.size_14,
-    color: COLORS.primaryWhiteHex,
-    marginTop: SPACING.space_15,
-  },
-  errorContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: COLORS.primaryBlackHex,
-    padding: SPACING.space_24,
-  },
-  errorText: {
-    fontFamily: FONTFAMILY.poppins_medium,
-    fontSize: FONTSIZE.size_16,
-    color: COLORS.primaryWhiteHex,
-    textAlign: 'center',
-    marginBottom: SPACING.space_24,
-    marginTop: SPACING.space_15,
-  },
-  retryButton: {
-    backgroundColor: COLORS.primaryOrangeHex,
-    paddingHorizontal: SPACING.space_24,
-    paddingVertical: SPACING.space_12,
-    borderRadius: BORDERRADIUS.radius_15,
-  },
-  retryButtonText: {
-    fontFamily: FONTFAMILY.poppins_medium,
-    fontSize: FONTSIZE.size_16,
-    color: COLORS.primaryWhiteHex,
-  },
   ScrollViewFlex: {
     flexGrow: 1,
   },
   HeaderContainer: {
-    paddingHorizontal: SPACING.space_24,
-    paddingVertical: SPACING.space_15,
+    paddingHorizontal: SPACING.space_30,
+    paddingVertical: SPACING.space_20,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -479,12 +455,12 @@ const styles = StyleSheet.create({
   },
   logoutText: {
     fontFamily: FONTFAMILY.poppins_medium,
-    fontSize: FONTSIZE.size_16,
+    fontSize: FONTSIZE.size_14,
     color: COLORS.primaryOrangeHex,
   },
   UserHeaderContainer: {
-    alignItems: 'center',
-    paddingVertical: SPACING.space_20,
+    paddingHorizontal: SPACING.space_30,
+    paddingBottom: SPACING.space_20,
   },
   WelcomeText: {
     fontFamily: FONTFAMILY.poppins_regular,
@@ -495,19 +471,16 @@ const styles = StyleSheet.create({
     fontFamily: FONTFAMILY.poppins_semibold,
     fontSize: FONTSIZE.size_24,
     color: COLORS.primaryWhiteHex,
-    marginTop: SPACING.space_8,
   },
   PointsContainer: {
-    paddingHorizontal: SPACING.space_24,
-    marginBottom: SPACING.space_20,
+    paddingHorizontal: SPACING.space_30,
+    paddingBottom: SPACING.space_20,
   },
   PointsCard: {
-    backgroundColor: COLORS.primaryGreyHex,
+    backgroundColor: COLORS.primaryDarkGreyHex,
     borderRadius: BORDERRADIUS.radius_15,
     padding: SPACING.space_20,
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: COLORS.primaryOrangeHex,
   },
   PointsLabel: {
     fontFamily: FONTFAMILY.poppins_regular,
@@ -516,21 +489,21 @@ const styles = StyleSheet.create({
   },
   PointsValue: {
     fontFamily: FONTFAMILY.poppins_bold,
-    fontSize: FONTSIZE.size_36,
+    fontSize: FONTSIZE.size_24,
     color: COLORS.primaryOrangeHex,
     marginVertical: SPACING.space_8,
   },
   PointsSubtext: {
     fontFamily: FONTFAMILY.poppins_medium,
-    fontSize: FONTSIZE.size_14,
+    fontSize: FONTSIZE.size_16,
     color: COLORS.primaryWhiteHex,
   },
   debugButton: {
-    backgroundColor: 'rgba(255, 0, 0, 0.2)',
-    paddingHorizontal: SPACING.space_12,
-    paddingVertical: SPACING.space_8,
-    borderRadius: BORDERRADIUS.radius_10,
     marginTop: SPACING.space_10,
+    paddingHorizontal: SPACING.space_15,
+    paddingVertical: SPACING.space_8,
+    backgroundColor: COLORS.primaryGreyHex,
+    borderRadius: BORDERRADIUS.radius_8,
   },
   debugButtonText: {
     fontFamily: FONTFAMILY.poppins_regular,
@@ -538,22 +511,21 @@ const styles = StyleSheet.create({
     color: COLORS.primaryWhiteHex,
   },
   QRContainer: {
+    paddingHorizontal: SPACING.space_30,
+    paddingBottom: SPACING.space_30,
     alignItems: 'center',
-    padding: SPACING.space_24,
-    backgroundColor: COLORS.primaryGreyHex,
-    margin: SPACING.space_15,
-    borderRadius: BORDERRADIUS.radius_20,
   },
   QRHeader: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    width: '100%',
     marginBottom: SPACING.space_20,
   },
   QRTitle: {
     fontFamily: FONTFAMILY.poppins_semibold,
     fontSize: FONTSIZE.size_18,
     color: COLORS.primaryWhiteHex,
-    marginRight: SPACING.space_10,
   },
   RefreshButton: {
     padding: SPACING.space_8,
@@ -562,90 +534,74 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.primaryWhiteHex,
     padding: SPACING.space_20,
     borderRadius: BORDERRADIUS.radius_15,
-    marginBottom: SPACING.space_15,
-    elevation: 5,
-    shadowColor: COLORS.primaryBlackHex,
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
+    marginBottom: SPACING.space_20,
   },
   QRInstructions: {
-    fontFamily: FONTFAMILY.poppins_medium,
+    fontFamily: FONTFAMILY.poppins_regular,
     fontSize: FONTSIZE.size_14,
-    color: COLORS.primaryWhiteHex,
+    color: COLORS.primaryLightGreyHex,
     textAlign: 'center',
     marginBottom: SPACING.space_8,
-    lineHeight: 20,
   },
   QRExpiry: {
     fontFamily: FONTFAMILY.poppins_regular,
     fontSize: FONTSIZE.size_12,
-    color: COLORS.primaryLightGreyHex,
+    color: COLORS.primaryGreyHex,
     textAlign: 'center',
   },
   HowItWorksContainer: {
-    margin: SPACING.space_15,
-    padding: SPACING.space_20,
-    backgroundColor: COLORS.primaryGreyHex,
-    borderRadius: BORDERRADIUS.radius_15,
+    paddingHorizontal: SPACING.space_30,
+    paddingBottom: SPACING.space_20,
   },
   HowItWorksTitle: {
     fontFamily: FONTFAMILY.poppins_semibold,
-    fontSize: FONTSIZE.size_16,
+    fontSize: FONTSIZE.size_18,
     color: COLORS.primaryWhiteHex,
-    marginBottom: SPACING.space_15,
-    textAlign: 'center',
+    marginBottom: SPACING.space_20,
   },
   StepContainer: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    marginBottom: SPACING.space_15,
+    marginBottom: SPACING.space_16,
   },
   StepNumber: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
     backgroundColor: COLORS.primaryOrangeHex,
-    justifyContent: 'center',
     alignItems: 'center',
+    justifyContent: 'center',
     marginRight: SPACING.space_12,
   },
   StepNumberText: {
-    fontFamily: FONTFAMILY.poppins_semibold,
-    fontSize: FONTSIZE.size_12,
+    fontFamily: FONTFAMILY.poppins_bold,
+    fontSize: FONTSIZE.size_14,
     color: COLORS.primaryWhiteHex,
   },
   StepContent: {
     flex: 1,
   },
   StepTitle: {
-    fontFamily: FONTFAMILY.poppins_medium,
-    fontSize: FONTSIZE.size_14,
+    fontFamily: FONTFAMILY.poppins_semibold,
+    fontSize: FONTSIZE.size_16,
     color: COLORS.primaryWhiteHex,
     marginBottom: SPACING.space_4,
   },
   StepDescription: {
     fontFamily: FONTFAMILY.poppins_regular,
-    fontSize: FONTSIZE.size_12,
+    fontSize: FONTSIZE.size_14,
     color: COLORS.primaryLightGreyHex,
-    lineHeight: 16,
+    lineHeight: 20,
   },
   RulesContainer: {
-    margin: SPACING.space_15,
-    padding: SPACING.space_20,
-    backgroundColor: 'rgba(255, 165, 0, 0.1)',
-    borderRadius: BORDERRADIUS.radius_15,
-    borderLeftWidth: 4,
-    borderLeftColor: COLORS.primaryOrangeHex,
+    paddingHorizontal: SPACING.space_30,
+    paddingBottom: SPACING.space_20,
   },
   RulesTitle: {
     fontFamily: FONTFAMILY.poppins_semibold,
     fontSize: FONTSIZE.size_16,
     color: COLORS.primaryWhiteHex,
-    marginBottom: SPACING.space_15,
+    marginBottom: SPACING.space_16,
   },
   RuleItem: {
     flexDirection: 'row',
@@ -655,24 +611,21 @@ const styles = StyleSheet.create({
   RuleText: {
     fontFamily: FONTFAMILY.poppins_regular,
     fontSize: FONTSIZE.size_14,
-    color: COLORS.primaryWhiteHex,
+    color: COLORS.primaryLightGreyHex,
     marginLeft: SPACING.space_8,
-    flex: 1,
   },
   ActionsContainer: {
+    paddingHorizontal: SPACING.space_30,
+    paddingBottom: SPACING.space_30,
     flexDirection: 'row',
-    justifyContent: 'space-around',
-    margin: SPACING.space_15,
-    marginBottom: SPACING.space_30,
+    justifyContent: 'space-between',
   },
   ActionButton: {
-    backgroundColor: COLORS.primaryGreyHex,
-    paddingVertical: SPACING.space_15,
-    paddingHorizontal: SPACING.space_20,
-    borderRadius: BORDERRADIUS.radius_15,
+    backgroundColor: COLORS.primaryDarkGreyHex,
+    borderRadius: BORDERRADIUS.radius_10,
+    padding: SPACING.space_16,
     alignItems: 'center',
-    flex: 1,
-    marginHorizontal: SPACING.space_8,
+    flex: 0.48,
   },
   ActionButtonText: {
     fontFamily: FONTFAMILY.poppins_medium,
@@ -680,6 +633,43 @@ const styles = StyleSheet.create({
     color: COLORS.primaryWhiteHex,
     marginTop: SPACING.space_8,
     textAlign: 'center',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: COLORS.primaryBlackHex,
+  },
+  loadingText: {
+    fontFamily: FONTFAMILY.poppins_regular,
+    fontSize: FONTSIZE.size_16,
+    color: COLORS.primaryWhiteHex,
+    marginTop: SPACING.space_16,
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: COLORS.primaryBlackHex,
+    paddingHorizontal: SPACING.space_30,
+  },
+  errorText: {
+    fontFamily: FONTFAMILY.poppins_regular,
+    fontSize: FONTSIZE.size_16,
+    color: COLORS.primaryRedHex,
+    textAlign: 'center',
+    marginVertical: SPACING.space_20,
+  },
+  retryButton: {
+    backgroundColor: COLORS.primaryOrangeHex,
+    paddingHorizontal: SPACING.space_20,
+    paddingVertical: SPACING.space_12,
+    borderRadius: BORDERRADIUS.radius_8,
+  },
+  retryButtonText: {
+    fontFamily: FONTFAMILY.poppins_semibold,
+    fontSize: FONTSIZE.size_14,
+    color: COLORS.primaryWhiteHex,
   },
 });
 

@@ -1,12 +1,11 @@
-import { collection, doc, getDocs, getDoc, query, where, orderBy, limit } from 'firebase/firestore';
-import { db } from './config';
+import { db } from './firebase-config';
 import { Product, Category } from '../types/database';
 
 // Get all products
 export const getAllProducts = async (): Promise<Product[]> => {
   try {
-    const productsRef = collection(db, 'products');
-    const querySnapshot = await getDocs(productsRef);
+    const productsRef = db.collection('products');
+    const querySnapshot = await productsRef.get();
     
     const products: Product[] = [];
     querySnapshot.forEach((doc) => {
@@ -26,10 +25,10 @@ export const getAllProducts = async (): Promise<Product[]> => {
 // Get product by ID
 export const getProductById = async (productId: string): Promise<Product | null> => {
   try {
-    const docRef = doc(db, 'products', productId);
-    const docSnap = await getDoc(docRef);
+    const docRef = db.collection('products').doc(productId);
+    const docSnap = await docRef.get();
 
-    if (docSnap.exists()) {
+    if (docSnap.exists) {
       return {
         id: docSnap.id,
         ...docSnap.data()
@@ -45,11 +44,8 @@ export const getProductById = async (productId: string): Promise<Product | null>
 // Get products by category
 export const getProductsByCategory = async (category: string): Promise<Product[]> => {
   try {
-    const q = query(
-      collection(db, 'products'),
-      where('type', '==', category)
-    );
-    const querySnapshot = await getDocs(q);
+    const q = db.collection('products').where('type', '==', category);
+    const querySnapshot = await q.get();
     
     const products: Product[] = [];
     querySnapshot.forEach((doc) => {
@@ -69,12 +65,10 @@ export const getProductsByCategory = async (category: string): Promise<Product[]
 // Get top rated products
 export const getTopRatedProducts = async (limit_count: number = 5): Promise<Product[]> => {
   try {
-    const q = query(
-      collection(db, 'products'),
-      orderBy('average_rating', 'desc'),
-      limit(limit_count)
-    );
-    const querySnapshot = await getDocs(q);
+    const q = db.collection('products')
+      .orderBy('average_rating', 'desc')
+      .limit(limit_count);
+    const querySnapshot = await q.get();
     
     const products: Product[] = [];
     querySnapshot.forEach((doc) => {
@@ -94,8 +88,8 @@ export const getTopRatedProducts = async (limit_count: number = 5): Promise<Prod
 // Get all categories
 export const getAllCategories = async (): Promise<Category[]> => {
   try {
-    const categoriesRef = collection(db, 'categories');
-    const querySnapshot = await getDocs(categoriesRef);
+    const categoriesRef = db.collection('categories');
+    const querySnapshot = await categoriesRef.get();
     
     const categories: Category[] = [];
     querySnapshot.forEach((doc) => {

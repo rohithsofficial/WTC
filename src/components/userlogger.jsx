@@ -4,58 +4,61 @@
 
 import { Timestamp } from 'firebase/firestore';
 
-export enum LogLevel {
-  DEBUG = 'DEBUG',
-  INFO = 'INFO',
-  WARN = 'WARN',
-  ERROR = 'ERROR',
-  CRITICAL = 'CRITICAL'
-}
+const LogLevel = {
+  DEBUG: 'DEBUG',
+  INFO: 'INFO',
+  WARN: 'WARN',
+  ERROR: 'ERROR',
+  CRITICAL: 'CRITICAL',
+};
 
-export enum LogCategory {
-  LOYALTY = 'LOYALTY',
-  ORDER = 'ORDER',
-  PAYMENT = 'PAYMENT',
-  AUTH = 'AUTH',
-  SYSTEM = 'SYSTEM',
-  PERFORMANCE = 'PERFORMANCE',
-  USER_ACTION = 'USER_ACTION'
-}
+const LogCategory = {
+  LOYALTY: 'LOYALTY',
+  ORDER: 'ORDER',
+  PAYMENT: 'PAYMENT',
+  AUTH: 'AUTH',
+  SYSTEM: 'SYSTEM',
+  PERFORMANCE: 'PERFORMANCE',
+  USER_ACTION: 'USER_ACTION',
+};
 
-export interface LogEntry {
-  id: string;
-  timestamp: Timestamp;
-  level: LogLevel;
-  category: LogCategory;
-  message: string;
-  userId?: string;
-  orderId?: string;
-  sessionId: string;
-  metadata?: Record<string, any>;
-  stackTrace?: string;
-  deviceInfo?: DeviceInfo;
-  appVersion: string;
-  environment: 'development' | 'staging' | 'production';
-}
+/**
+ * @typedef {Object} LogEntry
+ * @property {string} id
+ * @property {any} timestamp
+ * @property {string} level
+ * @property {string} category
+ * @property {string} message
+ * @property {string} [userId]
+ * @property {string} [orderId]
+ * @property {string} sessionId
+ * @property {Object} [metadata]
+ * @property {string} [stackTrace]
+ * @property {Object} [deviceInfo]
+ * @property {string} appVersion
+ * @property {'development'|'staging'|'production'} environment
+ */
 
-export interface DeviceInfo {
-  platform: string;
-  version: string;
-  model?: string;
-  brand?: string;
-  uniqueId: string;
-}
+/**
+ * @typedef {Object} DeviceInfo
+ * @property {string} platform
+ * @property {string} version
+ * @property {string} [model]
+ * @property {string} [brand]
+ * @property {string} uniqueId
+ */
 
-export interface PerformanceMetric {
-  id: string;
-  timestamp: Timestamp;
-  metricName: string;
-  value: number;
-  unit: string;
-  userId?: string;
-  sessionId: string;
-  metadata?: Record<string, any>;
-}
+/**
+ * @typedef {Object} PerformanceMetric
+ * @property {string} id
+ * @property {any} timestamp
+ * @property {string} metricName
+ * @property {number} value
+ * @property {string} unit
+ * @property {string} [userId]
+ * @property {string} sessionId
+ * @property {Object} [metadata]
+ */
 
 // ================================
 // CORE LOGGER CLASS
@@ -63,28 +66,28 @@ export interface PerformanceMetric {
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { collection, addDoc, writeBatch, doc } from 'firebase/firestore';
-import { db } from '../firebase/config';
+import { db } from '../firebase/firebase-config';
 import * as Device from 'expo-device';
 import { Platform } from 'react-native';
 
 class Logger {
-  private static instance: Logger;
-  private sessionId: string;
-  private deviceInfo: DeviceInfo;
-  private logQueue: LogEntry[] = [];
-  private performanceQueue: PerformanceMetric[] = [];
-  private isOnline: boolean = true;
-  private batchSize: number = 10;
-  private flushInterval: number = 30000; // 30 seconds
+  static instance;
+  sessionId;
+  deviceInfo;
+  logQueue = [];
+  performanceQueue = [];
+  isOnline = true;
+  batchSize = 10;
+  flushInterval = 30000; // 30 seconds
 
-  private constructor() {
+  constructor() {
     this.sessionId = this.generateSessionId();
     this.deviceInfo = this.getDeviceInfo();
     this.startPeriodicFlush();
     this.loadOfflineLogs();
   }
 
-  public static getInstance(): Logger {
+  static getInstance() {
     if (!Logger.instance) {
       Logger.instance = new Logger();
     }
@@ -95,7 +98,7 @@ class Logger {
   // LOYALTY SYSTEM LOGGING
   // ================================
 
-  public logLoyaltyPointsEarned(userId: string, orderId: string, points: number, orderAmount: number) {
+  logLoyaltyPointsEarned(userId, orderId, points, orderAmount) {
     this.log(LogLevel.INFO, LogCategory.LOYALTY, 
       `User earned ${points} loyalty points from order`, {
       userId,
@@ -106,7 +109,7 @@ class Logger {
     });
   }
 
-  public logLoyaltyPointsRedeemed(userId: string, orderId: string, pointsRedeemed: number, discountAmount: number) {
+  logLoyaltyPointsRedeemed(userId, orderId, pointsRedeemed, discountAmount) {
     this.log(LogLevel.INFO, LogCategory.LOYALTY, 
       `User redeemed ${pointsRedeemed} loyalty points for ₹${discountAmount} discount`, {
       userId,
@@ -117,7 +120,7 @@ class Logger {
     });
   }
 
-  public logLoyaltyBalanceUpdate(userId: string, previousBalance: number, newBalance: number, reason: string) {
+  logLoyaltyBalanceUpdate(userId, previousBalance, newBalance, reason) {
     this.log(LogLevel.INFO, LogCategory.LOYALTY, 
       `Loyalty balance updated: ${previousBalance} → ${newBalance} (${reason})`, {
       userId,
@@ -128,7 +131,7 @@ class Logger {
     });
   }
 
-  public logLoyaltyTransactionError(userId: string, orderId: string, error: Error, context: any) {
+  logLoyaltyTransactionError(userId, orderId, error, context) {
     this.log(LogLevel.ERROR, LogCategory.LOYALTY, 
       `Failed to process loyalty transaction: ${error.message}`, {
       userId,
@@ -143,7 +146,7 @@ class Logger {
   // ORDER SYSTEM LOGGING
   // ================================
 
-  public logOrderCreated(userId: string, orderId: string, orderData: any) {
+  logOrderCreated(userId, orderId, orderData) {
     this.log(LogLevel.INFO, LogCategory.ORDER, 
       `Order created successfully`, {
       userId,
@@ -156,7 +159,7 @@ class Logger {
     });
   }
 
-  public logOrderPaymentProcessed(userId: string, orderId: string, paymentMode: string, amount: number) {
+  logOrderPaymentProcessed(userId, orderId, paymentMode, amount) {
     this.log(LogLevel.INFO, LogCategory.PAYMENT, 
       `Payment processed successfully`, {
       userId,
@@ -167,7 +170,7 @@ class Logger {
     });
   }
 
-  public logOrderError(userId: string, orderId: string, error: Error, stage: string) {
+  logOrderError(userId, orderId, error, stage) {
     this.log(LogLevel.ERROR, LogCategory.ORDER, 
       `Order processing failed at ${stage}: ${error.message}`, {
       userId,
@@ -182,7 +185,7 @@ class Logger {
   // USER ACTION LOGGING
   // ================================
 
-  public logUserAction(userId: string, action: string, screen: string, metadata?: any) {
+  logUserAction(userId, action, screen, metadata) {
     this.log(LogLevel.INFO, LogCategory.USER_ACTION, 
       `User performed action: ${action} on ${screen}`, {
       userId,
@@ -192,7 +195,7 @@ class Logger {
     });
   }
 
-  public logScreenNavigation(userId: string, fromScreen: string, toScreen: string, params?: any) {
+  logScreenNavigation(userId, fromScreen, toScreen, params) {
     this.log(LogLevel.DEBUG, LogCategory.USER_ACTION, 
       `Navigation: ${fromScreen} → ${toScreen}`, {
       userId,
@@ -206,8 +209,8 @@ class Logger {
   // PERFORMANCE LOGGING
   // ================================
 
-  public logPerformanceMetric(metricName: string, value: number, unit: string, userId?: string, metadata?: any) {
-    const metric: PerformanceMetric = {
+  logPerformanceMetric(metricName, value, unit, userId, metadata) {
+    const metric = {
       id: this.generateId(),
       timestamp: Timestamp.now(),
       metricName,
@@ -222,7 +225,7 @@ class Logger {
     this.checkAndFlushPerformance();
   }
 
-  public startTimer(name: string): () => void {
+  startTimer(name) {
     const startTime = Date.now();
     return () => {
       const duration = Date.now() - startTime;
@@ -234,8 +237,8 @@ class Logger {
   // CORE LOGGING METHODS
   // ================================
 
-  private log(level: LogLevel, category: LogCategory, message: string, metadata?: any, error?: Error) {
-    const logEntry: LogEntry = {
+  log(level, category, message, metadata, error) {
+    const logEntry = {
       id: this.generateId(),
       timestamp: Timestamp.now(),
       level,
@@ -261,7 +264,7 @@ class Logger {
     this.checkAndFlush();
   }
 
-  private consoleLog(entry: LogEntry) {
+  consoleLog(entry) {
     const color = this.getConsoleColor(entry.level);
     const prefix = `[${entry.level}][${entry.category}]`;
     
@@ -272,7 +275,7 @@ class Logger {
     );
   }
 
-  private getConsoleColor(level: LogLevel): string {
+  getConsoleColor(level) {
     switch (level) {
       case LogLevel.DEBUG: return '#6B7280';
       case LogLevel.INFO: return '#3B82F6';
@@ -287,19 +290,19 @@ class Logger {
   // QUEUE MANAGEMENT
   // ================================
 
-  private async checkAndFlush() {
+  checkAndFlush() {
     if (this.logQueue.length >= this.batchSize || !this.isOnline) {
-      await this.flushLogs();
+      this.flushLogs();
     }
   }
 
-  private async checkAndFlushPerformance() {
+  checkAndFlushPerformance() {
     if (this.performanceQueue.length >= this.batchSize) {
-      await this.flushPerformanceMetrics();
+      this.flushPerformanceMetrics();
     }
   }
 
-  private async flushLogs() {
+  async flushLogs() {
     if (this.logQueue.length === 0) return;
 
     try {
@@ -322,7 +325,7 @@ class Logger {
     }
   }
 
-  private async flushPerformanceMetrics() {
+  async flushPerformanceMetrics() {
     if (this.performanceQueue.length === 0) return;
 
     try {
@@ -347,7 +350,7 @@ class Logger {
   // OFFLINE STORAGE
   // ================================
 
-  private async saveToLocalStorage(logEntry: LogEntry) {
+  async saveToLocalStorage(logEntry) {
     try {
       const key = `log_${logEntry.id}`;
       await AsyncStorage.setItem(key, JSON.stringify(logEntry));
@@ -356,7 +359,7 @@ class Logger {
     }
   }
 
-  private async loadOfflineLogs() {
+  async loadOfflineLogs() {
     try {
       const keys = await AsyncStorage.getAllKeys();
       const logKeys = keys.filter(key => key.startsWith('log_'));
@@ -373,7 +376,7 @@ class Logger {
     }
   }
 
-  private async clearLocalStorage() {
+  async clearLocalStorage() {
     try {
       const keys = await AsyncStorage.getAllKeys();
       const logKeys = keys.filter(key => key.startsWith('log_'));
@@ -387,22 +390,22 @@ class Logger {
   // UTILITY METHODS
   // ================================
 
-  private startPeriodicFlush() {
+  startPeriodicFlush() {
     setInterval(() => {
       this.flushLogs();
       this.flushPerformanceMetrics();
     }, this.flushInterval);
   }
 
-  private generateSessionId(): string {
+  generateSessionId() {
     return `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   }
 
-  private generateId(): string {
+  generateId() {
     return `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   }
 
-  private getDeviceInfo(): DeviceInfo {
+  getDeviceInfo() {
     return {
       platform: Platform.OS,
       version: Platform.Version.toString(),
@@ -412,7 +415,7 @@ class Logger {
     };
   }
 
-  public setOnlineStatus(isOnline: boolean) {
+  setOnlineStatus(isOnline) {
     this.isOnline = isOnline;
     if (isOnline) {
       this.flushLogs();
@@ -424,23 +427,23 @@ class Logger {
   // PUBLIC CONVENIENCE METHODS
   // ================================
 
-  public debug(category: LogCategory, message: string, metadata?: any) {
+  debug(category, message, metadata) {
     this.log(LogLevel.DEBUG, category, message, metadata);
   }
 
-  public info(category: LogCategory, message: string, metadata?: any) {
+  info(category, message, metadata) {
     this.log(LogLevel.INFO, category, message, metadata);
   }
 
-  public warn(category: LogCategory, message: string, metadata?: any) {
+  warn(category, message, metadata) {
     this.log(LogLevel.WARN, category, message, metadata);
   }
 
-  public error(category: LogCategory, message: string, error?: Error, metadata?: any) {
+  error(category, message, error, metadata) {
     this.log(LogLevel.ERROR, category, message, metadata, error);
   }
 
-  public critical(category: LogCategory, message: string, error?: Error, metadata?: any) {
+  critical(category, message, error, metadata) {
     this.log(LogLevel.CRITICAL, category, message, metadata, error);
   }
 }
@@ -451,7 +454,7 @@ class Logger {
 
 import { useCallback, useEffect } from 'react';
 
-export const useLogger = (userId?: string, screenName?: string) => {
+export const useLogger = (userId, screenName) => {
   const logger = Logger.getInstance();
 
   useEffect(() => {
@@ -460,13 +463,13 @@ export const useLogger = (userId?: string, screenName?: string) => {
     }
   }, [screenName, userId]);
 
-  const logAction = useCallback((action: string, metadata?: any) => {
+  const logAction = useCallback((action, metadata) => {
     if (userId && screenName) {
       logger.logUserAction(userId, action, screenName, metadata);
     }
   }, [userId, screenName]);
 
-  const logError = useCallback((error: Error, context?: string) => {
+  const logError = useCallback((error, context) => {
     logger.error(LogCategory.SYSTEM, `Error in ${screenName}: ${error.message}`, error, {
       userId,
       screen: screenName,
@@ -474,7 +477,7 @@ export const useLogger = (userId?: string, screenName?: string) => {
     });
   }, [userId, screenName]);
 
-  const startTimer = useCallback((name: string) => {
+  const startTimer = useCallback((name) => {
     return logger.startTimer(`${screenName}_${name}`);
   }, [screenName]);
 
@@ -555,8 +558,8 @@ const PaymentScreen = () => {
     } catch (error) {
       paymentTimer(); // End timer even on error
       
-      logger.logOrderError(userId, 'unknown', error as Error, 'payment_processing');
-      logError(error as Error, 'payment_processing');
+      logger.logOrderError(userId, 'unknown', error, 'payment_processing');
+      logError(error, 'payment_processing');
       
       setShowAnimation(false);
       Alert.alert('Payment Failed', 'Failed to save order details. Please try again.');

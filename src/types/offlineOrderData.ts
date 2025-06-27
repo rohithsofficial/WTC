@@ -1,5 +1,4 @@
 // src/interfaces/OrderData.ts
-import { Timestamp } from 'firebase/firestore';
 
 export interface OrderItem {
   id: string;
@@ -68,9 +67,9 @@ export interface OrderData {
   baristaNotes: string | null;
   
   // Timestamps
-  createdAt: Timestamp;
-  updatedAt?: Timestamp;
-  completedAt?: Timestamp;
+  createdAt: any;
+  updatedAt?: any;
+  completedAt?: any;
   
   // Reward and Rating
   isRewardEarned: boolean;
@@ -110,7 +109,7 @@ export interface OrderData {
   refundInfo?: {
     refundAmount: number;
     refundReason: string;
-    refundedAt: Timestamp;
+    refundedAt: any;
     refundMode: string;
   };
 }

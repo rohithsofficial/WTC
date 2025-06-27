@@ -1,5 +1,5 @@
-import { doc, updateDoc, setDoc, getDoc } from 'firebase/firestore';
-import { db } from '../firebase/config';
+import firestore, { doc, updateDoc, setDoc, getDoc } from '@react-native-firebase/firestore';
+import { db } from '../firebase/firebase-config';
 
 // ✅ CORRECT: Update existing document
 export const updateUserBarcodeCorrect = async (userId: string, barcodeToken: string) => {

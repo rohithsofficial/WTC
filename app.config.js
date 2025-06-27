@@ -4,7 +4,7 @@ export default {
   expo: {
     name: "wtcApp",
     slug: "react-native-firebase", // ✅ Fixed: removed invalid character, use kebab-case
-    owner: "rohithofficial", // ✅ Added: required by EAS
+    owner: "rohithsofficial", // ✅ Added: required by EAS
     platforms: ["ios", "android", "web"],
     version: "1.0.0",
     orientation: "portrait",
@@ -28,6 +28,7 @@ export default {
       }
     },
     android: {
+      "edgeToEdgeEnabled": true,
       // "adaptiveIcon": {
       //   "foregroundImage": "./assets/adaptive-icon.png",
       //   "backgroundColor": "#FFFFFF"
@@ -43,10 +44,10 @@ export default {
       ],
       package: "com.rohithofficial.wtccoffee",
     },
-    plugins: [
+   plugins: [
       "expo-notifications",
       "expo-router",
-      "expo-barcode-scanner",
+      // "expo-barcode-scanner", // This line should be gone!
       [
         "expo-image-picker",
         {
@@ -63,8 +64,8 @@ export default {
     ],
     scheme: "wtc",
     extra: {
-      eas: {
-        projectId: "ef749917-19c7-4e5b-992f-99d37805c8d7",
+      "eas": {
+        "projectId": "7715d797-e572-4d29-90c3-30d357ec824f"
       },
       firebaseApiKey: process.env.FIREBASE_API_KEY,
       firebaseAuthDomain: process.env.FIREBASE_AUTH_DOMAIN,

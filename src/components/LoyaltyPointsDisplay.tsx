@@ -1,10 +1,9 @@
 // src/components/LoyaltyPointsDisplay.tsx
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, Alert } from 'react-native';
 import { LOYALTY_CONFIG } from '../types/loyalty';
-import { doc, getDoc } from 'firebase/firestore';
 import { COLORS } from '../theme/theme';
-import { db, auth } from "../firebase/config";
+import { db, auth } from "../firebase/firebase-config";
 
 interface LoyaltyPointsDisplayProps {
   initialPoints?: number;
@@ -36,18 +35,24 @@ const LoyaltyPointsDisplay: React.FC<LoyaltyPointsDisplayProps> = ({
           setLoading(false);
           return;
         }
-
-        const docRef = doc(db, 'users', userId);
-        const docSnap = await getDoc(docRef);
-
+        const docRef = db.collection('users').doc(userId);
+        let docSnap;
+        try {
+          docSnap = await docRef.get();
+        } catch (err) {
+          Alert.alert('Connection Error', 'Unable to fetch your loyalty data. Please try again.');
+          setLoading(false);
+          return;
+        }
         if (docSnap.exists()) {
           const data = docSnap.data();
-          const points = data.loyaltyPoints ?? 0;
+          const points = data?.loyaltyPoints ?? 0;
           setAvailablePoints(points);
           onPointsUpdate?.(points);
         }
       } catch (error) {
         console.error('Error fetching loyalty data:', error);
+        Alert.alert('Error', 'Unable to load your loyalty points. Please try again later.');
       } finally {
         setLoading(false);
       }

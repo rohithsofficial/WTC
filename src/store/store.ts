@@ -5,8 +5,7 @@ import {persist, createJSONStorage} from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Product, Category, CartItem, OrderHistoryItem } from '../types/interfaces';
 import { fetchAllProductsWithCategories } from '../firebase/product-service';
-import { auth, db } from '../firebase/config';
-import { doc, updateDoc, getDoc, setDoc } from 'firebase/firestore';
+import { auth, db } from '../firebase/firebase-config';
 
 interface StoreState {
   categories: Category[];
@@ -133,17 +132,17 @@ export const useStore = create<StoreState>((set, get) => ({
       const user = auth.currentUser;
       if (user) {
         try {
-          const userDocRef = doc(db, 'users', user.uid);
-          const userDoc = await getDoc(userDocRef);
+          const userDocRef = db.collection('users').doc(user.uid);
+          const userDoc = await userDocRef.get();
           
-          if (userDoc.exists()) {
-            await updateDoc(userDocRef, {
+          if (userDoc.exists) {
+            await userDocRef.update({
               favorites: newFavorites.map(fav => fav.id),
               updatedAt: new Date().toISOString()
             });
           } else {
             // If user document doesn't exist, create it with favorites
-            await setDoc(userDocRef, {
+            await userDocRef.set({
               favorites: [product.id],
               createdAt: new Date().toISOString(),
               updatedAt: new Date().toISOString()
@@ -167,11 +166,11 @@ export const useStore = create<StoreState>((set, get) => ({
     const user = auth.currentUser;
     if (user) {
       try {
-        const userDocRef = doc(db, 'users', user.uid);
-        const userDoc = await getDoc(userDocRef);
+        const userDocRef = db.collection('users').doc(user.uid);
+        const userDoc = await userDocRef.get();
         
-        if (userDoc.exists()) {
-          await updateDoc(userDocRef, {
+        if (userDoc.exists) {
+          await userDocRef.update({
             favorites: newFavorites.map(fav => fav.id),
             updatedAt: new Date().toISOString()
           });
@@ -195,10 +194,10 @@ export const useStore = create<StoreState>((set, get) => ({
 
     try {
       set({ isLoading: true });
-      const userDocRef = doc(db, 'users', user.uid);
-      const userDoc = await getDoc(userDocRef);
+      const userDocRef = db.collection('users').doc(user.uid);
+      const userDoc = await userDocRef.get();
       
-      if (userDoc.exists() && userDoc.data().favorites) {
+      if (userDoc.exists && userDoc.data().favorites) {
         const favoriteIds = userDoc.data().favorites;
         const { allProducts } = get();
         

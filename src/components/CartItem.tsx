@@ -17,16 +17,23 @@ import {
   SPACING,
 } from '../theme/theme';
 
+interface CartItemPrice {
+  size: string;
+  price: string;
+  quantity: number;
+  currency?: string;
+}
+
 interface CartItemProps {
   id: string;
   name: string;
   imagelink_square: ImageSourcePropType;
   special_ingredient: string;
   roasted: string;
-  prices: any;
+  prices: CartItemPrice[];
   type?: string;
-  incrementCartItemQuantityHandler: any;
-  decrementCartItemQuantityHandler: any;
+  incrementCartItemQuantityHandler: (id: string, size: string) => void;
+  decrementCartItemQuantityHandler: (id: string, size: string) => void;
   onImagePress?: () => void;
 }
 
@@ -74,7 +81,7 @@ const CartItem: React.FC<CartItemProps> = ({
             style={styles.quantityButton}
                 onPress={() => {
               if (prices[0].quantity > 1) {
-                  decrementCartItemQuantityHandler(id, prices[0].size);
+                  decrementCartItemQuantityHandler(String(id), String(prices[0].size));
               }
             }}
           >
@@ -83,7 +90,7 @@ const CartItem: React.FC<CartItemProps> = ({
           <Text style={styles.quantityText}>{prices[0].quantity}</Text>
               <TouchableOpacity
             style={styles.quantityButton}
-            onPress={() => incrementCartItemQuantityHandler(id, prices[0].size)}
+            onPress={() => incrementCartItemQuantityHandler(String(id), String(prices[0].size))}
           >
             <MaterialIcons name="add" color={COLORS.primaryOrangeHex} size={FONTSIZE.size_24} />
               </TouchableOpacity>

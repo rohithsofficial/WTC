@@ -1,5 +1,5 @@
-import { collection, addDoc, getDocs } from 'firebase/firestore';
-import { db } from '../firebase/config';
+import firestore, { collection, addDoc, getDocs } from '@react-native-firebase/firestore';
+import { db } from '../firebase/firebase-config';
 
 // Sample products data
 const sampleProducts = [

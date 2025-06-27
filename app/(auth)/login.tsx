@@ -16,8 +16,8 @@ import {
 import { Stack, router } from 'expo-router';
 import { FontAwesome } from '@expo/vector-icons';
 import { COLORS, FONTFAMILY, FONTSIZE, SPACING, BORDERRADIUS } from '../../src/theme/theme';
-import { auth } from '../../src/firebase/config';
-import { signInWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth';
+import { auth } from '../../src/firebase/firebase-config';
+import authModule from '@react-native-firebase/auth';
 
 const Login = () => {
   const [email, setEmail] = useState('');
@@ -36,7 +36,7 @@ const Login = () => {
 
     try {
       setLoading(true);
-      await signInWithEmailAndPassword(auth, email.trim(), password.trim());
+      await authModule().signInWithEmailAndPassword(email.trim(), password.trim());
       router.replace('/(app)/HomeScreen');
     } catch (error: any) {
       console.error('Login error:', error);
@@ -76,7 +76,7 @@ const Login = () => {
 
     try {
       setResetLoading(true);
-      await sendPasswordResetEmail(auth, resetEmail.trim());
+      await authModule().sendPasswordResetEmail(resetEmail.trim());
       setShowForgotPasswordModal(false);
       Alert.alert(
         'Password Reset Email Sent',

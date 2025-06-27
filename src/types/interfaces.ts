@@ -1,5 +1,3 @@
-import { Timestamp } from "firebase/firestore";
-
 // src/types/interfaces.ts
 export interface Category {
   id: string;
@@ -62,12 +60,12 @@ export interface OrderData {
   orderType: string;
   tableNumber: string;
   status: string;
-  timestamp: Date;
+  timestamp: any;
   orderDate: string;
   orderStatus: string;
   paymentStatus: string;
-  createdAt: Date | Timestamp;
-  updatedAt?: Date;
+  createdAt: any;
+  updatedAt?: any;
 }
 
 export interface Banner {
@@ -132,7 +130,7 @@ export interface OrderData {
   paymentMode: string;
   paymentStatus: string;
   orderDate: string;
-  createdAt: Date | Timestamp;
+  createdAt: any;
 }
 
 export interface Offer {
@@ -147,8 +145,8 @@ export interface Notifications {
   id: string;
   title: string;
   message: string;
-  timestamp: Timestamp;
-  readAt?: Timestamp;
+  timestamp: any;
+  readAt?: any;
   isRead: boolean;
   isActive: boolean;
   type: "offer" | "order" | "system";

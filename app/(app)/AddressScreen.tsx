@@ -12,8 +12,7 @@ import {
 import { Stack, router } from 'expo-router';
 import { FontAwesome } from '@expo/vector-icons';
 import { COLORS, FONTFAMILY, FONTSIZE, SPACING, BORDERRADIUS } from '../../src/theme/theme';
-import { auth, db } from '../../src/firebase/config';
-import { collection, addDoc, getDocs, deleteDoc, doc, query, where, updateDoc } from 'firebase/firestore';
+import { auth, db } from '../../src/firebase/firebase-config';
 import StyledAlert from '../../src/components/StyledAlert';
 
 interface Address {
@@ -71,8 +70,12 @@ const AddressScreen = () => {
       const userId = auth.currentUser?.uid;
       if (!userId) return;
 
-      const q = query(collection(db, 'addresses'), where('userId', '==', userId));
-      const querySnapshot = await getDocs(q);
+      // React Native Firebase syntax
+      const querySnapshot = await db
+        .collection('addresses')
+        .where('userId', '==', userId)
+        .get();
+      
       const addressList = querySnapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
@@ -129,21 +132,24 @@ const AddressScreen = () => {
       }
 
       if (editingAddress) {
-        // Update existing address
-        await updateDoc(doc(db, 'addresses', editingAddress.id), {
-          ...addressForm,
-          updatedAt: new Date().toISOString()
-        });
+        // Update existing address - React Native Firebase syntax
+        await db
+          .collection('addresses')
+          .doc(editingAddress.id)
+          .update({
+            ...addressForm,
+            updatedAt: new Date().toISOString()
+          });
         showAlert('Success', 'Address updated successfully', 'success');
       } else {
-        // Add new address
+        // Add new address - React Native Firebase syntax
         const addressData = {
           ...addressForm,
           userId,
           isDefault: addresses.length === 0, // First address is default
           createdAt: new Date().toISOString()
         };
-        await addDoc(collection(db, 'addresses'), addressData);
+        await db.collection('addresses').add(addressData);
         showAlert('Success', 'Address added successfully', 'success');
       }
 
@@ -157,7 +163,8 @@ const AddressScreen = () => {
 
   const handleDeleteAddress = async (addressId: string) => {
     try {
-      await deleteDoc(doc(db, 'addresses', addressId));
+      // React Native Firebase syntax
+      await db.collection('addresses').doc(addressId).delete();
       showAlert('Success', 'Address deleted successfully', 'success');
       loadAddresses();
     } catch (error) {
@@ -458,4 +465,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default AddressScreen; 
+export default AddressScreen;

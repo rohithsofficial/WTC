@@ -1,7 +1,5 @@
-import { firebase } from '../firebase/config';
-import { Timestamp } from 'firebase/firestore';
-
-const { db } = firebase;
+import { db } from '../firebase/firebase-config';
+import firestore, { Timestamp } from '@react-native-firebase/firestore';
 
 interface OrderData {
   userId: string;
@@ -56,7 +54,7 @@ export const earnCoins = async (
       coinsUsed,
       coinsEarned,
       type,
-      timestamp: Timestamp.now(),
+      timestamp: Timestamp.fromDate(new Date()),
     };
 
     // Update user's coin balance

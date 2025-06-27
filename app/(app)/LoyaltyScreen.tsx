@@ -18,15 +18,25 @@ import GradientBGIcon from '../../src/components/GradientBGIcon';
 import LoyaltyPointsDisplay from '../../src/components/LoyaltyPointsDisplay';
 import LoyaltyTransaction from '../../src/components/LoyaltyTransaction';
 import { loyaltyService, UserLoyaltyProfile, ComprehensiveLoyaltyTransaction } from '../../src/services/loyaltyService';
-import { auth } from '../../src/firebase/config';
+import { auth } from '../../src/firebase/firebase-config';
 import { MaterialIcons } from '@expo/vector-icons';
-import { Timestamp } from 'firebase/firestore';
+// React Native Firebase imports
+import firestore, { FirebaseFirestoreTypes } from '@react-native-firebase/firestore';
 import { LoyaltyUser } from '../../src/types/loyalty';
 
 const { width: screenWidth } = Dimensions.get('window');
 
-const isTimestamp = (value: unknown): value is Timestamp => {
-  return typeof value === 'object' && value !== null && 'toMillis' in value && 'toDate' in value;
+// Type alias for cleaner code
+type Timestamp = FirebaseFirestoreTypes.Timestamp;
+
+// Updated type guards for React Native Firebase Timestamp
+const isFirestoreTimestamp = (value: unknown): value is Timestamp => {
+  return typeof value === 'object' && 
+         value !== null && 
+         'toMillis' in value && 
+         'toDate' in value &&
+         typeof (value as any).toMillis === 'function' &&
+         typeof (value as any).toDate === 'function';
 };
 
 const isDate = (value: unknown): value is Date => {
@@ -35,7 +45,7 @@ const isDate = (value: unknown): value is Date => {
 
 const getTimestampValue = (ts: unknown): number => {
   try {
-    if (isTimestamp(ts)) {
+    if (isFirestoreTimestamp(ts)) {
       return ts.toMillis();
     }
     if (isDate(ts)) {
@@ -174,11 +184,11 @@ const LoyaltyScreen = () => {
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [showErrorModal, setShowErrorModal] = useState(false);
   const [errorDetails, setErrorDetails] = useState({ title: '', message: '' });
-  const [retryFunction, setRetryFunction] = useState<(() => void) | null>(null);
+  const [retryFunction, setRetryFunction] = useState<(() => void) | undefined>(undefined);
 
   const showError = (title: string, message: string, onRetry?: () => void) => {
     setErrorDetails({ title, message });
-    setRetryFunction(onRetry ? () => onRetry : null);
+    setRetryFunction(onRetry ? () => onRetry : undefined);
     setShowErrorModal(true);
   };
 
@@ -196,17 +206,18 @@ const LoyaltyScreen = () => {
     }
   };
 
+  // Updated createSafeTimestamp for React Native Firebase
   const createSafeTimestamp = (value: unknown): Timestamp => {
     try {
-      if (isTimestamp(value)) return value;
-      if (isDate(value)) return Timestamp.fromDate(value);
+      if (isFirestoreTimestamp(value)) return value;
+      if (isDate(value)) return firestore.Timestamp.fromDate(value);
       if (typeof value === 'string' || typeof value === 'number') {
-        return Timestamp.fromDate(new Date(value));
+        return firestore.Timestamp.fromDate(new Date(value));
       }
-      return Timestamp.now();
+      return firestore.Timestamp.now();
     } catch (error) {
       console.error('Error creating timestamp:', error);
-      return Timestamp.now();
+      return firestore.Timestamp.now();
     }
   };
 
@@ -226,13 +237,13 @@ const LoyaltyScreen = () => {
       
       if (profile) {
         try {
-          // Process profile with safe date handling
+          // Process profile with safe date handling for React Native Firebase
           const processedProfile = {
             ...profile,
-            createdAt: profile.createdAt instanceof Timestamp 
+            createdAt: isFirestoreTimestamp(profile.createdAt) 
               ? profile.createdAt.toDate() 
               : new Date(profile.createdAt),
-            updatedAt: profile.updatedAt instanceof Timestamp 
+            updatedAt: isFirestoreTimestamp(profile.updatedAt) 
               ? profile.updatedAt.toDate() 
               : new Date(profile.updatedAt)
           };
@@ -257,9 +268,10 @@ const LoyaltyScreen = () => {
                       timestamp: createSafeTimestamp(timestamp)
                     },
                     auditTrail: {
-                      ...auditTrail,
                       createdAt: createSafeTimestamp(auditTrail?.createdAt),
-                      updatedAt: createSafeTimestamp(auditTrail?.updatedAt)
+                      updatedAt: createSafeTimestamp(auditTrail?.updatedAt),
+                      createdBy: auditTrail?.createdBy || auth.currentUser?.uid || 'system',
+                      updatedBy: auditTrail?.updatedBy
                     }
                   };
                 } catch (transactionError) {
@@ -268,11 +280,13 @@ const LoyaltyScreen = () => {
                     ...transaction,
                     transactionDetails: {
                       ...transaction.transactionDetails,
-                      timestamp: Timestamp.now()
+                      timestamp: firestore.Timestamp.now()
                     },
                     auditTrail: {
-                      createdAt: Timestamp.now(),
-                      updatedAt: Timestamp.now()
+                      createdAt: firestore.Timestamp.now(),
+                      updatedAt: firestore.Timestamp.now(),
+                      createdBy: auth.currentUser?.uid || 'system',
+                      updatedBy: auth.currentUser?.uid
                     }
                   };
                 }
@@ -308,12 +322,14 @@ const LoyaltyScreen = () => {
       } else {
         // Create new profile safely
         try {
-          const newProfile: Omit<LoyaltyUser, 'loyaltyPoints' | 'createdAt' | 'updatedAt' | 'totalOrders'> & { totalOrders?: number } = {
+          const newProfile: Omit<LoyaltyUser, "loyaltyPoints" | "updatedAt" | "createdAt"> & { totalOrders?: number } = {
             uid: auth.currentUser.uid,
             displayName: auth.currentUser.displayName || 'Guest User',
-            email: auth.currentUser.email || undefined,
+            email: auth.currentUser.email || '',
             phone: auth.currentUser.phoneNumber || undefined,
-            totalOrders: 0
+            totalOrders: 0,
+            totalSpent: 0,
+            isFirstTimeUser: true
           };
           
           await loyaltyService.createUserProfile(newProfile);
@@ -360,7 +376,7 @@ const LoyaltyScreen = () => {
 
   const formatTransactionDate = (timestamp: Date | Timestamp) => {
     try {
-      const date = timestamp instanceof Timestamp ? timestamp.toDate() : timestamp;
+      const date = isFirestoreTimestamp(timestamp) ? timestamp.toDate() : timestamp;
       return date.toLocaleDateString('en-IN', {
         day: 'numeric',
         month: 'short',
@@ -425,7 +441,7 @@ const LoyaltyScreen = () => {
           id: transaction.id || 'unknown',
           orderId: 'unknown',
           points: 0,
-          timestamp: Timestamp.now(),
+          timestamp: firestore.Timestamp.now(),
           type: 'adjusted' as const,
           description: 'Transaction data unavailable',
           notes: 'Error processing transaction'
@@ -627,7 +643,7 @@ const styles = StyleSheet.create({
     color: COLORS.primaryDarkGreyHex,
     textAlign: 'center',
     lineHeight: 24,
-    marginBottom: SPACING.space_25,
+    marginBottom: SPACING.space_20,
   },
   modalButtons: {
     flexDirection: 'row',

@@ -18,7 +18,8 @@ import { Stack, router } from 'expo-router';
 import { useCart } from '../../src/store/CartContext';
 import CartItem from '../../src/components/CartItem';
 import { FontAwesome } from '@expo/vector-icons';
-import { auth } from '../../src/firebase/config';
+// Updated import for React Native Firebase
+import auth from '@react-native-firebase/auth';
 import {
   COLORS,
   FONTFAMILY,
@@ -72,30 +73,30 @@ export default function CartScreen() {
     }
   }, [showSignInModal]);
 
-  const showError = (message) => {
+  const showError = (message: string) => {
     setErrorMessage(message);
     setShowErrorToast(true);
   };
 
-  const handleIncrementQuantity = async (id, size) => {
+  const handleIncrementQuantity = async (id: string, size: string) => {
     try {
       dispatch({ type: 'INCREMENT_QUANTITY', payload: { id, size } });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error incrementing quantity:', error);
       showError('Failed to update quantity. Please try again.');
     }
   };
 
-  const handleDecrementQuantity = async (id, size) => {
+  const handleDecrementQuantity = async (id: string, size: string) => {
     try {
       dispatch({ type: 'DECREMENT_QUANTITY', payload: { id, size } });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error decrementing quantity:', error);
       showError('Failed to update quantity. Please try again.');
     }
   };
 
-  const handleRemoveItem = async (id, size) => {
+  const handleRemoveItem = async (id: string, size: string) => {
     try {
       Alert.alert(
         'Remove Item',
@@ -108,7 +109,7 @@ export default function CartScreen() {
             onPress: () => {
               try {
                 dispatch({ type: 'REMOVE_FROM_CART', payload: { id, size } });
-              } catch (error) {
+              } catch (error: any) {
                 console.error('Error removing item:', error);
                 showError('Failed to remove item. Please try again.');
               }
@@ -116,7 +117,7 @@ export default function CartScreen() {
           }
         ]
       );
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error showing remove confirmation:', error);
       showError('An unexpected error occurred.');
     }
@@ -135,7 +136,7 @@ export default function CartScreen() {
             onPress: () => {
               try {
                 dispatch({ type: 'CLEAR_CART' });
-              } catch (error) {
+              } catch (error: any) {
                 console.error('Error clearing cart:', error);
                 showError('Failed to clear cart. Please try again.');
               }
@@ -143,7 +144,7 @@ export default function CartScreen() {
           }
         ]
       );
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error showing clear confirmation:', error);
       showError('An unexpected error occurred.');
     }
@@ -174,8 +175,9 @@ export default function CartScreen() {
       setIsLoading(true);
       setErrorMessage('');
 
-      // Check authentication first
-      if (!auth.currentUser) {
+      // Check authentication first - Updated for React Native Firebase
+      const currentUser = auth().currentUser;
+      if (!currentUser) {
         setShowSignInModal(true);
         return;
       }
@@ -193,30 +195,30 @@ export default function CartScreen() {
             id: item.id,
             name: item.name,
             price: parseFloat(item.price) || 0,
-            quantity: parseInt(item.quantity) || 1,
+            quantity: typeof item.quantity === 'string' ? parseInt(item.quantity) : item.quantity || 1,
             size: item.size || 'medium',
             type: item.type || 'coffee'
           };
         }),
-        total: parseFloat(state.total) || 0,
+        total: typeof state.total === 'string' ? parseFloat(state.total) : state.total || 0,
         orderType,
         tableNumber: orderType === 'dinein' ? tableNumber.trim() : '',
         baristaNotes: baristaNotes.trim(),
         timestamp: new Date().toISOString()
       };
 
-      // Navigate to payment screen
+      // Navigate to payment screen - Updated user data access
       router.push({
         pathname: '/(app)/PaymentScreen',
         params: {
           state: JSON.stringify(checkoutData),
           amount: checkoutData.total.toString(),
-          userId: auth.currentUser.uid,
-          displayName: auth.currentUser.displayName || auth.currentUser.email || 'Guest'
+          userId: currentUser.uid,
+          displayName: currentUser.displayName || currentUser.email || 'Guest'
         }
       });
 
-    } catch (error) {
+    } catch (error: any) {
       console.error('Checkout Error:', error);
       showError(error.message || 'Something went wrong during checkout. Please try again.');
     } finally {
@@ -228,7 +230,7 @@ export default function CartScreen() {
     try {
       setShowSignInModal(false);
       router.push('/(auth)/login');
-    } catch (error) {
+    } catch (error: any) {
       console.error('Navigation error:', error);
       showError('Failed to navigate to sign in. Please try again.');
     }
@@ -237,7 +239,7 @@ export default function CartScreen() {
   const handleBackNavigation = async () => {
     try {
       router.back();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Navigation error:', error);
       router.push('/(app)/HomeScreen');
     }
@@ -246,7 +248,7 @@ export default function CartScreen() {
   const handleHomeNavigation = async () => {
     try {
       router.push('/(app)/HomeScreen');
-    } catch (error) {
+    } catch (error: any) {
       console.error('Navigation error:', error);
       showError('Failed to navigate to home. Please try again.');
     }
@@ -255,7 +257,7 @@ export default function CartScreen() {
   const handleContinueShopping = async () => {
     try {
       router.push('/MenuScreen');
-    } catch (error) {
+    } catch (error: any) {
       console.error('Navigation error:', error);
       showError('Failed to navigate to menu. Please try again.');
     }
@@ -310,28 +312,28 @@ export default function CartScreen() {
                 {state.items.map((item, index) => {
                   try {
                     return (
-                      <View key={`${item.id}-${item.size}-${index}`} style={styles.cartItemContainer}>
+                      <View key={`${String(item.id)}-${String(item.size)}-${index}`} style={styles.cartItemContainer}>
                         <CartItem
-                          id={item.id}
+                          id={String(item.id)}
                           name={item.name || 'Unknown Item'}
                           imagelink_square={{ uri: item.imagelink_square }}
                           special_ingredient={item.special_ingredient || 'No special ingredients'}
                           roasted={item.roasted || 'Medium Roast'}
-                          prices={[{ 
-                            size: item.size || 'medium', 
-                            price: item.price || 0, 
-                            quantity: item.quantity || 1 
+                          prices={[{
+                            size: String(item.size) || 'medium',
+                            price: String(item.price) || '0',
+                            quantity: item.quantity || 1
                           }]}
                           type={item.type || 'coffee'}
-                          incrementCartItemQuantityHandler={() => handleIncrementQuantity(item.id, item.size)}
-                          decrementCartItemQuantityHandler={() => handleDecrementQuantity(item.id, item.size)}
+                          incrementCartItemQuantityHandler={handleIncrementQuantity}
+                          decrementCartItemQuantityHandler={handleDecrementQuantity}
                           onImagePress={() => {
                             try {
-                              router.push({ 
-                                pathname: '/(app)/products/[id]', 
-                                params: { id: item.id } 
+                              router.push({
+                                pathname: '/(app)/products/[id]',
+                                params: { id: String(item.id) }
                               });
-                            } catch (error) {
+                            } catch (error: any) {
                               console.error('Navigation error:', error);
                               showError('Failed to view item details.');
                             }
@@ -339,13 +341,13 @@ export default function CartScreen() {
                         />
                         <TouchableOpacity 
                           style={styles.removeButton} 
-                          onPress={() => handleRemoveItem(item.id, item.size)}
+                          onPress={() => handleRemoveItem(String(item.id), String(item.size))}
                         >
                           <FontAwesome name="trash" size={20} color="#e74c3c" />
                         </TouchableOpacity>
                       </View>
                     );
-                  } catch (error) {
+                  } catch (error: any) {
                     console.error('Error rendering cart item:', error);
                     return null;
                   }
