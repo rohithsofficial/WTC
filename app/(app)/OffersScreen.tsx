@@ -15,8 +15,7 @@ import { useRouter } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import { fetchActiveBanners } from "../../src/firebase/product-service";
 import { fetchActiveOffers, Offer } from "../../src/firebase/offer-service";
-import firestore from '@react-native-firebase/firestore';
-import { db } from "../../src/firebase/firebase-config";
+import { db, serverTimestamp, addDoc, collection } from "../../src/firebase/firebase-config";
 
 interface Banner {
   id: string;
@@ -70,11 +69,11 @@ const OffersScreen = () => {
 
   const addOffer = async (offerData: OfferData) => {
     try {
-      await db.collection('offers').add({
+      await addDoc(collection(db, 'offers'), {
         ...offerData,
         isActive: true,
-        createdAt: firestore.FieldValue.serverTimestamp(),
-        updatedAt: firestore.FieldValue.serverTimestamp(),
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
       });
     } catch (error) {
       console.error("Error adding offer:", error);

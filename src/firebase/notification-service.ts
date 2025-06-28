@@ -1,6 +1,18 @@
 //src/firebase/notification-service.ts
 import { FirebaseFirestoreTypes } from '@react-native-firebase/firestore';
-import { db } from './firebase-config';
+import { 
+  db, 
+  serverTimestamp, 
+  collection, 
+  doc, 
+  getDocs, 
+  updateDoc, 
+  addDoc, 
+  deleteDoc, 
+  query, 
+  where, 
+  onSnapshot 
+} from './firebase-config';
 
 export interface Notification {
   id: string;
@@ -16,29 +28,33 @@ export interface Notification {
 // Fetch notifications for a specific user (includes global notifications)
 export const fetchNotifications = async (userId?: string) => {
   try {
-    const notificationsRef = db.collection("notifications");
+    const notificationsRef = collection(db, "notifications");
 
     let q;
     if (userId) {
       // Fetch notifications that are either global (userId is null) or specific to this user
-      q = notificationsRef
-        .where("isActive", "==", true)
-        .where("userId", "in", ["global", userId]);
+      q = query(
+        notificationsRef,
+        where("isActive", "==", true),
+        where("userId", "in", ["global", userId])
+      );
     } else {
       // If no userId provided, fetch only global notifications
-      q = notificationsRef
-        .where("isActive", "==", true)
-        .where("userId", "==", null);
+      q = query(
+        notificationsRef,
+        where("isActive", "==", true),
+        where("userId", "==", null)
+      );
     }
 
-    const querySnapshot = await q.get();
+    const querySnapshot = await getDocs(q);
     const notifications = querySnapshot.docs.map((doc) => {
       const data = doc.data();
       return {
         id: doc.id,
         title: data.title || "Notification",
         message: data.message || "",
-        timestamp: data.timestamp || db.FieldValue.serverTimestamp(),
+        timestamp: data.timestamp || serverTimestamp(),
         isRead: data.isRead || false,
         isActive: data.isActive || true,
         type: data.type || "system",
@@ -65,10 +81,10 @@ export const fetchNotifications = async (userId?: string) => {
 // Mark notification as read
 export const markNotificationAsRead = async (notificationId: string) => {
   try {
-    const notificationRef = db.collection("notifications").doc(notificationId);
-    await notificationRef.update({
+    const notificationRef = doc(db, "notifications", notificationId);
+    await updateDoc(notificationRef, {
       isRead: true,
-      readAt: db.FieldValue.serverTimestamp(),
+      readAt: serverTimestamp(),
     });
   } catch (error) {
     console.error("Error marking notification as read:", error);
@@ -81,15 +97,15 @@ export const addNotification = async (
   notification: Omit<Notification, "id">
 ) => {
   try {
-    const notificationsRef = db.collection("notifications");
+    const notificationsRef = collection(db, "notifications");
     const newNotification = {
       ...notification,
-      timestamp: db.FieldValue.serverTimestamp(),
+      timestamp: serverTimestamp(),
       isRead: false,
       isActive: true,
       userId: notification.userId || null, // Ensure it's null instead of undefined
     };
-    await notificationsRef.add(newNotification);
+    await addDoc(notificationsRef, newNotification);
   } catch (error) {
     console.error("Error adding notification:", error);
     throw error;
@@ -99,8 +115,8 @@ export const addNotification = async (
 // Delete notification
 export const deleteNotification = async (notificationId: string) => {
   try {
-    const notificationRef = db.collection("notifications").doc(notificationId);
-    await notificationRef.delete();
+    const notificationRef = doc(db, "notifications", notificationId);
+    await deleteDoc(notificationRef);
   } catch (error) {
     console.error("Error deleting notification:", error);
     throw error;
@@ -110,22 +126,26 @@ export const deleteNotification = async (notificationId: string) => {
 // Get unread notification count for a specific user
 export const getUnreadNotificationCount = async (userId?: string) => {
   try {
-    const notificationsRef = db.collection("notifications");
+    const notificationsRef = collection(db, "notifications");
 
     let q;
     if (userId) {
-      q = notificationsRef
-        .where("isActive", "==", true)
-        .where("isRead", "==", false)
-        .where("userId", "in", ["global", userId]);
+      q = query(
+        notificationsRef,
+        where("isActive", "==", true),
+        where("isRead", "==", false),
+        where("userId", "in", ["global", userId])
+      );
     } else {
-      q = notificationsRef
-        .where("isActive", "==", true)
-        .where("isRead", "==", false)
-        .where("userId", "==", null);
+      q = query(
+        notificationsRef,
+        where("isActive", "==", true),
+        where("isRead", "==", false),
+        where("userId", "==", null)
+      );
     }
 
-    const querySnapshot = await q.get();
+    const querySnapshot = await getDocs(q);
     return querySnapshot.size;
   } catch (error) {
     console.error("Error getting unread notification count:", error);
@@ -138,22 +158,26 @@ export const subscribeToNotifications = (
   userId: string | undefined,
   callback: (count: number) => void
 ) => {
-  const notificationsRef = db.collection("notifications");
+  const notificationsRef = collection(db, "notifications");
 
   let q;
   if (userId) {
-    q = notificationsRef
-      .where("isActive", "==", true)
-      .where("isRead", "==", false)
-      .where("userId", "in", ["global", userId]);
+    q = query(
+      notificationsRef,
+      where("isActive", "==", true),
+      where("isRead", "==", false),
+      where("userId", "in", ["global", userId])
+    );
   } else {
-    q = notificationsRef
-      .where("isActive", "==", true)
-      .where("isRead", "==", false)
-      .where("userId", "==", null);
+    q = query(
+      notificationsRef,
+      where("isActive", "==", true),
+      where("isRead", "==", false),
+      where("userId", "==", null)
+    );
   }
 
-  return q.onSnapshot((snapshot) => {
+  return onSnapshot(q, (snapshot) => {
     callback(snapshot.size);
   });
 };

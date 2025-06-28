@@ -8,6 +8,7 @@ import {
   Alert,
   TextInput,
   ActivityIndicator,
+  StatusBar,
 } from 'react-native';
 import { Stack, router } from 'expo-router';
 import { FontAwesome } from '@expo/vector-icons';

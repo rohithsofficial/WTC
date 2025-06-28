@@ -130,10 +130,6 @@ const ProfileScreen = () => {
     router.push('/StaffQRScannerScreen');
   };
   
-  const openStaffLoyaltyScanner = () => {
-    router.push('/StaffLoyaltyScannerScreen');
-  };
-  
   const openStaffRedemption = () => {
     router.push('/StaffRedemptionScreen');
   };
@@ -163,7 +159,7 @@ const ProfileScreen = () => {
       title: 'Available Rewards',
       subtitle: 'Redeem your points',
       icon: 'gift',
-      screen: '/(app)/RewardsScreen',
+      screen: '/(app)/LoyaltyScreen',
       category: 'loyalty'
     },
     {

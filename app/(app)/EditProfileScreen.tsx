@@ -9,6 +9,8 @@ import {
   ActivityIndicator,
   ScrollView,
   Switch,
+  Alert,
+  StatusBar,
 } from 'react-native';
 import { Stack, router } from 'expo-router';
 import { auth, db } from '../../src/firebase/firebase-config';

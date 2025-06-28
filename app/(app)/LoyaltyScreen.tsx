@@ -18,16 +18,12 @@ import GradientBGIcon from '../../src/components/GradientBGIcon';
 import LoyaltyPointsDisplay from '../../src/components/LoyaltyPointsDisplay';
 import LoyaltyTransaction from '../../src/components/LoyaltyTransaction';
 import { loyaltyService, UserLoyaltyProfile, ComprehensiveLoyaltyTransaction } from '../../src/services/loyaltyService';
-import { auth } from '../../src/firebase/firebase-config';
+import { auth, db } from '../../src/firebase/firebase-config';
+import { Timestamp } from '@react-native-firebase/firestore';
 import { MaterialIcons } from '@expo/vector-icons';
-// React Native Firebase imports
-import firestore, { FirebaseFirestoreTypes } from '@react-native-firebase/firestore';
 import { LoyaltyUser } from '../../src/types/loyalty';
 
 const { width: screenWidth } = Dimensions.get('window');
-
-// Type alias for cleaner code
-type Timestamp = FirebaseFirestoreTypes.Timestamp;
 
 // Updated type guards for React Native Firebase Timestamp
 const isFirestoreTimestamp = (value: unknown): value is Timestamp => {
@@ -210,14 +206,14 @@ const LoyaltyScreen = () => {
   const createSafeTimestamp = (value: unknown): Timestamp => {
     try {
       if (isFirestoreTimestamp(value)) return value;
-      if (isDate(value)) return firestore.Timestamp.fromDate(value);
+      if (isDate(value)) return Timestamp.fromDate(value);
       if (typeof value === 'string' || typeof value === 'number') {
-        return firestore.Timestamp.fromDate(new Date(value));
+        return Timestamp.fromDate(new Date(value));
       }
-      return firestore.Timestamp.now();
+      return Timestamp.fromDate(new Date());
     } catch (error) {
       console.error('Error creating timestamp:', error);
-      return firestore.Timestamp.now();
+      return Timestamp.fromDate(new Date());
     }
   };
 
@@ -280,11 +276,11 @@ const LoyaltyScreen = () => {
                     ...transaction,
                     transactionDetails: {
                       ...transaction.transactionDetails,
-                      timestamp: firestore.Timestamp.now()
+                      timestamp: Timestamp.fromDate(new Date())
                     },
                     auditTrail: {
-                      createdAt: firestore.Timestamp.now(),
-                      updatedAt: firestore.Timestamp.now(),
+                      createdAt: Timestamp.fromDate(new Date()),
+                      updatedAt: Timestamp.fromDate(new Date()),
                       createdBy: auth.currentUser?.uid || 'system',
                       updatedBy: auth.currentUser?.uid
                     }
@@ -441,7 +437,7 @@ const LoyaltyScreen = () => {
           id: transaction.id || 'unknown',
           orderId: 'unknown',
           points: 0,
-          timestamp: firestore.Timestamp.now(),
+          timestamp: Timestamp.fromDate(new Date()),
           type: 'adjusted' as const,
           description: 'Transaction data unavailable',
           notes: 'Error processing transaction'

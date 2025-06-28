@@ -7,8 +7,8 @@
     "development": {
       "developmentClient": true,
       "distribution": "internal",
-      "android": {          // <--- ADD THIS BLOCK
-        "buildType": "apk"  // <--- AND THIS LINE to force APK
+      "android": {         
+        "buildType": "apk"  
       }
     },
     "preview": {
@@ -16,6 +16,13 @@
     },
     "production": {
       "autoIncrement": true
+    },
+    "standalone_apk_test": {
+      "autoIncrement": true,
+      "android": {
+        "buildType": "apk"
+      },
+      "distribution": "internal"
     }
   },
   "submit": {

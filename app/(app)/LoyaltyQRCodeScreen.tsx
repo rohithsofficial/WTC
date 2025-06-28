@@ -13,14 +13,14 @@ import {
 import { useRouter } from 'expo-router';
 import { COLORS, FONTFAMILY, FONTSIZE, SPACING, BORDERRADIUS } from '../../src/theme/theme';
 import GradientBGIcon from '../../src/components/GradientBGIcon';
-import firestore from '@react-native-firebase/firestore';
 import { 
   auth, 
   db, 
   signOutUser,
   getUserDocument,
   createUserDocument,
-  getCurrentUser 
+  getCurrentUser,
+  serverTimestamp
 } from '../../src/firebase/firebase-config';
 import QRCode from 'react-native-qrcode-svg';
 import type { LoyaltyUser } from '../../src/types/loyalty';
@@ -121,8 +121,8 @@ const LoyaltyQRCodeScreen = () => {
             totalOrders: userData.totalOrders || 0,
             totalSpent: userData.totalSpent || 0,
             isFirstTimeUser: userData.isFirstTimeUser ?? true,
-            createdAt: userData.createdAt || firestore.FieldValue.serverTimestamp(),
-            updatedAt: userData.updatedAt || firestore.FieldValue.serverTimestamp()
+            createdAt: userData.createdAt || new Date() as any,
+            updatedAt: userData.updatedAt || new Date() as any
           };
           
           console.log('Final profile object:', profile);
@@ -131,7 +131,7 @@ const LoyaltyQRCodeScreen = () => {
         } else {
           console.log('No user document found, creating new profile');
           // Create a new user profile if one doesn't exist
-          const newProfile: LoyaltyUser = {
+          const newProfile: Omit<LoyaltyUser, 'createdAt' | 'updatedAt'> = {
             uid: user.uid,
             email: user.email || '',
             displayName: user.displayName || 'User',
@@ -139,16 +139,25 @@ const LoyaltyQRCodeScreen = () => {
             totalOrders: 0,
             totalSpent: 0,
             isFirstTimeUser: true,
-            createdAt: firestore.FieldValue.serverTimestamp(),
-            updatedAt: firestore.FieldValue.serverTimestamp()
           };
           
           // Add the profile to users collection using native SDK
-          const createResult = await createUserDocument(user.uid, newProfile);
+          const createResult = await createUserDocument(user.uid, {
+            ...newProfile,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp()
+          });
           if (createResult.success) {
             console.log('Created new profile:', newProfile);
-            setLoyaltyProfile(newProfile);
-            setQrToken(generateSecureToken(newProfile.uid));
+            // For the local state, we'll use the current timestamp
+            const now = new Date();
+            const localProfile: LoyaltyUser = {
+              ...newProfile,
+              createdAt: now as any, // Type assertion for local state
+              updatedAt: now as any
+            };
+            setLoyaltyProfile(localProfile);
+            setQrToken(generateSecureToken(localProfile.uid));
           } else {
             throw createResult.error;
           }
@@ -157,12 +166,17 @@ const LoyaltyQRCodeScreen = () => {
         console.error('Firestore operation error:', firestoreError);
         throw firestoreError;
       }
-    } catch (error) {
-      console.error('Error loading loyalty profile:', error);
-      setError('Failed to load loyalty profile: ' + (error?.message || 'Unknown error'));
-    } finally {
-      setLoading(false);
-    }
+    } catch (error: unknown) {
+  console.error('Error loading loyalty profile:', error);
+
+  if (error instanceof Error) {
+    setError('Failed to load loyalty profile: ' + error.message);
+  } else {
+    setError('Failed to load loyalty profile: Unknown error');
+  }
+} finally {
+  setLoading(false);
+}
   };
 
   const refreshQRCode = async () => {
@@ -206,10 +220,18 @@ const LoyaltyQRCodeScreen = () => {
           `DB loyaltyPoints: ${userData.loyaltyPoints}\nType: ${typeof userData.loyaltyPoints}\nAll fields: ${Object.keys(userData).join(', ')}`
         );
       }
-    } catch (error) {
-      console.error('Debug refresh error:', error);
-      Alert.alert('Debug Error', error?.message || 'Unknown error');
-    }
+    } catch (error: unknown) {
+  console.error('Error loading loyalty profile:', error);
+
+  if (error instanceof Error) {
+    setError('Failed to load loyalty profile: ' + error.message);
+  } else {
+    setError('Failed to load loyalty profile: Unknown error');
+  }
+} finally {
+  setLoading(false);
+}
+
     
     // Also refresh the profile
     await loadLoyaltyProfile();

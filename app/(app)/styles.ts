@@ -297,3 +297,5 @@ export const styles = StyleSheet.create({
         color: COLORS.primaryWhiteHex,
     },
 });
+
+export default styles;

@@ -43,10 +43,12 @@ export default {
         "android.permission.WAKE_LOCK"
       ],
       package: "com.rohithofficial.wtccoffee",
+      "googleServicesFile": "./google-services.json" // <--- ADD THIS LINE HERE!
     },
    plugins: [
       "expo-notifications",
       "expo-router",
+      "@react-native-firebase/app",
       // "expo-barcode-scanner", // This line should be gone!
       [
         "expo-image-picker",

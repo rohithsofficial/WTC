@@ -26,8 +26,8 @@ import Ionicons from 'react-native-vector-icons/Ionicons';
 import LottieView from 'lottie-react-native';
 import QRCode from 'react-native-qrcode-svg';
 import { CountdownCircleTimer } from 'react-native-countdown-circle-timer';
-import firestore from '@react-native-firebase/firestore';
 import { db } from '../../src/firebase/firebase-config';
+
 
 const { width } = Dimensions.get('window');
 

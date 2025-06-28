@@ -20,7 +20,7 @@ import { OrderData } from '../../src/types/loyalty';
 import { RedeemPointsInput } from '../../src/components/RedeemPointsInput';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCart } from '../../src/store/CartContext';
-import { Timestamp } from 'firebase/firestore';
+import { Timestamp } from '@react-native-firebase/firestore';
 
 interface PaymentScreenProps {
   navigation?: any;

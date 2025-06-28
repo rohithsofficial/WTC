@@ -30,7 +30,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { TabView, TabBar } from 'react-native-tab-view';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { CountdownCircleTimer } from 'react-native-countdown-circle-timer';
-import firestore from '@react-native-firebase/firestore';
 
 // Define interfaces
 interface OrderItem {

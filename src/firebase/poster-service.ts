@@ -1,5 +1,17 @@
 //src/firebase/Poster-service.ts
-import firestore, { collection, query, where, getDocs, addDoc, updateDoc, deleteDoc, doc, Timestamp, orderBy } from '@react-native-firebase/firestore';
+import { 
+  collection, 
+  query, 
+  where, 
+  getDocs, 
+  addDoc, 
+  updateDoc, 
+  deleteDoc, 
+  doc, 
+  Timestamp, 
+  orderBy,
+  getFirestore
+} from '@react-native-firebase/firestore';
 import { db } from './firebase-config';
 
 export interface Poster {

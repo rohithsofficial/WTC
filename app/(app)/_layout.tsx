@@ -1,11 +1,12 @@
-//app/(app)/_layout.tsx
+// app/(app)/_layout.tsx
 import React from 'react';
 import { Tabs } from 'expo-router';
 import { COLORS, FONTFAMILY } from '../../src/theme/theme';
 import { MaterialIcons } from '@expo/vector-icons';
 import { StyleSheet, View, TouchableOpacity, Animated } from 'react-native';
 import { Text as RNText } from 'react-native';
-import { useRouter } from 'expo-router';
+// useRouter is imported but not used in the provided snippets. Keep if used elsewhere.
+import { useRouter } from 'expo-router'; 
 import FloatingQRModal from '../../src/components/FloatingQRModal';
 
 // Only define the actual tab screens
@@ -19,11 +20,6 @@ const mainTabs = [
     name: 'MenuScreen', 
     title: 'Menu',
     icon: 'restaurant-menu' as const
-  },
-  {
-    name: 'placeholder', // Placeholder for floating button space
-    title: '',
-    icon: 'circle' as const
   },
   {
     name: 'LoyaltyScreen',
@@ -42,12 +38,11 @@ const hiddenScreens = [
   'CartScreen',
   'OrderScreen',
   'StaffQRScannerScreen', 
-  'StaffLoyaltyScannerScreen',
   'StaffRedemptionScreen',
   'PaymentScreen',
   'OrderStatusScreen',
-  'products/[id]',
-  'category/[category]',
+  'products/[id]', // Dynamic route
+  'category/[category]', // Dynamic route
   'FavoritesScreen',
   'SearchScreen',
   'AddressScreen',
@@ -56,10 +51,9 @@ const hiddenScreens = [
   'EditProfileScreen',
   'NotificationScreen',
   'explore',
-  'HomeScreen1',
+  'HomeScreen1', // Double check if you have HomeScreen and HomeScreen1
   'OffersScreen',
   'LoyaltyQRCodeScreen',
-  'ProductsScreen',
   'HowToEarnScreen'
 ];
 
@@ -190,12 +184,6 @@ const CustomTabBar = ({ state, descriptors, navigation, onQRPress }: any) => {
           const { options } = descriptors[route.key];
           const label = options.tabBarLabel || options.title || route.name;
           const isFocused = state.index === index;
-          const isPlaceholder = route.name === 'placeholder';
-
-          if (isPlaceholder) {
-            // Empty space for floating button
-            return <View key={route.key} style={styles.placeholderSpace} />;
-          }
 
           const onPress = () => {
             const event = navigation.emit({
@@ -205,12 +193,14 @@ const CustomTabBar = ({ state, descriptors, navigation, onQRPress }: any) => {
             });
 
             if (!isFocused && !event.defaultPrevented) {
+              // The `navigation.navigate` from react-navigation tabs should work correctly here.
+              // For expo-router, if you want to navigate by path, you might use `router.push(route.name)`
               navigation.navigate(route.name);
             }
           };
 
           const tabConfig = mainTabs.find(tab => tab.name === route.name);
-          if (!tabConfig) return null;
+          if (!tabConfig) return null; // Should not happen if mainTabs are correctly configured
 
           return (
             <TouchableOpacity
@@ -248,6 +238,7 @@ const CustomTabBar = ({ state, descriptors, navigation, onQRPress }: any) => {
   );
 };
 
+// This is the default export for app/(app)/_layout.tsx
 const AppLayout = () => {
   const [modalVisible, setModalVisible] = React.useState(false);
 
@@ -265,35 +256,34 @@ const AppLayout = () => {
         screenOptions={{
           headerShown: false,
         }}
+        // Pass the openQRModal function to your custom tab bar
         tabBar={(props) => <CustomTabBar {...props} onQRPress={openQRModal} />}
       >
-        {/* Main tab screens */}
+        {/* Main tab screens (visible in tab bar) */}
         {mainTabs.map((tab) => (
           <Tabs.Screen
             key={tab.name}
             name={tab.name}
             options={{
               title: tab.title,
-              ...(tab.name === 'placeholder' && {
-                href: null, // Hide placeholder from routing
-              }),
             }}
           />
         ))}
 
-        {/* Hidden screens - no tab bar buttons */}
+        {/* Hidden screens (not visible in tab bar, but accessible by navigation) */}
         {hiddenScreens.map((screenName) => (
           <Tabs.Screen
             key={screenName}
             name={screenName}
             options={{
-              href: null, // This properly hides the screen from tab bar
+              href: null, // This properly hides the screen from tab bar/direct routing via `name`
+              headerShown: false, // Ensure header is hidden for these screens too
             }}
           />
         ))}
       </Tabs>
 
-      {/* Floating QR Modal */}
+      {/* Floating QR Modal - This component is outside the Tabs navigator but still part of the layout */}
       <FloatingQRModal 
         visible={modalVisible} 
         onClose={closeQRModal}
@@ -302,6 +292,9 @@ const AppLayout = () => {
   );
 };
 
+// Finally, export the AppLayout as the default export for this file.
+export default AppLayout;
+
 const styles = StyleSheet.create({
   customTabBar: {
     position: 'relative',
@@ -309,8 +302,8 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: '#E5E5E5',
     height: 60,
-    elevation: 8,
-    shadowColor: '#000',
+    elevation: 8, // Android shadow
+    shadowColor: '#000', // iOS shadow
     shadowOffset: {
       width: 0,
       height: -2,
@@ -328,9 +321,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 8,
   },
-  placeholderSpace: {
-    flex: 1,
-  },
   tabBarLabel: {
     fontFamily: FONTFAMILY.poppins_medium,
     fontSize: 10,
@@ -338,9 +328,9 @@ const styles = StyleSheet.create({
   },
   floatingButtonContainer: {
     position: 'absolute',
-    top: -25,
+    top: -25, // Adjust this value to control how much it overlaps the tab bar
     left: '50%',
-    marginLeft: -30,
+    marginLeft: -30, // Half of width (60 / 2) to center it
     alignItems: 'center',
     justifyContent: 'center',
     width: 60,
@@ -358,8 +348,8 @@ const styles = StyleSheet.create({
     height: 56,
     borderRadius: 28,
     backgroundColor: COLORS.primaryOrangeHex,
-    elevation: 8,
-    shadowColor: '#000',
+    elevation: 8, // Android shadow
+    shadowColor: '#000', // iOS shadow
     shadowOffset: {
       width: 0,
       height: 4,
@@ -377,5 +367,3 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
 });
-
-export default AppLayout;

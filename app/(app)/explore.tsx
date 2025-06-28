@@ -23,7 +23,6 @@ import {
   SPACING,
   BORDERRADIUS,
 } from "../../src/theme/theme";
-import MapView, { Marker, PROVIDER_GOOGLE, Region } from "react-native-maps";
 import { getImageBackgroundSource } from '../../src/utils/imageUtils';
 
 const { width } = Dimensions.get("window");
@@ -101,15 +100,8 @@ interface StoreLocation {
 export default function ExploreScreen() {
   const [activeSection, setActiveSection] = useState("about");
   const scrollViewRef = useRef<ScrollView>(null);
-  const [showMap, setShowMap] = useState(false);
   const [selectedStoreLocation, setSelectedStoreLocation] =
     useState<StoreLocation | null>(null);
-  const [mapRegion, setMapRegion] = useState<Region>({
-    latitude: 12.3810688,
-    longitude: 76.0332978,
-    latitudeDelta: 0.0922,
-    longitudeDelta: 0.0421,
-  });
   const [searchQuery, setSearchQuery] = useState("");
 
   // Store locations with coordinates
@@ -409,37 +401,17 @@ export default function ExploreScreen() {
 
           {/* Map View */}
           <View style={styles.mapContainer}>
-            <MapView
-              provider={PROVIDER_GOOGLE}
-              style={styles.map}
-              region={mapRegion}
-              onRegionChangeComplete={setMapRegion}
-              showsUserLocation={true}
-              showsMyLocationButton={true}
-              showsCompass={true}
-              showsScale={true}
-              zoomEnabled={true}
-              scrollEnabled={true}
-              rotateEnabled={true}
-            >
-              {storeLocations.map((store) => (
-                <Marker
-                  key={store.id}
-                  coordinate={store.coordinates}
-                  title={store.name}
-                  description={store.address}
-                  onPress={() => setSelectedStoreLocation(store)}
-                >
-                  <View style={styles.markerContainer}>
-                    <MaterialIcons
-                      name="store"
-                      size={24}
-                      color={COLORS.primaryOrangeHex}
-                    />
-                  </View>
-                </Marker>
-              ))}
-            </MapView>
+            <View style={styles.mapPlaceholder}>
+              <MaterialIcons
+                name="map"
+                size={48}
+                color={COLORS.primaryOrangeHex}
+              />
+              <Text style={styles.mapPlaceholderText}>Map View</Text>
+              <Text style={styles.mapPlaceholderSubtext}>
+                Interactive map will be available in the full app
+              </Text>
+            </View>
           </View>
 
           {/* Store List */}
@@ -454,11 +426,6 @@ export default function ExploreScreen() {
                 ]}
                 onPress={() => {
                   setSelectedStoreLocation(store);
-                  setMapRegion({
-                    ...mapRegion,
-                    latitude: store.coordinates.latitude,
-                    longitude: store.coordinates.longitude,
-                  });
                 }}
               >
                 <View style={styles.storeCardContent}>
@@ -780,24 +747,6 @@ const styles = StyleSheet.create({
   mapSearchButton: {
     padding: SPACING.space_10,
   },
-  mapContainer: {
-    height: 300,
-    marginHorizontal: SPACING.space_20,
-    borderRadius: BORDERRADIUS.radius_20,
-    overflow: "hidden",
-    marginBottom: SPACING.space_20,
-  },
-  map: {
-    width: "100%",
-    height: "100%",
-  },
-  markerContainer: {
-    backgroundColor: COLORS.primaryWhiteHex,
-    padding: SPACING.space_10,
-    borderRadius: BORDERRADIUS.radius_10,
-    borderWidth: 2,
-    borderColor: COLORS.primaryOrangeHex,
-  },
   storeListContainer: {
     paddingHorizontal: SPACING.space_20,
   },
@@ -846,5 +795,32 @@ const styles = StyleSheet.create({
   },
   directionsButton: {
     padding: SPACING.space_10,
+  },
+  mapContainer: {
+    height: 200,
+    marginHorizontal: SPACING.space_20,
+    borderRadius: BORDERRADIUS.radius_20,
+    overflow: "hidden",
+    marginBottom: SPACING.space_20,
+    backgroundColor: COLORS.primaryLightGreyHex,
+    borderWidth: 1,
+    borderColor: COLORS.primaryLightGreyHex,
+  },
+  mapPlaceholder: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  mapPlaceholderText: {
+    fontFamily: FONTFAMILY.poppins_semibold,
+    fontSize: FONTSIZE.size_18,
+    color: COLORS.primaryBlackHex,
+    marginBottom: SPACING.space_4,
+  },
+  mapPlaceholderSubtext: {
+    fontFamily: FONTFAMILY.poppins_regular,
+    fontSize: FONTSIZE.size_14,
+    color: COLORS.primaryDarkGreyHex,
+    textAlign: "center",
   },
 });

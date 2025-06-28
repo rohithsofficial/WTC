@@ -1,5 +1,19 @@
 // src/services/DatabaseService.ts
-import firestore, { collection, addDoc, updateDoc, doc, getDoc, getDocs, query, where, orderBy, Timestamp, runTransaction, increment } from '@react-native-firebase/firestore';
+import { 
+  collection, 
+  addDoc, 
+  updateDoc, 
+  doc, 
+  getDoc, 
+  getDocs, 
+  query, 
+  where, 
+  orderBy, 
+  Timestamp, 
+  runTransaction, 
+  increment,
+  getFirestore
+} from '@react-native-firebase/firestore';
 import { db } from "../firebase/firebase-config";
 import { OrderData, PaymentResult } from '../types/interfaces';
 

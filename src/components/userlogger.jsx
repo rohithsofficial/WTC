@@ -2,7 +2,7 @@
 // LOGGING TYPES AND INTERFACES
 // ================================
 
-import { Timestamp } from 'firebase/firestore';
+import { Timestamp } from '@react-native-firebase/firestore';
 
 const LogLevel = {
   DEBUG: 'DEBUG',
@@ -65,8 +65,8 @@ const LogCategory = {
 // ================================
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { collection, addDoc, writeBatch, doc } from 'firebase/firestore';
-import { db } from '../firebase/firebase-config';
+import { db } from '../../src/firebase/firebase-config';
+import { collection, doc, writeBatch, addDoc, Timestamp } from '@react-native-firebase/firestore';
 import * as Device from 'expo-device';
 import { Platform } from 'react-native';
 

@@ -15,9 +15,9 @@ import {
 import { Stack, router } from 'expo-router';
 import { FontAwesome } from '@expo/vector-icons';
 import { COLORS, FONTFAMILY, FONTSIZE, SPACING, BORDERRADIUS } from '../../src/theme/theme';
-import { auth } from '../../src/firebase/firebase-config';
-import authModule from '@react-native-firebase/auth';
-import firestore from '@react-native-firebase/firestore';
+import { auth, db } from '../../src/firebase/firebase-config';
+import { createUserWithEmailAndPassword } from '@react-native-firebase/auth';
+import { doc, setDoc } from '@react-native-firebase/firestore';
 
 const SignupScreen = () => {
   const [name, setName] = useState('');
@@ -46,10 +46,10 @@ const SignupScreen = () => {
 
     try {
       setLoading(true);
-      const userCredential = await authModule().createUserWithEmailAndPassword(email.trim(), password.trim());
+      const userCredential = await createUserWithEmailAndPassword(auth, email.trim(), password.trim());
       
       // Create user profile in Firestore
-      await firestore().collection('users').doc(userCredential.user.uid).set({
+      await setDoc(doc(db, 'users', userCredential.user.uid), {
         name: name.trim(),
         email: email.trim(),
         loyaltyPoints: 0,

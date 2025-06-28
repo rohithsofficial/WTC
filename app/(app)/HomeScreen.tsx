@@ -58,10 +58,7 @@ import {
   subscribeToNotifications,
 } from "../../src/firebase/notification-service";
 import { useAuth } from "../../src/context/AuthContext";
-
-// React Native Firebase imports
-import firestore from '@react-native-firebase/firestore';
-import auth from '@react-native-firebase/auth';
+import { db, auth } from "../../src/firebase/firebase-config";
 
 import * as Location from "expo-location";
 import PosterModal from "../../src/components/PosterModel";
@@ -358,8 +355,7 @@ const HomeScreen = () => {
   const loadOffers = async () => {};
 
     // Set up real-time listeners using React Native Firebase
-    const unsubscribeProducts = firestore()
-      .collection('products')
+    const unsubscribeProducts = db.collection('products')
       .onSnapshot((snapshot) => {
         const updatedProducts = snapshot.docs.map((doc) => ({
           id: doc.id,
@@ -368,8 +364,7 @@ const HomeScreen = () => {
         fetchData(); // Refresh products data
       });
 
-    const unsubscribeCategories = firestore()
-      .collection('categories')
+    const unsubscribeCategories = db.collection('categories')
       .onSnapshot((snapshot) => {
         const updatedCategories = snapshot.docs.map((doc) => {
           const data = doc.data();
@@ -385,8 +380,7 @@ const HomeScreen = () => {
         setCategories(updatedCategories);
       });
 
-    const unsubscribeBanners = firestore()
-      .collection('banners')
+    const unsubscribeBanners = db.collection('banners')
       .where('isActive', '==', true)
       .onSnapshot((snapshot) => {
         const updatedBanners = snapshot.docs.map((doc) => {
@@ -407,8 +401,7 @@ const HomeScreen = () => {
         setBanners(updatedBanners);
       });
 
-    const unsubscribeOffers = firestore()
-      .collection('offers')
+    const unsubscribeOffers = db.collection('offers')
       .where('isActive', '==', true)
       .onSnapshot((snapshot) => {
         const updatedOffers = snapshot.docs.map((doc) => {
@@ -424,8 +417,7 @@ const HomeScreen = () => {
         setOffers(updatedOffers);
       });
 
-    const unsubscribePosters = firestore()
-      .collection('posters')
+    const unsubscribePosters = db.collection('posters')
       .where('isActive', '==', true)
       .onSnapshot((snapshot) => {
         const updatedPosters = snapshot.docs.map((doc) => {
@@ -497,7 +489,7 @@ const HomeScreen = () => {
   }, [fadeAnim]);
 
   useEffect(() => {
-    const unsubscribe = auth().onAuthStateChanged(async (currentUser) => {
+    const unsubscribe = auth.onAuthStateChanged(async (currentUser) => {
       if (currentUser) {
         setupNotificationsListener(currentUser.uid);
         setupOffersListener(currentUser.uid);
@@ -510,8 +502,7 @@ const HomeScreen = () => {
 
    const setupNotificationsListener = (userId: string) => {
   // Set up real-time listener for notifications using React Native Firebase
-  const unsubscribe = firestore()
-    .collection('notifications')
+  const unsubscribe = db.collection('notifications')
     .where('isActive', '==', true)
     .onSnapshot(
       async (snapshot) => {
@@ -523,13 +514,12 @@ const HomeScreen = () => {
           
           try {
             // Get user document to check notification preferences
-            const userDoc = await firestore()
-              .collection('users')
+            const userDocSnapshot = await db.collection('users')
               .doc(userId)
               .get();
             
-            if (userDoc.exists()) {
-              const userData = userDoc.data();
+            if (userDocSnapshot.exists()) {
+              const userData = userDocSnapshot.data();
               // Process notifications based on user preferences
               processNotifications(notificationsData, userData);
             }
@@ -548,8 +538,7 @@ const HomeScreen = () => {
 
 const setupOffersListener = (userId: string) => {
   // Set up real-time listener for offers using React Native Firebase
-  const unsubscribe = firestore()
-    .collection('offers')
+  const unsubscribe = db.collection('offers')
     .where('isActive', '==', true)
     .onSnapshot(
       (snapshot) => {

@@ -1,23 +1,26 @@
 // src/services/loyaltyService.ts
-import firestore, { 
+import { 
+  collection, 
   doc, 
   getDoc, 
+  getDocs, 
+  setDoc, 
   updateDoc, 
-  addDoc, 
-  collection, 
   query, 
   where, 
-  getDocs, 
-  orderBy,
+  orderBy, 
+  limit, 
+  startAfter, 
+  runTransaction, 
+  increment,
   Timestamp,
-  writeBatch,
-  runTransaction,
-  setDoc,
-  limit,
+  getFirestore,
   onSnapshot,
-  Unsubscribe,
-  increment
+  addDoc,
+  writeBatch,
+  Unsubscribe
 } from '@react-native-firebase/firestore';
+import { getAuth } from '@react-native-firebase/auth';
 import { db, auth } from '../firebase/firebase-config';
 import type { 
   LoyaltyUser, 

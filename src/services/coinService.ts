@@ -1,5 +1,5 @@
 import { db } from '../firebase/firebase-config';
-import firestore, { Timestamp } from '@react-native-firebase/firestore';
+import { Timestamp, getFirestore } from '@react-native-firebase/firestore';
 
 interface OrderData {
   userId: string;

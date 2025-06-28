@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -18,8 +18,7 @@ import { Stack, router } from 'expo-router';
 import { useCart } from '../../src/store/CartContext';
 import CartItem from '../../src/components/CartItem';
 import { FontAwesome } from '@expo/vector-icons';
-// Updated import for React Native Firebase
-import auth from '@react-native-firebase/auth';
+import { auth } from '../../src/firebase/firebase-config';
 import {
   COLORS,
   FONTFAMILY,
@@ -176,7 +175,7 @@ export default function CartScreen() {
       setErrorMessage('');
 
       // Check authentication first - Updated for React Native Firebase
-      const currentUser = auth().currentUser;
+      const currentUser = auth.currentUser;
       if (!currentUser) {
         setShowSignInModal(true);
         return;

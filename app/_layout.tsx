@@ -1,20 +1,27 @@
-import 'react-native-gesture-handler';
+// app/_layout.tsx
+// Suppress deprecation warnings during migration
+declare global {
+  var RNFB_SILENCE_MODULAR_DEPRECATION_WARNINGS: boolean;
+}
+globalThis.RNFB_SILENCE_MODULAR_DEPRECATION_WARNINGS = true;
+
+import 'react-native-gesture-handler'; // Keep this at the top for Gesture Handler
 import { Stack } from 'expo-router';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { CartProvider } from '@/src/store/CartContext';
+import { CartProvider } from '@/src/store/CartContext'; // Assuming @/src maps to src/
 import { StyleSheet } from 'react-native';
 
 // In your React Native app (e.g., App.tsx or a dedicated push notification setup file)
-
 import * as Notifications from 'expo-notifications';
 import { useEffect } from 'react';
-import { auth, db, onAuthStateChanged } from '../src/firebase/firebase-config';
+import { auth, db, onAuthStateChanged } from '../src/firebase/firebase-config'; // Corrected path to src/firebase
+import { doc, setDoc } from '@react-native-firebase/firestore';
 
 // Call this function to set up notification handling for your app
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
-     shouldShowAlert: true,
+    shouldShowAlert: true,
     shouldPlaySound: false,
     shouldSetBadge: false,
     shouldShowBanner: true, // ✅ NEW
@@ -42,7 +49,7 @@ async function registerAndSavePushToken(userId: string) {
   // 3. Save the token to the user's document in Firestore
   // (This is how the Cloud Function will know where to send notifications)
   try {
-    await db.collection('users').doc(userId).set({
+    await setDoc(doc(db, 'users', userId), {
       expoPushToken: token,
     }, { merge: true });
     console.log("Expo Push Token successfully saved for user:", userId);
@@ -51,9 +58,18 @@ async function registerAndSavePushToken(userId: string) {
   }
 }
 
-// This useEffect hook makes sure the token is registered and saved
-// whenever the user's authentication state changes (e.g., they log in).
-export function NotificationSetup() {
+function StackScreens() {
+  return (
+    <Stack screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="index" options={{ headerShown: false }} />
+      <Stack.Screen name="(auth)" options={{ headerShown: false }} />
+      <Stack.Screen name="(app)" options={{ headerShown: false }} />
+    </Stack>
+  );
+}
+
+export default function RootLayout() {
+  // Move notification setup logic here
   useEffect(() => {
     const unsubscribe = onAuthStateChanged((user) => {
       if (user) {
@@ -89,34 +105,24 @@ export function NotificationSetup() {
 
       // Mark notification as read in Firestore
       if (data && data.notificationId) {
-         // import { markNotificationAsRead } from './src/firebase/notification-service'; // Your mobile app's service
-         // markNotificationAsRead(data.notificationId);
-         console.log(`Notification ${data.notificationId} marked as read.`);
+        // import { markNotificationAsRead } from './src/firebase/notification-service'; // Your mobile app's service
+        // markNotificationAsRead(data.notificationId);
+        console.log(`Notification ${data.notificationId} marked as read.`);
       }
     });
 
-    // Clean up listeners
+    // Clean up listeners using the new .remove() method
     return () => {
-      Notifications.removeNotificationSubscription(notificationReceivedListener);
-      Notifications.removeNotificationSubscription(notificationResponseListener);
+      notificationReceivedListener.remove();
+      notificationResponseListener.remove();
     };
   }, []);
-  return null; // This component doesn't render anything, it's for side effects
-}
 
-export default function RootLayout() {
   return (
     <SafeAreaProvider>
       <GestureHandlerRootView style={styles.container}>
-         <NotificationSetup />
         <CartProvider>
-            <Stack screenOptions={{ headerShown: false }}>
-              <Stack.Screen name="index" options={{ headerShown: false }} />
-              <Stack.Screen name="(auth)" options={{ headerShown: false }} />
-              <Stack.Screen name="(app)" options={{ headerShown: false }} />
-              <Stack.Screen name="products/[id]" options={{ headerShown: false }} />
-              <Stack.Screen name="category/[category]" options={{ headerShown: false }} />
-            </Stack>
+          <StackScreens />
         </CartProvider>
       </GestureHandlerRootView>
     </SafeAreaProvider>

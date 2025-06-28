@@ -1,6 +1,6 @@
 // src/types/loyalty.ts
 import { FirebaseFirestoreTypes } from '@react-native-firebase/firestore';
-const { Timestamp } = FirebaseFirestoreTypes;
+// const { Timestamp } = FirebaseFirestoreTypes;
 
 export interface LoyaltyUser {
   uid: string;
@@ -11,8 +11,8 @@ export interface LoyaltyUser {
   totalOrders: number;
   totalSpent: number;
   isFirstTimeUser: boolean;
-  createdAt: FirebaseFirestoreTypes.Timestamp | FirebaseFirestoreTypes.FieldValue;
-  updatedAt: FirebaseFirestoreTypes.Timestamp | FirebaseFirestoreTypes.FieldValue;
+  createdAt: FirebaseFirestoreTypes.Timestamp;
+  updatedAt: FirebaseFirestoreTypes.Timestamp;
   birthday?: string;
 }
 
@@ -23,7 +23,7 @@ export interface LoyaltyTransaction {
   points: number;
   type: 'earned' | 'redeemed' | 'adjusted' | 'bonus';
   description: string;
-  timestamp: Timestamp;
+  timestamp: FirebaseFirestoreTypes.Timestamp;
   createdBy?: string;
 }
 
@@ -88,7 +88,7 @@ export interface OrderData {
   paymentMode: string;
   paymentStatus: string;
   description: string;
-  createdAt: Date | Timestamp;
+  createdAt: Date | FirebaseFirestoreTypes.Timestamp;
   baristaNotes: string | null;
   isRewardEarned: boolean;
   rating: number | null;
@@ -145,7 +145,7 @@ export interface ComprehensiveLoyaltyTransaction {
     earningRate: number;
   };
   transactionDetails: {
-    timestamp: Timestamp;
+    timestamp: FirebaseFirestoreTypes.Timestamp;
     paymentMode: string;
     status: string;
     staffId: string;
@@ -153,8 +153,8 @@ export interface ComprehensiveLoyaltyTransaction {
   };
   createdBy: string;
   auditTrail?: {
-    createdAt: Timestamp;
-    updatedAt: Timestamp;
+    createdAt: FirebaseFirestoreTypes.Timestamp;
+    updatedAt: FirebaseFirestoreTypes.Timestamp;
     createdBy: string;
     updatedBy: string;
   };

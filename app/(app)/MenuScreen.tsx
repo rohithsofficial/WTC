@@ -20,7 +20,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useStore } from "../../src/store/store";
 import Slider from "@react-native-community/slider";
 // Firebase Native SDK imports
-import firestore from '@react-native-firebase/firestore';
+import { collection, getDocs, getFirestore } from '@react-native-firebase/firestore';
 
 const MenuScreen = () => {
   const router = useRouter();
@@ -47,7 +47,8 @@ const MenuScreen = () => {
   const categoryService = {
     getAllCategories: async (): Promise<Category[]> => {
       try {
-        const snapshot = await firestore().collection('categories').get();
+        const db = getFirestore();
+        const snapshot = await getDocs(collection(db, 'categories'));
         return snapshot.docs.map(doc => ({
           id: doc.id,
           ...doc.data()
@@ -62,7 +63,8 @@ const MenuScreen = () => {
   const productService = {
     getAllProducts: async (): Promise<Product[]> => {
       try {
-        const snapshot = await firestore().collection('products').get();
+        const db = getFirestore();
+        const snapshot = await getDocs(collection(db, 'products'));
         return snapshot.docs.map(doc => ({
           id: doc.id,
           ...doc.data()

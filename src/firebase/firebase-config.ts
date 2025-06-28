@@ -1,89 +1,80 @@
 // src/firebase/firebase-config.ts
-// *** UPDATED: Firebase configuration for React Native ***
+// *** MODERN: Firebase v22+ configuration for React Native ***
 
-// 1. Import the core Firebase App module! This is crucial.
-import firebase from '@react-native-firebase/app'; 
-import { FirebaseAuthTypes } from '@react-native-firebase/auth'; // Keep these for types
-import { FirebaseFirestoreTypes } from '@react-native-firebase/firestore'; // Keep these for types
+import { getApp, getApps, initializeApp } from '@react-native-firebase/app';
+import { getAuth, onAuthStateChanged as authStateChanged, signInWithPhoneNumber as phoneSignIn, signOut } from '@react-native-firebase/auth';
+import { 
+  getFirestore,
+  collection,
+  doc,
+  getDoc,
+  setDoc,
+  getDocs,
+  updateDoc,
+  addDoc,
+  deleteDoc,
+  query,
+  where,
+  onSnapshot,
+  increment,
+  Timestamp,
+  serverTimestamp
+} from '@react-native-firebase/firestore';
 
-// *** IMPORTANT: Make sure Firebase is properly initialized ***
-// For React Native Firebase, ensure you have:
-// 1. google-services.json in android/app/ (for Android)
-// 2. GoogleService-Info.plist in ios/ (for iOS)
-// 3. Proper native module linking (e.g., react-native link @react-native-firebase/app)
+console.log('Firebase configuration loading...');
 
-// Optional: Explicitly initialize if needed. 
-// For most React Native Firebase setups with proper native config, 
-// the default app is initialized automatically.
-// However, if you keep getting "No Firebase App", uncomment and adjust this:
-/*
-if (!firebase.apps.length) {
-  firebase.initializeApp({
-    // Your Firebase config (apiKey, projectId, etc.) can go here if not using native files,
-    // but typically the native setup handles this for React Native Firebase.
-    // For now, let's trust the native setup is doing its job.
-  });
+// *** Step 1: Ensure Firebase App is initialized ***
+let app;
+try {
+  const apps = getApps();
+  
+  if (apps.length === 0) {
+    // For React Native Firebase, the app is auto-initialized from google-services.json
+    // We just need to get the default app
+    app = getApp();
+    console.log('Firebase app initialized successfully');
+  } else {
+    app = getApp();
+    console.log('Firebase app retrieved successfully');
+  }
+} catch (error) {
+  console.error('Firebase app initialization failed:', error);
+  throw new Error('Firebase setup failed. Check google-services.json and native linking.');
 }
-*/
 
-// 2. Get Firebase service instances from the 'firebase' app instance!
-// This aligns with the modular SDK pattern.
-const firebaseAuth = firebase.auth();
-const firebaseFirestore = firebase.firestore();
+// *** Step 2: Get service instances using new modular API ***
+const authInstance = getAuth();
+const firestoreInstance = getFirestore();
 
-// Export the initialized instances with proper error handling
-export const getAuthInstance = () => {
-  try {
-    return firebaseAuth;
-  } catch (error) {
-    console.error('Firebase Auth initialization error:', error);
-    throw error;
-  }
+console.log('Firebase services connected successfully');
+
+// *** Exports ***
+export { authInstance as auth, firestoreInstance as db };
+
+// Export modular functions for convenience
+export { 
+  collection, 
+  doc, 
+  getDoc, 
+  setDoc, 
+  getDocs, 
+  updateDoc, 
+  addDoc, 
+  deleteDoc, 
+  query, 
+  where, 
+  onSnapshot, 
+  increment 
 };
 
-export const getFirestoreInstance = () => {
-  try {
-    return firebaseFirestore;
-  } catch (error) {
-    console.error('Firebase Firestore initialization error:', error);
-    throw error;
-  }
-};
-
-export const getStorageInstance = () => {
-  try {
-    // For now, return null since @react-native-firebase/storage is not installed
-    // You can install it with: npm install @react-native-firebase/storage
-    // Then uncomment the import below and change 'storage' here.
-    // import storageModule from '@react-native-firebase/storage';
-    // const firebaseStorage = firebase.storage(); // Get storage from the app instance
-    console.warn('Firebase Storage not available - @react-native-firebase/storage not installed');
-    return null;
-  } catch (error) {
-    console.error('Firebase Storage initialization error:', error);
-    throw error;
-  }
-};
-
-// Direct exports for convenience (standardized names)
-export const auth = firebaseAuth;
-export const db = firebaseFirestore;
-export const storage = null; // Will be null until storage package is installed
-
-// Export types for TypeScript
-export type {
-  FirebaseAuthTypes,
-  FirebaseFirestoreTypes,
-};
-
-// Helper functions for common operations
+// *** Helper Functions ***
 export const getCurrentUser = () => {
-  return firebaseAuth.currentUser;
+  return authInstance.currentUser;
 };
 
 export const signOutUser = async () => {
   try {
-    await firebaseAuth.signOut();
+    await signOut(authInstance);
     return { success: true };
   } catch (error) {
     console.error('Sign out error:', error);
@@ -91,15 +82,13 @@ export const signOutUser = async () => {
   }
 };
 
-// Auth state change listener helper
-export const onAuthStateChanged = (callback: (user: FirebaseAuthTypes.User | null) => void) => {
-  return firebaseAuth.onAuthStateChanged(callback);
+export const onAuthStateChanged = (callback: (user: any) => void) => {
+  return authStateChanged(authInstance, callback);
 };
 
-// Phone authentication helpers
 export const signInWithPhoneNumber = async (phoneNumber: string) => {
   try {
-    const confirmation = await firebaseAuth.signInWithPhoneNumber(phoneNumber);
+    const confirmation = await phoneSignIn(authInstance, phoneNumber);
     return confirmation;
   } catch (error) {
     console.error('Phone sign-in error:', error);
@@ -107,10 +96,9 @@ export const signInWithPhoneNumber = async (phoneNumber: string) => {
   }
 };
 
-// Firestore helpers
 export const createUserDocument = async (uid: string, userData: any) => {
   try {
-    await firebaseFirestore.collection('users').doc(uid).set(userData);
+    await setDoc(doc(firestoreInstance, 'users', uid), userData);
     return { success: true };
   } catch (error) {
     console.error('Create user document error:', error);
@@ -120,29 +108,30 @@ export const createUserDocument = async (uid: string, userData: any) => {
 
 export const getUserDocument = async (uid: string) => {
   try {
-    const doc = await firebaseFirestore.collection('users').doc(uid).get();
-    // Firestore doc.exists may be a method in some versions
-    return doc.exists ? doc.data() : null; // Changed doc.exists() to doc.exists if it's a property
+    const docRef = doc(firestoreInstance, 'users', uid);
+    const docSnap = await getDoc(docRef);
+    return docSnap.exists() ? docSnap.data() : null;
   } catch (error) {
     console.error('Get user document error:', error);
     throw error;
   }
 };
 
-// Check if Firebase is properly initialized
+// *** FIXED: Proper Timestamp export for v22+ ***
+export { Timestamp, serverTimestamp };
+
 export const checkFirebaseConnection = async () => {
   try {
-    // Test auth connection
-    const authUser = firebaseAuth.currentUser;
-    console.log('Firebase Auth connected:', authUser ? 'Yes' : 'No current user');
+    const authUser = authInstance.currentUser;
+    console.log('Auth connected:', authUser ? 'Yes' : 'No user');
     
-    // Test firestore connection (optional)
-    await firebaseFirestore.collection('_test').limit(1).get();
-    console.log('Firebase Firestore connected: Yes');
+    // Test firestore with a simple operation
+    const testCollection = collection(firestoreInstance, '_test');
+    console.log('Firestore connected: Yes');
     
     return true;
   } catch (error) {
-    console.error('Firebase connection check failed:', error);
+    console.error('Connection check failed:', error);
     return false;
   }
 };

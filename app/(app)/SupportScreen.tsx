@@ -14,8 +14,7 @@ import {
 import { Stack, router } from 'expo-router';
 import { FontAwesome } from '@expo/vector-icons';
 import { COLORS, FONTFAMILY, FONTSIZE, SPACING, BORDERRADIUS } from '../../src/theme/theme';
-import { auth, db } from '../../src/firebase/firebase-config';
-import firestore from '@react-native-firebase/firestore';
+import { auth, db, serverTimestamp, addDoc, collection } from '../../src/firebase/firebase-config';
 
 interface SupportTicket {
   subject: string;
@@ -50,11 +49,11 @@ const SupportScreen = () => {
         subject: subject.trim(),
         message: message.trim(),
         status: 'open',
-        createdAt: firestore.FieldValue.serverTimestamp(),
-        updatedAt: firestore.FieldValue.serverTimestamp(),
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
       };
 
-      await db.collection('support_tickets').add(ticketData);
+      await addDoc(collection(db, 'support_tickets'), ticketData);
 
       // Clear inputs
       setSubject('');
